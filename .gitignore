@@ -1,0 +1,9 @@
+__pycache__/
+venv/
+.env
+*.bin
+*.mp4
+*.jpg
+*.h264
+*.jsonl
+*.log
