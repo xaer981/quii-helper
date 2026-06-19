@@ -1,6 +1,12 @@
 __pycache__/
 venv/
 .env
+
+# Keep the runtime output directory in git, but ignore generated artifacts.
+!data/
+data/*
+!data/.gitkeep
+
 *.bin
 *.mp4
 *.jpg
