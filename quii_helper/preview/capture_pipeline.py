@@ -114,6 +114,9 @@ class PreviewCapturePipeline:
                 "live_play_payload": getattr(
                     self.tunnel.config, "live_play_payload", ""
                 ),
+                "stream": getattr(self.tunnel.config, "stream", 0),
+                "live_inner": getattr(self.tunnel.config, "live_inner", False),
+                "live_newcn": getattr(self.tunnel.config, "live_newcn", False),
                 "play_sync_iterations": getattr(
                     self.tunnel.config, "play_sync_iterations", 0
                 ),

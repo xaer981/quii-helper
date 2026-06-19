@@ -33,6 +33,8 @@ def should_start_fragmented_media(decoded: dict, source: str) -> bool:
     if not decoded.get("is_media"):
         return False
     expected_body_len = int(decoded.get("read_size", 0))
+    media_payload_offset = int(decoded.get("media_payload_offset", 0))
+    expected_media_len = max(0, expected_body_len - media_payload_offset)
     body = decoded.get("payload_raw", b"")
     payload = decoded.get("payload", b"")
     if (
@@ -40,7 +42,7 @@ def should_start_fragmented_media(decoded: dict, source: str) -> bool:
         or expected_body_len > FRAGMENTED_MEDIA_MAX_BODY_LEN
     ):
         return False
-    return cframe_total_len(payload) == expected_body_len
+    return cframe_total_len(payload) == expected_media_len
 
 
 def start_fragmented_media(
@@ -60,6 +62,7 @@ def start_fragmented_media(
         "payload_size": header.payload_size,
         "raw_size": header.raw_size,
         "flag15": header.flag15,
+        "media_payload_offset": decoded.get("media_payload_offset", 0),
         "frame_tag": payload[3],
         "frame_len": int.from_bytes(payload[4:8], "little"),
         "fragments": 1,

@@ -67,3 +67,20 @@ def aes_cbc_crypt(
     if decrypt:
         return cipher.decryptor().update(data) + cipher.decryptor().finalize()
     return cipher.encryptor().update(data) + cipher.encryptor().finalize()
+
+
+def aes_cbc_crypt_aligned_prefix(
+    data: bytes, key: bytes | str, *, crypto_mode: int, decrypt: bool = False
+) -> tuple[bytes, int]:
+    block_size = get_encrypt_mod(crypto_mode)
+    if crypto_mode == 0 or block_size <= 1 or not data:
+        return data, 0
+
+    aligned_len = len(data) - (len(data) % block_size)
+    if aligned_len <= 0:
+        return data, 0
+
+    crypted = aes_cbc_crypt(
+        data[:aligned_len], key, crypto_mode=crypto_mode, decrypt=decrypt
+    )
+    return crypted + data[aligned_len:], aligned_len

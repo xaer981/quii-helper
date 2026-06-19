@@ -44,8 +44,8 @@ class RbUdpLiveCommandsMixin:
             channel=self.config.channel,
             stream=self.config.stream,
             ap=2,
-            inner=False,
-            newcn=False,
+            inner=bool(self.config.live_inner),
+            newcn=bool(self.config.live_newcn),
             connect_mode=None,
         )
         channel_id = max(0, int(self.config.channel)) & 0xFFFF
@@ -56,6 +56,7 @@ class RbUdpLiveCommandsMixin:
             "ext_len_high": (channel_id >> 8) & 0xFF,
             "play_param": 0x01,
             "stream_flag": stream_flag,
+            "inner": int(bool(self.config.live_inner)),
         }
         self._quii_play_sent.set()
         self._last_quii_keepalive_at = time.monotonic()
@@ -92,6 +93,7 @@ class RbUdpLiveCommandsMixin:
                 ext_len_high=hex(int(profile["ext_len_high"])),
                 play_param=hex(int(profile["play_param"])),
                 stream_flag=hex(int(profile["stream_flag"])),
+                inner=bool(profile["inner"]),
                 tag8=play_tag.hex(),
                 lane_word4=hex(int(lane["word4"])),
                 lane_word8=hex(int(lane["word8"])),
@@ -170,6 +172,7 @@ class RbUdpLiveCommandsMixin:
             "ext_len_high": int(profile["ext_len_high"]),
             "play_param": int(profile["play_param"]),
             "stream_flag": int(profile["stream_flag"]),
+            "inner": bool(profile.get("inner", 0)),
             "crypto_mode": 2,
             "key": credentials.data_encode_key,
             "encrypt": True,

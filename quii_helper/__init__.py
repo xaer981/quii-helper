@@ -61,6 +61,8 @@ _EXPORTS = {
         "RbUdpQuiiTunnel",
     ),
     "RuntimeCredentials": ("quii_helper.config", "RuntimeCredentials"),
+    "STREAM_HIGH_QUALITY": ("quii_helper.config", "STREAM_HIGH_QUALITY"),
+    "STREAM_LOW_BANDWIDTH": ("quii_helper.config", "STREAM_LOW_BANDWIDTH"),
     "TcpLiveProbeCapture": (
         "quii_helper.protocols.tcp.live_probe_capture",
         "TcpLiveProbeCapture",
@@ -103,6 +105,10 @@ _EXPORTS = {
     "open_direct_preview": (
         "quii_helper.direct.preview",
         "open_direct_preview",
+    ),
+    "resolve_stream_quality": (
+        "quii_helper.config",
+        "resolve_stream_quality",
     ),
     "resolve_data_path": ("quii_helper.io.paths", "resolve_data_path"),
     "timestamped_output_base": (

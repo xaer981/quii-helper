@@ -22,6 +22,16 @@ print(video_path)
 print(capture.snapshot_path, capture.video_path)
 ```
 
+Stream quality can be selected explicitly. The native app defaults to stream
+`2` (`low`/`sd`), while stream `1` (`high`/`hd`) requests a higher-quality
+preview when the camera supports it:
+
+```python
+camera = Camera(stream_quality="high")  # ids=1
+camera = Camera(stream_quality="low")   # ids=2, native default
+camera = Camera(stream=1)               # direct numeric stream id
+```
+
 Optional explicit output names are still normalized into `data/`:
 
 ```python
@@ -57,6 +67,23 @@ Synthetic play probes are disabled by default with `enable_play_probes=False`. T
 `.env` is loaded in `quii_helper.constants` with `python-dotenv` and used only as default values for `AutonomousConfig`.
 
 Explicit values passed to `Camera(...)` override `.env` defaults. Prefer explicit values in library/production use, and keep `.env` for local development.
+
+Supported local `.env` keys:
+
+```dotenv
+CLOUD_ACCOUNT=""
+CLOUD_PASSWORD=""
+DEVICE_ID=""
+AUTH_CODE=""
+DEVICE_PASSWORD=""
+CLOUD_CLIENT_UUID=""
+CAMERA_CHANNEL=1
+```
+
+`CAMERA_CHANNEL` selects the camera channel/video panel used as QUII `idc`.
+Legacy aliases `VIDEO_PANEL` and `QUII_CHANNEL` are also accepted.
+`AUTH_CODE` and `DEVICE_PASSWORD` are device-local credentials used by the
+TCP/CGI probe helpers.
 
 ## Main Application Flow
 

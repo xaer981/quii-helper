@@ -160,6 +160,8 @@ class RbUdpQuiiTunnel(
         return self._receive_streams.has_pending()
 
     def _dbg(self, message: str, **kwargs: Any) -> None:
+        if not getattr(self.config, "rbudp_debug", False):
+            return
         details = " ".join(f"{key}={value}" for key, value in kwargs.items())
         if details:
             print(f"[RbUdp] {message} {details}")

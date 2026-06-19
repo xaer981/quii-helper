@@ -66,17 +66,20 @@ def decode_tcp_payload(
         )
 
     command_part_len = min(decoded.command_payload_size, len(payload_raw))
-    command_part = payload_raw[:command_part_len]
-    media_part = payload_raw[command_part_len:]
+    media_offset = min(
+        int(decoded.header.flag16) | (int(decoded.header.flag17) << 8),
+        len(payload_raw),
+    )
+    body = bytearray(payload_raw)
     if command_part_len:
         command_part = _aes_crypt(
-            command_part, key=key, crypto_mode=crypto_mode, decrypt=True
+            payload_raw[:command_part_len],
+            key=key,
+            crypto_mode=crypto_mode,
+            decrypt=True,
         )
-    if media_part and decoded.header.flag15 != 0:
-        media_part = _aes_crypt(
-            media_part, key=key, crypto_mode=crypto_mode, decrypt=True
-        )
-    return command_part + media_part
+        body[: len(command_part)] = command_part
+    return bytes(body[media_offset:])
 
 
 def _aes_crypt(

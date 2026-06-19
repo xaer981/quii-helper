@@ -2,6 +2,8 @@ import ipaddress
 import socket
 import urllib.request
 
+DEFAULT_UDP_RECEIVE_BUFFER_SIZE = 4 * 1024 * 1024
+
 
 def discover_local_ips() -> list[str]:
     """
@@ -65,9 +67,22 @@ def discover_public_ip(timeout: float = 5.0) -> str:
     return "0.0.0.0"
 
 
-def make_dualstack_udp_socket() -> socket.socket:
+def make_dualstack_udp_socket(
+    receive_buffer_size: int = DEFAULT_UDP_RECEIVE_BUFFER_SIZE,
+) -> socket.socket:
+    def configure_socket(sock: socket.socket) -> socket.socket:
+        try:
+            sock.setsockopt(
+                socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_size
+            )
+        except OSError:
+            pass
+        return sock
+
     try:
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        sock = configure_socket(
+            socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        )
         try:
             sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         except OSError:
@@ -75,7 +90,9 @@ def make_dualstack_udp_socket() -> socket.socket:
         sock.bind(("::", 0))
         return sock
     except OSError:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock = configure_socket(
+            socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        )
         sock.bind(("0.0.0.0", 0))
         return sock
 

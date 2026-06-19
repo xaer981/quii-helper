@@ -1,6 +1,10 @@
+from quii_helper.media.annexb_probe_analysis import analyze_annexb_h264
 from quii_helper.media.models import QuiiHeader
 from quii_helper.media.parsing import iter_quii_media_frames
-from quii_helper.protocols.quii.crypto import aes_cbc_crypt
+from quii_helper.protocols.quii.crypto import (
+    aes_cbc_crypt,
+    aes_cbc_crypt_aligned_prefix,
+)
 
 MEDIA_PACKET_TYPES = {0xA0, 0xA1, 0xA2, 0xA3}
 VALID_PACKET_TYPES = {0x00, 0x01, 0x0B, 0xFE} | MEDIA_PACKET_TYPES
@@ -46,6 +50,8 @@ def decode_quii_blob(
     command_payload_size = int.from_bytes(header[9:11], "little")
     raw_size = int.from_bytes(header[11:13], "little")
     media_payload_size = int.from_bytes(header[11:15], "little")
+    media_payload_offset = int.from_bytes(header[16:18], "little")
+    media_encrypted = header[15] != 0
     is_media = packet_type in MEDIA_PACKET_TYPES
     read_size = media_payload_size if is_media else command_payload_size
     encrypted_body = blob[offset + 32 : offset + 32 + read_size]
@@ -56,18 +62,42 @@ def decode_quii_blob(
 
     if is_media:
         command_part_len = min(command_payload_size, len(encrypted_body))
-        command_part = encrypted_body[:command_part_len]
-        media_part = encrypted_body[command_part_len:]
-        if command_part:
+        media_offset = min(media_payload_offset, len(encrypted_body))
+        body = bytearray(encrypted_body)
+        media_decrypt_len = 0
+        media_decrypt_candidate_len = 0
+        if command_part_len:
             command_part = aes_cbc_crypt(
-                command_part, key, crypto_mode=crypto_mode, decrypt=True
+                encrypted_body[:command_part_len],
+                key,
+                crypto_mode=crypto_mode,
+                decrypt=True,
             )
-        if media_part and header[15] != 0:
-            media_part = aes_cbc_crypt(
-                media_part, key, crypto_mode=crypto_mode, decrypt=True
+            body[: len(command_part)] = command_part
+        raw_payload = bytes(body[media_offset:])
+        if media_encrypted and raw_payload:
+            decrypted_media_part, media_decrypt_candidate_len = (
+                aes_cbc_crypt_aligned_prefix(
+                    raw_payload, key, crypto_mode=crypto_mode, decrypt=True
+                )
             )
-        payload = command_part + media_part
+            payload, decrypt_selected, raw_score, decrypt_score = (
+                _select_media_payload(raw_payload, decrypted_media_part)
+            )
+            if decrypt_selected:
+                media_decrypt_len = media_decrypt_candidate_len
+        else:
+            payload = raw_payload
+            decrypt_selected = False
+            raw_score = _score_media_payload(payload)
+            decrypt_score = raw_score
     else:
+        command_part_len = 0
+        media_decrypt_len = 0
+        media_decrypt_candidate_len = 0
+        decrypt_selected = False
+        raw_score = 0
+        decrypt_score = 0
         payload = (
             aes_cbc_crypt(
                 encrypted_body, key, crypto_mode=crypto_mode, decrypt=True
@@ -104,8 +134,49 @@ def decode_quii_blob(
         "offset": offset,
         "body_available": body_available,
         "media_payload_size": media_payload_size,
+        "media_payload_offset": media_payload_offset,
+        "media_encrypted": media_encrypted,
         "read_size": read_size,
+        "media_command_part_len": command_part_len,
+        "media_decrypt_len": media_decrypt_len,
+        "media_decrypt_candidate_len": media_decrypt_candidate_len,
+        "media_decrypt_applied": media_decrypt_len > 0,
+        "media_decrypt_selected": decrypt_selected,
+        "media_raw_score": raw_score,
+        "media_decrypt_score": decrypt_score,
     }
+
+
+def _select_media_payload(
+    raw_payload: bytes, decrypted_payload: bytes
+) -> tuple[bytes, bool, int, int]:
+    raw_score = _score_media_payload(raw_payload)
+    decrypt_score = _score_media_payload(decrypted_payload)
+    if decrypt_score > raw_score:
+        return decrypted_payload, True, raw_score, decrypt_score
+    return raw_payload, False, raw_score, decrypt_score
+
+
+def _score_media_payload(payload: bytes) -> int:
+    score = 0
+    for frame in iter_quii_media_frames(payload)[:4]:
+        bitstream = frame.get("bitstream", b"")
+        nal_offset = int(frame.get("nal_offset", -1))
+        if not isinstance(bitstream, bytes) or nal_offset < 0:
+            continue
+        analysis = analyze_annexb_h264(bitstream[nal_offset:])
+        if analysis.get("false_positive_sps_only"):
+            score -= 300
+        if analysis.get("has_pps"):
+            score += 120
+        if analysis.get("has_idr"):
+            score += 120
+        if analysis.get("has_sps"):
+            score += 60
+        if analysis.get("has_vcl"):
+            score += 40
+        score += min(int(analysis.get("nal_count", 0)), 8)
+    return score
 
 
 def find_quii_decode_candidates(

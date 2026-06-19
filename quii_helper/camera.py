@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from quii_helper.cloud.service_discovery import fetch_runtime_credentials
-from quii_helper.config import AutonomousConfig, RuntimeCredentials
+from quii_helper.config import (
+    AutonomousConfig,
+    RuntimeCredentials,
+    resolve_stream_quality,
+)
 from quii_helper.direct.preview import open_direct_preview
 from quii_helper.io.paths import DATA_DIR
 from quii_helper.preview.config import (
@@ -183,11 +187,14 @@ class Camera:
         cloud_password: str | None = None,
         client_id: str | None = None,
         live_play_payload: str | None = None,
+        live_inner: bool | None = None,
+        live_newcn: bool | None = None,
         live_keepalive_interval: float | None = None,
         play_sync_iterations: int | None = None,
         enable_play_probes: bool | None = None,
         channel: int | None = None,
         stream: int | None = None,
+        stream_quality: str | int | None = None,
         preview_settings: PreviewCaptureSettings | None = None,
         data_dir: str | Path = DATA_DIR,
         emit: EmitCallback | None = None,
@@ -200,11 +207,14 @@ class Camera:
             cloud_password=cloud_password,
             client_id=client_id,
             live_play_payload=live_play_payload,
+            live_inner=live_inner,
+            live_newcn=live_newcn,
             live_keepalive_interval=live_keepalive_interval,
             play_sync_iterations=play_sync_iterations,
             enable_play_probes=enable_play_probes,
             channel=channel,
             stream=stream,
+            stream_quality=stream_quality,
         )
         self.preview_settings = (
             preview_settings or DEFAULT_PREVIEW_CAPTURE_SETTINGS
@@ -343,12 +353,17 @@ class Camera:
         cloud_password: str | None,
         client_id: str | None,
         live_play_payload: str | None,
+        live_inner: bool | None,
+        live_newcn: bool | None,
         live_keepalive_interval: float | None,
         play_sync_iterations: int | None,
         enable_play_probes: bool | None,
         channel: int | None,
         stream: int | None,
+        stream_quality: str | int | None,
     ) -> AutonomousConfig:
+        if stream is not None and stream_quality is not None:
+            raise ValueError("pass either stream or stream_quality, not both")
         values: dict[str, Any] = {}
         if device_id is not None:
             values["device_id"] = device_id
@@ -360,6 +375,10 @@ class Camera:
             values["client_id"] = client_id
         if live_play_payload is not None:
             values["live_play_payload"] = live_play_payload
+        if live_inner is not None:
+            values["live_inner"] = bool(live_inner)
+        if live_newcn is not None:
+            values["live_newcn"] = bool(live_newcn)
         if live_keepalive_interval is not None:
             if live_keepalive_interval < 0:
                 raise ValueError(
@@ -377,7 +396,9 @@ class Camera:
         if channel is not None:
             values["channel"] = channel
         if stream is not None:
-            values["stream"] = stream
+            values["stream"] = resolve_stream_quality(stream)
+        if stream_quality is not None:
+            values["stream"] = resolve_stream_quality(stream_quality)
         return replace(config, **values) if values else config
 
     @staticmethod

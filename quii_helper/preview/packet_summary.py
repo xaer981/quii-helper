@@ -33,6 +33,26 @@ def build_quii_packet_summary(
         summary["meta"] = meta
     if decoded["text_preview"]:
         summary["text_preview"] = decoded["text_preview"]
+    if decoded["is_media"]:
+        summary["media_payload_offset"] = decoded.get(
+            "media_payload_offset", 0
+        )
+        summary["media_encrypted"] = decoded.get("media_encrypted", False)
+        summary["media_command_part_len"] = decoded.get(
+            "media_command_part_len", 0
+        )
+        summary["media_decrypt_candidate_len"] = decoded.get(
+            "media_decrypt_candidate_len", 0
+        )
+        summary["media_decrypt_len"] = decoded.get("media_decrypt_len", 0)
+        summary["media_decrypt_applied"] = decoded.get(
+            "media_decrypt_applied", False
+        )
+        summary["media_decrypt_selected"] = decoded.get(
+            "media_decrypt_selected", False
+        )
+        summary["media_raw_score"] = decoded.get("media_raw_score", 0)
+        summary["media_decrypt_score"] = decoded.get("media_decrypt_score", 0)
     if decode_candidates:
         summary["decode_candidates"] = decode_candidates[:6]
     if wrapped_tail_analysis is not None:

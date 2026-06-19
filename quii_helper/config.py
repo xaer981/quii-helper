@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from quii_helper.constants import (
+    CAMERA_CHANNEL,
     CLOUD_ACCOUNT,
     CLOUD_CLIENT_UUID,
     CLOUD_PASSWORD,
@@ -14,6 +15,40 @@ DEFAULT_OEM = "G0083"
 DEFAULT_APP_ID = 4083
 DEFAULT_CLIENT_TYPE = 3
 DEFAULT_SERVICE_QUERY_PATH = "/mst/query"
+DEFAULT_CHANNEL = CAMERA_CHANNEL
+STREAM_HIGH_QUALITY = 1
+STREAM_LOW_BANDWIDTH = 2
+DEFAULT_STREAM = STREAM_LOW_BANDWIDTH
+
+STREAM_QUALITY_ALIASES = {
+    "high": STREAM_HIGH_QUALITY,
+    "main": STREAM_HIGH_QUALITY,
+    "hd": STREAM_HIGH_QUALITY,
+    "clear": STREAM_HIGH_QUALITY,
+    "low": STREAM_LOW_BANDWIDTH,
+    "sub": STREAM_LOW_BANDWIDTH,
+    "sd": STREAM_LOW_BANDWIDTH,
+    "smooth": STREAM_LOW_BANDWIDTH,
+}
+
+
+def resolve_stream_quality(value: str | int) -> int:
+    if isinstance(value, bool):
+        raise ValueError("stream quality must be a stream id or profile name")
+    if isinstance(value, int):
+        stream = value
+    else:
+        key = value.strip().lower().replace("-", "_")
+        try:
+            stream = STREAM_QUALITY_ALIASES[key]
+        except KeyError as exc:
+            names = ", ".join(sorted(STREAM_QUALITY_ALIASES))
+            raise ValueError(
+                f"unknown stream quality {value!r}; expected one of: {names}"
+            ) from exc
+    if stream <= 0:
+        raise ValueError("stream id must be greater than zero")
+    return stream
 
 
 @dataclass
@@ -58,12 +93,14 @@ class AutonomousConfig:
     device_id: str = DEVICE_ID
     cloud_account: str = CLOUD_ACCOUNT
     cloud_password: str = CLOUD_PASSWORD
-    channel: int = 1
-    stream: int = 2
+    channel: int = DEFAULT_CHANNEL
+    stream: int = DEFAULT_STREAM
     connect_mode: int = -1
     service_url: str = DEFAULT_SERVICE_URL
     oem: str = DEFAULT_OEM
     live_play_payload: str = "path"
+    live_inner: bool = False
+    live_newcn: bool = False
     live_keepalive_interval: float = 10.0
     play_sync_iterations: int = 0
     enable_play_probes: bool = False
@@ -97,3 +134,4 @@ class AutonomousConfig:
     mqtt_will_topic: str | None = None
     mqtt_will_message: str | None = None
     log_peer_diagnostics: bool = True
+    rbudp_debug: bool = False
