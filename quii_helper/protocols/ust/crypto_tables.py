@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from quii_helper.constants import P2P_SO_PATHS
+from quii_helper.config.constants import P2P_SO_PATHS
 
 P2P_SO_CANDIDATES = P2P_SO_PATHS
 P2P_TABLE1_FILE_OFFSET = 0x6A5C27

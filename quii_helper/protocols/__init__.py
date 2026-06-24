@@ -1,11 +1,10 @@
 """Protocol implementations used by the preview and probe flows."""
 
-from importlib import import_module
-from typing import Any
+from quii_helper.support.lazy import lazy_exports
 
 _EXPORTS = {
     "DirectKcpQuiiTunnel": (
-        "quii_helper.protocols.rbudp.tunnel",
+        "quii_helper.protocols.rbudp.tunnel.session",
         "DirectKcpQuiiTunnel",
     ),
     "MqttP2PBootstrap": (
@@ -13,19 +12,22 @@ _EXPORTS = {
         "MqttP2PBootstrap",
     ),
     "P2PConnectRequest": (
-        "quii_helper.protocols.p2p.protocol",
+        "quii_helper.protocols.p2p.messages.protocol",
         "P2PConnectRequest",
     ),
     "P2PConnectResponse": (
-        "quii_helper.protocols.p2p.protocol",
+        "quii_helper.protocols.p2p.messages.protocol",
         "P2PConnectResponse",
     ),
-    "QuiiClient": ("quii_helper.protocols.tcp.client", "QuiiClient"),
+    "QuiiClient": ("quii_helper.protocols.tcp.transport.client", "QuiiClient"),
     "RbUdpQuiiTunnel": (
-        "quii_helper.protocols.rbudp.tunnel",
+        "quii_helper.protocols.rbudp.tunnel.session",
         "RbUdpQuiiTunnel",
     ),
-    "TcpProbeRunner": ("quii_helper.protocols.tcp.runner", "TcpProbeRunner"),
+    "TcpProbeRunner": (
+        "quii_helper.protocols.tcp.probes.runner",
+        "TcpProbeRunner",
+    ),
     "aes_cbc_crypt": ("quii_helper.protocols.quii.crypto", "aes_cbc_crypt"),
     "build_live_keepalive_packet": (
         "quii_helper.protocols.quii.live_packets",
@@ -40,11 +42,11 @@ _EXPORTS = {
         "build_live_setup_packet",
     ),
     "create_request_session_id": (
-        "quii_helper.protocols.p2p.protocol",
+        "quii_helper.protocols.p2p.messages.protocol",
         "create_request_session_id",
     ),
     "create_session_flag": (
-        "quii_helper.protocols.p2p.protocol",
+        "quii_helper.protocols.p2p.messages.protocol",
         "create_session_flag",
     ),
     "decode_quii_blob": (
@@ -57,16 +59,4 @@ _EXPORTS = {
     ),
 }
 
-__all__ = sorted(_EXPORTS)
-
-
-def __getattr__(name: str) -> Any:
-    try:
-        module_name, attr_name = _EXPORTS[name]
-    except KeyError as exc:
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r}"
-        ) from exc
-    value = getattr(import_module(module_name), attr_name)
-    globals()[name] = value
-    return value
+__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())

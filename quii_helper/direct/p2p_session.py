@@ -12,8 +12,10 @@ from quii_helper.protocols.mqtt.runtime import (
     ensure_mqtt_runtime,
     reset_mqtt_runtime,
 )
+from quii_helper.protocols.p2p.messages.session import (
+    create_request_session_id,
+)
 from quii_helper.protocols.p2p.models import P2PConnectResponse
-from quii_helper.protocols.p2p.session import create_request_session_id
 
 
 @dataclass(frozen=True)

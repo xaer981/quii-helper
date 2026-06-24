@@ -1,6 +1,6 @@
 import random
 
-from quii_helper.cloud.service_discovery import (
+from quii_helper.cloud.services.discovery import (
     fetch_runtime_credentials,
     populate_discovered_services,
 )
@@ -14,7 +14,6 @@ from quii_helper.direct.peer_selection import (
     log_p2pconnect_response,
     probe_and_select_direct_peers,
 )
-from quii_helper.log import logger
 from quii_helper.network import (
     discover_local_ips,
     discover_public_ip,
@@ -24,7 +23,8 @@ from quii_helper.protocols.p2p.models import (
     P2PConnectResponse,
     ParsedP2PTestResponse,
 )
-from quii_helper.protocols.rbudp.tunnel import DirectKcpQuiiTunnel
+from quii_helper.protocols.rbudp.tunnel.session import DirectKcpQuiiTunnel
+from quii_helper.support.log import logger
 
 
 def open_direct_preview(

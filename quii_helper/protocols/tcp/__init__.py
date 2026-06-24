@@ -1,45 +1,34 @@
 """TCP client and probe helpers."""
 
-from importlib import import_module
-from typing import Any
+from quii_helper.support.lazy import lazy_exports
 
 _EXPORTS = {
-    "QuiiClient": ("quii_helper.protocols.tcp.client", "QuiiClient"),
+    "QuiiClient": ("quii_helper.protocols.tcp.transport.client", "QuiiClient"),
     "QuiiLiveOpenPacketBuilder": (
-        "quii_helper.protocols.tcp.live_packet_builder",
+        "quii_helper.protocols.tcp.live.packet_builder",
         "QuiiLiveOpenPacketBuilder",
     ),
     "QuiiTcpProbeRunner": (
-        "quii_helper.protocols.tcp.quii_probe",
+        "quii_helper.protocols.tcp.probes.quii_probe",
         "QuiiTcpProbeRunner",
     ),
     "TcpLiveProbeCapture": (
-        "quii_helper.protocols.tcp.live_probe_capture",
+        "quii_helper.protocols.tcp.live.probe_capture",
         "TcpLiveProbeCapture",
     ),
-    "TcpProbeRunner": ("quii_helper.protocols.tcp.runner", "TcpProbeRunner"),
+    "TcpProbeRunner": (
+        "quii_helper.protocols.tcp.probes.runner",
+        "TcpProbeRunner",
+    ),
     "TcpSocketTransport": (
-        "quii_helper.protocols.tcp.transport",
+        "quii_helper.protocols.tcp.transport.socket_transport",
         "TcpSocketTransport",
     ),
     "run_quii_probe": (
-        "quii_helper.protocols.tcp.quii_probe",
+        "quii_helper.protocols.tcp.probes.quii_probe",
         "run_quii_probe",
     ),
-    "settings": ("quii_helper.protocols.tcp.settings", None),
+    "settings": ("quii_helper.protocols.tcp.probes.settings", None),
 }
 
-__all__ = sorted(_EXPORTS)
-
-
-def __getattr__(name: str) -> Any:
-    try:
-        module_name, attr_name = _EXPORTS[name]
-    except KeyError as exc:
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r}"
-        ) from exc
-    module = import_module(module_name)
-    value = module if attr_name is None else getattr(module, attr_name)
-    globals()[name] = value
-    return value
+__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())

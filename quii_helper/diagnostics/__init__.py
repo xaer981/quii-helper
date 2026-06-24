@@ -1,37 +1,24 @@
 """Diagnostic helpers for protocol payload analysis."""
 
-from importlib import import_module
-from typing import Any
+from quii_helper.support.lazy import lazy_exports
 
 _EXPORTS = {
     "analyze_partial_wrapped_inner": (
-        "quii_helper.diagnostics.wrapped.inner_analysis",
+        "quii_helper.diagnostics.wrapped.payload.inner_analysis",
         "analyze_partial_wrapped_inner",
     ),
     "analyze_wrapped_quii_tail": (
-        "quii_helper.diagnostics.wrapped.tail_analysis",
+        "quii_helper.diagnostics.wrapped.tail.analysis",
         "analyze_wrapped_quii_tail",
     ),
     "decrypt_wrapped_quii_tail_bytes": (
-        "quii_helper.diagnostics.wrapped.tail_analysis",
+        "quii_helper.diagnostics.wrapped.tail.analysis",
         "decrypt_wrapped_quii_tail_bytes",
     ),
     "dump_partial_tail_artifacts": (
-        "quii_helper.diagnostics.wrapped.tail_candidates",
+        "quii_helper.diagnostics.wrapped.tail.candidates",
         "dump_partial_tail_artifacts",
     ),
 }
 
-__all__ = sorted(_EXPORTS)
-
-
-def __getattr__(name: str) -> Any:
-    try:
-        module_name, attr_name = _EXPORTS[name]
-    except KeyError as exc:
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r}"
-        ) from exc
-    value = getattr(import_module(module_name), attr_name)
-    globals()[name] = value
-    return value
+__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())

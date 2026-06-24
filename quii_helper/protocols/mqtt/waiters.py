@@ -2,7 +2,7 @@ import queue
 import time
 from typing import Any
 
-from quii_helper.protocols.p2p.json_codec import (
+from quii_helper.protocols.p2p.codec.json_codec import (
     parse_p2pconnect_response,
     parse_sub_device_state_response,
 )

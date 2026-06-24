@@ -2,8 +2,8 @@ import random
 import time
 
 from quii_helper.config import AutonomousConfig, RuntimeCredentials
+from quii_helper.protocols.p2p.messages.session import create_session_flag
 from quii_helper.protocols.p2p.models import P2PConnectRequest
-from quii_helper.protocols.p2p.session import create_session_flag
 
 
 def create_direct_session_flag(

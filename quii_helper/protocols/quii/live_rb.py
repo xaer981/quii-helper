@@ -4,7 +4,7 @@ from quii_helper.protocols.quii.live_packets import (
     build_live_play_packet,
     build_live_setup_packet,
 )
-from quii_helper.protocols.rbudp.kcp_link_packets import build_rb_data_packet
+from quii_helper.protocols.rbudp.kcp.link_packets import build_rb_data_packet
 
 
 def build_direct_quii_setup_rb(

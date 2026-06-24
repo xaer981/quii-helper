@@ -1,13 +1,13 @@
 import time
 
 from quii_helper.config import AutonomousConfig
-from quii_helper.log import logger
 from quii_helper.protocols.mqtt.bootstrap import MqttP2PBootstrap
 from quii_helper.protocols.p2p.models import (
     P2PConnectRequest,
     P2PConnectResponse,
 )
-from quii_helper.protocols.p2p.peer_selection import has_probe_targets
+from quii_helper.protocols.p2p.peers.selection import has_probe_targets
+from quii_helper.support.log import logger
 
 
 def run_mqtt_p2pconnect_attempt(

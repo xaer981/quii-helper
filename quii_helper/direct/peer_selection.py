@@ -2,20 +2,20 @@ import random
 import socket
 
 from quii_helper.config import AutonomousConfig
-from quii_helper.log import logger
 from quii_helper.network import is_private_ipv4
-from quii_helper.protocols.p2p.active_handshake import run_p2p_active_handshake
+from quii_helper.protocols.p2p.handshake.active import run_p2p_active_handshake
 from quii_helper.protocols.p2p.models import (
     P2PConnectResponse,
     ParsedP2PTestResponse,
 )
-from quii_helper.protocols.p2p.peer_selection import (
+from quii_helper.protocols.p2p.peers.selection import (
     describe_logic_peer_selection,
     format_peer,
     format_probe_targets,
     select_preferred_logic_peer,
 )
-from quii_helper.protocols.p2p.udp_probe import run_udp_probe
+from quii_helper.protocols.p2p.probing.udp_probe import run_udp_probe
+from quii_helper.support.log import logger
 
 
 def log_p2pconnect_response(response: P2PConnectResponse) -> None:

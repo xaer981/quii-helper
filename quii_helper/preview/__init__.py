@@ -1,42 +1,32 @@
 """Preview use-case package."""
 
-from importlib import import_module
-from typing import Any
+from quii_helper.support.lazy import lazy_exports
 
 _EXPORTS = {
     "CameraPreviewApplication": (
-        "quii_helper.preview.application",
+        "quii_helper.preview.tools.application",
         "CameraPreviewApplication",
     ),
     "DEFAULT_PREVIEW_CAPTURE_SETTINGS": (
-        "quii_helper.preview.config",
+        "quii_helper.preview.pipeline.config",
         "DEFAULT_PREVIEW_CAPTURE_SETTINGS",
     ),
     "PreviewCapturePipeline": (
-        "quii_helper.preview.capture_pipeline",
+        "quii_helper.preview.pipeline.capture_pipeline",
         "PreviewCapturePipeline",
     ),
     "PreviewCaptureSettings": (
-        "quii_helper.preview.config",
+        "quii_helper.preview.pipeline.config",
         "PreviewCaptureSettings",
     ),
     "PreviewPipelineFactory": (
-        "quii_helper.preview.pipeline_factory",
+        "quii_helper.preview.pipeline.factory",
         "PreviewPipelineFactory",
     ),
-    "TunnelPacketStream": ("quii_helper.preview.stream", "TunnelPacketStream"),
+    "TunnelPacketStream": (
+        "quii_helper.preview.pipeline.stream",
+        "TunnelPacketStream",
+    ),
 }
 
-__all__ = sorted(_EXPORTS)
-
-
-def __getattr__(name: str) -> Any:
-    try:
-        module_name, attr_name = _EXPORTS[name]
-    except KeyError as exc:
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r}"
-        ) from exc
-    value = getattr(import_module(module_name), attr_name)
-    globals()[name] = value
-    return value
+__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())

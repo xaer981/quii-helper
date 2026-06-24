@@ -1,7 +1,6 @@
 """P2P connect, probing, and transport helpers."""
 
-from importlib import import_module
-from typing import Any
+from quii_helper.support.lazy import lazy_exports
 
 _EXPORTS = {
     "KcpParams": ("quii_helper.protocols.p2p.models", "KcpParams"),
@@ -28,38 +27,31 @@ _EXPORTS = {
         "ParsedSubDeviceState",
     ),
     "create_request_session_id": (
-        "quii_helper.protocols.p2p.session",
+        "quii_helper.protocols.p2p.messages.session",
         "create_request_session_id",
     ),
     "create_session_flag": (
-        "quii_helper.protocols.p2p.session",
+        "quii_helper.protocols.p2p.messages.session",
         "create_session_flag",
     ),
     "parse_p2pconnect_response": (
-        "quii_helper.protocols.p2p.json_codec",
+        "quii_helper.protocols.p2p.codec.json_codec",
         "parse_p2pconnect_response",
     ),
     "parse_sub_device_state_response": (
-        "quii_helper.protocols.p2p.json_codec",
+        "quii_helper.protocols.p2p.codec.json_codec",
         "parse_sub_device_state_response",
     ),
     "run_p2p_active_handshake": (
-        "quii_helper.protocols.p2p.active_handshake",
+        "quii_helper.protocols.p2p.handshake.active",
         "run_p2p_active_handshake",
     ),
-    "run_udp_probe": ("quii_helper.protocols.p2p.udp_probe", "run_udp_probe"),
+    "run_udp_probe": (
+        "quii_helper.protocols.p2p.probing.udp_probe",
+        "run_udp_probe",
+    ),
+    "request_models": ("quii_helper.protocols.p2p.models.request", None),
+    "response_models": ("quii_helper.protocols.p2p.models.response", None),
 }
 
-__all__ = sorted(_EXPORTS)
-
-
-def __getattr__(name: str) -> Any:
-    try:
-        module_name, attr_name = _EXPORTS[name]
-    except KeyError as exc:
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r}"
-        ) from exc
-    value = getattr(import_module(module_name), attr_name)
-    globals()[name] = value
-    return value
+__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())

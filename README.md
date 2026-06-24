@@ -119,7 +119,7 @@ instead of depending on process-level environment:
 from quii_helper import Camera
 
 camera = Camera(
-    device_id="22058iwsv6av",
+    device_id="12345qwes6ca",
     cloud_username="account@example.com",
     cloud_password="password-or-sha256",
     client_id="client-uuid",
