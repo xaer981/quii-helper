@@ -23,7 +23,10 @@ class RbUdpTunnelLifecycleMixin:
         self._play_sync_thread.start()
         self._prime_lan_peer_if_needed()
         self._send_control_bootstrap()
-        threading.Thread(target=self._keepalive_loop, daemon=True).start()
+        self._keepalive_thread = threading.Thread(
+            target=self._keepalive_loop, daemon=True
+        )
+        self._keepalive_thread.start()
         if not self._connected.wait(self.config.connect_timeout):
             raise TimeoutError(
                 "timed out waiting for RB UDP logical connect response"
@@ -36,11 +39,24 @@ class RbUdpTunnelLifecycleMixin:
     def close(self) -> None:
         self._stop.set()
         self._wrapped_fragments.emit_active()
+        self._join_background_threads()
         if self._udp_sock is not None:
             try:
                 self._udp_sock.close()
             except Exception:
                 pass
+            self._udp_sock = None
+
+    def _join_background_threads(self) -> None:
+        current = threading.current_thread()
+        for thread in (
+            self._play_sync_thread,
+            self._keepalive_thread,
+            self._thread,
+        ):
+            if thread is None or thread is current or not thread.is_alive():
+                continue
+            thread.join(timeout=0.75)
 
     def _prime_lan_peer_if_needed(self) -> None:
         lan_same_peer = (

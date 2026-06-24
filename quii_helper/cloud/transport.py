@@ -3,14 +3,8 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 
-from quii_helper.cloud.defaults import (
-    CLOUD_COOKIE,
-    CLOUD_COOKIE_JAR,
-    CLOUD_HOST,
-    CLOUD_PATH,
-    CLOUD_PORT,
-    CLOUD_SCHEME,
-)
+from quii_helper.cloud.defaults import CLOUD_COOKIE, CLOUD_COOKIE_JAR
+from quii_helper.log import logger
 
 
 def build_cloud_opener():
@@ -30,7 +24,7 @@ def dump_cookie_jar():
     return cookies
 
 
-def request_userauth(xml_body: bytes, debug: bool = False):
+def request_userauth(xml_body: bytes, *, auth_url: str, debug: bool = False):
     headers = {
         "Content-Type": "application/xml",
         "Charset": "utf-8",
@@ -43,7 +37,7 @@ def request_userauth(xml_body: bytes, debug: bool = False):
         headers["Cookie"] = CLOUD_COOKIE
 
     req = urllib.request.Request(
-        f"{CLOUD_SCHEME}://{CLOUD_HOST}:{CLOUD_PORT}{CLOUD_PATH}",
+        auth_url,
         data=xml_body,
         headers=headers,
         method="POST",
@@ -80,12 +74,14 @@ def _debug_userauth_exchange(
     status_code: int | None = None,
 ) -> None:
     if status_code is not None:
-        print("HTTP status:", status_code)
-    print("Request URL:", req.full_url)
-    print("Request headers:", dict(req.header_items()))
-    print("Cookie jar:", dump_cookie_jar())
-    print("Response headers:", response_headers)
-    print("Request XML:")
-    print(xml_body.decode("utf-8", errors="replace"))
-    print("Raw response:")
-    print(response_data.decode("utf-8", errors="replace"))
+        logger.debug("HTTP status: {}", status_code)
+    logger.debug("Request URL: {}", req.full_url)
+    logger.debug("Request headers: {}", dict(req.header_items()))
+    logger.debug("Cookie jar: {}", dump_cookie_jar())
+    logger.debug("Response headers: {}", response_headers)
+    logger.debug(
+        "Request XML:\n{}", xml_body.decode("utf-8", errors="replace")
+    )
+    logger.debug(
+        "Raw response:\n{}", response_data.decode("utf-8", errors="replace")
+    )

@@ -3,6 +3,7 @@ import threading
 from typing import Any
 
 from quii_helper.config import AutonomousConfig
+from quii_helper.log import logger
 from quii_helper.protocols.p2p.models import (
     P2PConnectResponse,
     ParsedP2PTestResponse,
@@ -108,6 +109,7 @@ class RbUdpQuiiTunnel(
         self._late_post_bootstrap_prime = False
         self._thread: threading.Thread | None = None
         self._play_sync_thread: threading.Thread | None = None
+        self._keepalive_thread: threading.Thread | None = None
         self._last_control: ParsedRbUdpControlPacket | None = None
         self._last_wrapped: ParsedRbUdpWrappedPacket | None = None
         self._bootstrap_sent_to: tuple[str, int] | None = None
@@ -164,9 +166,9 @@ class RbUdpQuiiTunnel(
             return
         details = " ".join(f"{key}={value}" for key, value in kwargs.items())
         if details:
-            print(f"[RbUdp] {message} {details}")
+            logger.debug("[RbUdp] {} {}", message, details)
         else:
-            print(f"[RbUdp] {message}")
+            logger.debug("[RbUdp] {}", message)
 
 
 DirectKcpQuiiTunnel = RbUdpQuiiTunnel

@@ -3,22 +3,33 @@ from pathlib import Path
 from typing import Any
 
 from quii_helper.constants import (
+    CAMERA_APP_ID,
     CAMERA_CHANNEL,
+    CAMERA_CLIENT_TYPE,
+    CAMERA_OEM,
+    CAMERA_STREAM,
     CLOUD_ACCOUNT,
+    CLOUD_AUTH_URL,
     CLOUD_CLIENT_UUID,
     CLOUD_PASSWORD,
+    CLOUD_SERVICE_URL,
     DEVICE_ID,
+    IP_REGION_ID,
+    TLS_CA_PATH,
+    TLS_CERT_PATH,
+    TLS_KEY_PATH,
 )
 
-DEFAULT_SERVICE_URL = "https://tantos.qvcloud.net:443"
-DEFAULT_OEM = "G0083"
-DEFAULT_APP_ID = 4083
-DEFAULT_CLIENT_TYPE = 3
+DEFAULT_SERVICE_URL = CLOUD_SERVICE_URL
+DEFAULT_AUTH_URL = CLOUD_AUTH_URL
+DEFAULT_OEM = CAMERA_OEM
+DEFAULT_APP_ID = CAMERA_APP_ID
+DEFAULT_CLIENT_TYPE = CAMERA_CLIENT_TYPE
 DEFAULT_SERVICE_QUERY_PATH = "/mst/query"
 DEFAULT_CHANNEL = CAMERA_CHANNEL
 STREAM_HIGH_QUALITY = 1
 STREAM_LOW_BANDWIDTH = 2
-DEFAULT_STREAM = STREAM_LOW_BANDWIDTH
+DEFAULT_STREAM = CAMERA_STREAM
 
 STREAM_QUALITY_ALIASES = {
     "high": STREAM_HIGH_QUALITY,
@@ -29,6 +40,17 @@ STREAM_QUALITY_ALIASES = {
     "sub": STREAM_LOW_BANDWIDTH,
     "sd": STREAM_LOW_BANDWIDTH,
     "smooth": STREAM_LOW_BANDWIDTH,
+}
+
+
+REQUIRED_CAMERA_APP_FIELDS = {
+    "service_url": "CLOUD_SERVICE_URL",
+    "auth_url": "CLOUD_AUTH_URL",
+    "oem": "CAMERA_OEM",
+    "app_id": "CAMERA_APP_ID",
+    "client_type": "CAMERA_CLIENT_TYPE",
+    "client_id": "CLOUD_CLIENT_UUID",
+    "ip_region_id": "IP_REGION_ID",
 }
 
 
@@ -49,6 +71,29 @@ def resolve_stream_quality(value: str | int) -> int:
     if stream <= 0:
         raise ValueError("stream id must be greater than zero")
     return stream
+
+
+def validate_camera_app_config(config: "AutonomousConfig") -> None:
+    missing = [
+        f"{field} ({env_name})"
+        for field, env_name in REQUIRED_CAMERA_APP_FIELDS.items()
+        if _is_missing_config_value(getattr(config, field))
+    ]
+    if missing:
+        raise ValueError(
+            "missing required app-specific camera configuration: "
+            f"{', '.join(missing)}. "
+            "Extract these values from the decompiled vendor app and put "
+            "them in .env, or pass them explicitly to Camera(...)."
+        )
+
+
+def _is_missing_config_value(value: object) -> bool:
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, int):
+        return value <= 0
+    return value is None
 
 
 @dataclass
@@ -97,6 +142,7 @@ class AutonomousConfig:
     stream: int = DEFAULT_STREAM
     connect_mode: int = -1
     service_url: str = DEFAULT_SERVICE_URL
+    auth_url: str = DEFAULT_AUTH_URL
     oem: str = DEFAULT_OEM
     live_play_payload: str = "path"
     live_inner: bool = False
@@ -110,10 +156,10 @@ class AutonomousConfig:
     force_trans: int = 0
     ust_address: str = ""
     ust_test_address: str = ""
-    ca_path: Path = Path(r"D:\apk\vhome\vhome_clear\assets\ca.pem")
-    cert_path: Path = Path(r"D:\apk\vhome\vhome_clear\assets\client.pem")
-    key_path: Path = Path(r"D:\apk\vhome\vhome_clear\assets\client.txt")
-    ip_region_id: int = 6
+    ca_path: Path = TLS_CA_PATH
+    cert_path: Path = TLS_CERT_PATH
+    key_path: Path = TLS_KEY_PATH
+    ip_region_id: int = IP_REGION_ID
     mqtt_timeout: float = 20.0
     prewarm_timeout: float = 12.0
     prewarm_retry_interval: float = 2.0

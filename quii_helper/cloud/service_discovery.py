@@ -12,6 +12,7 @@ from quii_helper.config import (
     AutonomousConfig,
     RuntimeCredentials,
     ServiceQueryResponse,
+    validate_camera_app_config,
 )
 
 
@@ -53,31 +54,52 @@ def fetch_runtime_credentials(
     config: AutonomousConfig | str | None = None,
     *,
     device_id: str | None = None,
+    cloud_username: str | None = None,
     cloud_account: str | None = None,
     cloud_password: str | None = None,
     client_id: str | None = None,
+    auth_url: str | None = None,
+    service_url: str | None = None,
+    oem: str | None = None,
+    app_id: int | None = None,
+    client_type: int | None = None,
     ip_region_id: int | None = None,
 ) -> RuntimeCredentials:
     resolved = _resolve_runtime_config(
         config,
         device_id=device_id,
+        cloud_username=cloud_username,
         cloud_account=cloud_account,
         cloud_password=cloud_password,
         client_id=client_id,
+        auth_url=auth_url,
+        service_url=service_url,
+        oem=oem,
+        app_id=app_id,
+        client_type=client_type,
         ip_region_id=ip_region_id,
     )
     _validate_runtime_config(resolved)
+    validate_camera_app_config(resolved)
     login = login_cloud(
         resolved.cloud_account,
         resolved.cloud_password,
+        auth_url=resolved.auth_url,
         ip_region_id=resolved.ip_region_id,
         client_id=resolved.client_id,
+        oem=resolved.oem,
+        app_id=resolved.app_id,
+        client_type=resolved.client_type,
         debug=False,
     )
     token = get_device_token(
         login["session_id"],
         resolved.device_id,
+        auth_url=resolved.auth_url,
         client_id=resolved.client_id,
+        oem=resolved.oem,
+        app_id=resolved.app_id,
+        client_type=resolved.client_type,
         debug=False,
     )
     return RuntimeCredentials(
@@ -94,9 +116,15 @@ def _resolve_runtime_config(
     config: AutonomousConfig | str | None,
     *,
     device_id: str | None,
+    cloud_username: str | None,
     cloud_account: str | None,
     cloud_password: str | None,
     client_id: str | None,
+    auth_url: str | None,
+    service_url: str | None,
+    oem: str | None,
+    app_id: int | None,
+    client_type: int | None,
     ip_region_id: int | None,
 ) -> AutonomousConfig:
     if isinstance(config, AutonomousConfig):
@@ -108,13 +136,27 @@ def _resolve_runtime_config(
             else AutonomousConfig()
         )
 
+    if (
+        cloud_username is not None
+        and cloud_account is not None
+        and cloud_username != cloud_account
+    ):
+        raise ValueError(
+            "pass either cloud_username or cloud_account, not both"
+        )
+
     values = {
         key: value
         for key, value in {
             "device_id": device_id,
-            "cloud_account": cloud_account,
+            "cloud_account": cloud_username or cloud_account,
             "cloud_password": cloud_password,
             "client_id": client_id,
+            "auth_url": auth_url,
+            "service_url": service_url,
+            "oem": oem,
+            "app_id": app_id,
+            "client_type": client_type,
             "ip_region_id": ip_region_id,
         }.items()
         if value is not None
@@ -141,6 +183,7 @@ def _validate_runtime_config(config: AutonomousConfig) -> None:
 def populate_discovered_services(
     config: AutonomousConfig,
 ) -> ServiceQueryResponse:
+    validate_camera_app_config(config)
     response = query_service_addresses(config)
     apply_discovered_services(config, response)
     return response

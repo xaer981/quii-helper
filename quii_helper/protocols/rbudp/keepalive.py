@@ -7,10 +7,12 @@ from quii_helper.protocols.p2p.transport_packets import build_p2p_active_packet
 
 class RbUdpKeepaliveMixin:
     def _keepalive_loop(self):
-        local_udp_port = self._udp_sock.getsockname()[1]
         time.sleep(1.0)
         while not self._stop.is_set():
             try:
+                if self._udp_sock is None:
+                    return
+                local_udp_port = self._udp_sock.getsockname()[1]
                 lan_same_peer = (
                     self._peer_addr == self._transport_peer_addr
                     and is_private_ipv4(self._peer_addr[0])
@@ -35,5 +37,7 @@ class RbUdpKeepaliveMixin:
                 ):
                     self._send_control_bootstrap()
             except Exception:
+                if self._stop.is_set():
+                    return
                 pass
             time.sleep(1.0)

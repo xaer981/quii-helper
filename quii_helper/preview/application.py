@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from quii_helper.camera import CameraConnector
 from quii_helper.config import AutonomousConfig
+from quii_helper.log import logger
 from quii_helper.preview.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
     PreviewCaptureSettings,
@@ -10,6 +11,14 @@ from quii_helper.preview.pipeline_factory import PreviewPipelineFactory
 
 EmitCallback = Callable[[object], None]
 StatusCallback = Callable[[str], None]
+
+
+def _default_emit(obj: object) -> None:
+    logger.debug("{}", obj)
+
+
+def _default_status(message: str) -> None:
+    logger.info(message)
 
 
 class CameraPreviewApplication:
@@ -28,36 +37,36 @@ class CameraPreviewApplication:
             preview_settings or DEFAULT_PREVIEW_CAPTURE_SETTINGS
         )
         self.connector = connector or CameraConnector(self.config)
-        self.emit = emit or (lambda obj: None)
-        self.status = status or (lambda message: None)
+        self.emit = emit or _default_emit
+        self.status = status or _default_status
         self.pipeline_factory = pipeline_factory or PreviewPipelineFactory(
             preview_settings=self.preview_settings,
             emit=self.emit,
         )
 
     def run(self) -> dict:
-        self.status("=== autonomous_preview ===")
+        self.status("Starting camera preview")
         self.status(
-            f"device_id={self.config.device_id} "
-            f"channel={self.config.channel} "
-            f"stream={self.config.stream}"
+            f"Device {self.config.device_id}; "
+            f"channel {self.config.channel}; "
+            f"stream {self.config.stream}"
         )
 
         credentials = self.connector.fetch_credentials()
-        self.status("fetched runtime credentials")
+        self.status("Fetched runtime credentials")
 
         with self.connector.open_preview(credentials=credentials) as session:
             credentials = session.credentials
             tunnel = session.tunnel
-            self.status("p2pconnect ok")
+            self.status("Connected")
             self.emit(session.connection_summary())
 
             session.send_setup(seq=0)
-            self.status("sent quii setup")
+            self.status("Starting live preview")
             setup_acked = session.wait_setup_ack(timeout=3.0)
             self.emit({"quii_setup_acked": setup_acked})
             session.send_play(seq=1)
-            self.status("sent quii play")
+            self.status("Receiving media packets")
 
             pipeline = self.pipeline_factory.create(
                 tunnel=tunnel,
@@ -66,4 +75,5 @@ class CameraPreviewApplication:
             )
             summary = pipeline.capture()
             self.emit(summary)
+            self.status("Done")
             return summary

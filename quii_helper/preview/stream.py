@@ -14,8 +14,8 @@ class TunnelPacketStream:
         timeout: float,
         keepalive_credentials: Any | None = None,
     ) -> Iterator[dict[str, Any]]:
-        deadline = time.time() + duration
-        while time.time() < deadline:
+        deadline = time.monotonic() + duration
+        while time.monotonic() < deadline:
             self._maybe_send_keepalive(keepalive_credentials)
             try:
                 yield self.tunnel.recv_packet(timeout=min(timeout, 1.0))
@@ -70,8 +70,8 @@ class TunnelPacketStream:
         keepalive_credentials: Any | None = None,
         break_on_empty: bool = True,
     ) -> Iterator[dict[str, Any]]:
-        deadline = time.time() + drain_seconds
-        while time.time() < deadline:
+        deadline = time.monotonic() + drain_seconds
+        while time.monotonic() < deadline:
             self._maybe_send_keepalive(keepalive_credentials)
             try:
                 yield self.tunnel.recv_packet(timeout=timeout)

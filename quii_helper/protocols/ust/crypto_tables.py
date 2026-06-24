@@ -1,9 +1,8 @@
 from pathlib import Path
 
-P2P_SO_CANDIDATES = (
-    Path(r"D:\apk\vhome\vhome_clear\lib\arm64-v8a\libqv-p2p-v2.so"),
-    Path(r"D:\apk\vhome\vhome_clear\lib\armeabi-v7a\libqv-p2p-v2.so"),
-)
+from quii_helper.constants import P2P_SO_PATHS
+
+P2P_SO_CANDIDATES = P2P_SO_PATHS
 P2P_TABLE1_FILE_OFFSET = 0x6A5C27
 P2P_TABLE2_FILE_OFFSET = 0x6A6C27
 P2P_TABLE3_FILE_OFFSET = 0x6A7C27
@@ -13,31 +12,31 @@ P2P_TABLE_SIZE = 0x1000
 def load_p2p_crypto_tables(
     so_path: str | Path | None = None,
 ) -> tuple[bytes, bytes, bytes]:
-    candidates = (
-        [Path(so_path)] if so_path is not None else list(P2P_SO_CANDIDATES)
-    )
-    last_error: Exception | None = None
-    for candidate in candidates:
+    if so_path is not None:
+        return _read_p2p_crypto_tables(Path(so_path))
+
+    errors: list[str] = []
+    for candidate in P2P_SO_CANDIDATES:
         try:
-            blob = Path(candidate).read_bytes()
-            return (
-                blob[
-                    P2P_TABLE1_FILE_OFFSET : P2P_TABLE1_FILE_OFFSET
-                    + P2P_TABLE_SIZE
-                ],
-                blob[
-                    P2P_TABLE2_FILE_OFFSET : P2P_TABLE2_FILE_OFFSET
-                    + P2P_TABLE_SIZE
-                ],
-                blob[
-                    P2P_TABLE3_FILE_OFFSET : P2P_TABLE3_FILE_OFFSET
-                    + P2P_TABLE_SIZE
-                ],
-            )
+            return _read_p2p_crypto_tables(candidate)
         except Exception as exc:
-            last_error = exc
+            errors.append(f"{candidate}: {exc}")
+
+    details = "; ".join(errors) if errors else "no candidates configured"
     raise FileNotFoundError(
-        f"unable to load libqv-p2p-v2.so "
-        f"tables from candidates={candidates!r};"
-        f"last_error={last_error}"
+        "unable to load P2P crypto tables from libqv-p2p-v2.so; "
+        "put the extracted arm64-v8a libqv-p2p-v2.so into assets/; "
+        f"{details}"
     )
+
+
+def _read_p2p_crypto_tables(so_path: Path) -> tuple[bytes, bytes, bytes]:
+    blob = so_path.read_bytes()
+    tables = (
+        blob[P2P_TABLE1_FILE_OFFSET : P2P_TABLE1_FILE_OFFSET + P2P_TABLE_SIZE],
+        blob[P2P_TABLE2_FILE_OFFSET : P2P_TABLE2_FILE_OFFSET + P2P_TABLE_SIZE],
+        blob[P2P_TABLE3_FILE_OFFSET : P2P_TABLE3_FILE_OFFSET + P2P_TABLE_SIZE],
+    )
+    if any(len(table) != P2P_TABLE_SIZE for table in tables):
+        raise ValueError(f"incomplete P2P crypto tables in {so_path}")
+    return tables

@@ -2,6 +2,10 @@ __pycache__/
 venv/
 .env
 
+# Extracted APK certs, private keys, and native libraries must stay local.
+assets/*
+!assets/.gitkeep
+
 # Keep the runtime output directory in git, but ignore generated artifacts.
 !data/
 data/*

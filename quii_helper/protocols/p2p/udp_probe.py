@@ -2,6 +2,7 @@ import ipaddress
 import random
 import socket
 
+from quii_helper.log import logger
 from quii_helper.network import udp_target_tuple
 from quii_helper.protocols.p2p.models import (
     P2PConnectResponse,
@@ -41,10 +42,14 @@ def run_udp_probe(
     best_rank = -1
 
     for target in targets:
-        print(
-            f"[UDPProbe] target kind={target.kind} "
-            f"host={target.host}:{target.port} "
-            f"mode={target.mode} local_udp_port={local_udp_port}"
+        logger.debug(
+            "[UDPProbe] target kind={} host={}:{} mode={} "
+            "local_udp_port={}",
+            target.kind,
+            target.host,
+            target.port,
+            target.mode,
+            local_udp_port,
         )
         for _attempt in range(attempts_per_target):
             packet = build_p2p_test_packet(
@@ -65,11 +70,15 @@ def run_udp_probe(
             except TimeoutError:
                 continue
             parsed = parse_p2p_test_response(data)
-            print(
-                f"[UDPProbe] response kind={target.kind} "
-                f"from={parsed.address}:{parsed.port} "
-                f"result={parsed.result_code} status={parsed.status_code} "
-                f"test_id={parsed.test_id}"
+            logger.debug(
+                "[UDPProbe] response kind={} from={}:{} result={} "
+                "status={} test_id={}",
+                target.kind,
+                parsed.address,
+                parsed.port,
+                parsed.result_code,
+                parsed.status_code,
+                parsed.test_id,
             )
             if parsed.ok:
                 rank = _rank_probe_response(parsed)

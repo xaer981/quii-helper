@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from quii_helper.io.paths import DATA_DIR
+from quii_helper.log import logger
 from quii_helper.preview.artifacts import PreviewArtifactManager
 from quii_helper.preview.capture_pipeline import PreviewCapturePipeline
 from quii_helper.preview.config import (
@@ -43,7 +44,7 @@ class PreviewPipelineFactory:
             key=data_key,
             artifacts=artifacts,
             fragment_partial_collector=fragment_partial_collector,
-            emit=self.emit or print,
+            emit=self.emit or _emit_debug_summary,
             min_media_messages=self.preview_settings.min_media_messages,
             max_media_messages=self.preview_settings.max_media_messages,
             direct_blob_summary_limit=(
@@ -93,3 +94,7 @@ class PreviewPipelineFactory:
             render_snapshot=self.render_snapshot,
             render_video=self.render_video,
         )
+
+
+def _emit_debug_summary(obj: object) -> None:
+    logger.debug("{}", obj)

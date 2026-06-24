@@ -1,6 +1,6 @@
 from quii_helper import constants
 
-HOST = "192.168.1.176"
+HOST = ""
 CLOUD_ACCOUNT = constants.CLOUD_ACCOUNT
 CLOUD_PASSWORD = constants.CLOUD_PASSWORD
 DEVICE_ID = constants.DEVICE_ID

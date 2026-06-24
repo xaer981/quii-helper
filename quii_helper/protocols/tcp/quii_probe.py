@@ -1,5 +1,6 @@
 from typing import Any
 
+from quii_helper.log import logger
 from quii_helper.protocols.tcp import settings
 from quii_helper.protocols.tcp.probe_attempt import TcpProbeAttemptRunner
 from quii_helper.protocols.tcp.probe_candidates import (
@@ -28,7 +29,7 @@ class QuiiTcpProbeRunner:
         )
 
         if not settings.QUII_RUN_PROBE:
-            print(
+            logger.debug(
                 "SKIPPED: set QUII_RUN_PROBE = True "
                 "to attempt direct quii TCP probe"
             )
@@ -43,11 +44,11 @@ class QuiiTcpProbeRunner:
         )
         sort_compact_summary(compact_summary)
 
-        print("\n=== quii_summary ===")
-        print(compact_summary)
+        logger.debug("=== quii_summary ===")
+        logger.debug("{}", compact_summary)
         if settings.QUII_PRINT_FULL_PROBE:
-            print("\n=== quii_probe ===")
-            print(attempts)
+            logger.debug("=== quii_probe ===")
+            logger.debug("{}", attempts)
 
     def _print_config(
         self,
@@ -58,15 +59,16 @@ class QuiiTcpProbeRunner:
         combo_candidates: list,
         credential_candidates: list,
     ) -> None:
-        print("\n=== quii_config ===")
-        print(
+        logger.debug("=== quii_config ===")
+        logger.debug(
+            "{}",
             build_tcp_probe_config_summary(
                 token_result=token_result,
                 probe_host=probe_host,
                 probe_port=probe_port,
                 combo_candidates=combo_candidates,
                 credential_candidates=credential_candidates,
-            )
+            ),
         )
 
     def _run_attempts(

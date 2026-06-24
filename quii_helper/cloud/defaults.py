@@ -1,13 +1,8 @@
 import http.cookiejar
 
-CLOUD_HOST = "r6-5.qvcloud.net"
-CLOUD_PORT = 443
-CLOUD_SCHEME = "https"
-CLOUD_PATH = "/auth/user"
-CLOUD_OEM_ID = "G0083"
-CLOUD_APP_ID = 4083
-CLOUD_CLIENT_TYPE = 3
-CLOUD_AUTH_VERSION = "v1.13"
+from quii_helper import constants
+
+CLOUD_AUTH_VERSION = constants.CLOUD_AUTH_VERSION
 CLOUD_COOKIE = ""
 CLOUD_LOGIN_SEQ = 1
 

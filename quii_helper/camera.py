@@ -11,6 +11,7 @@ from quii_helper.config import (
 )
 from quii_helper.direct.preview import open_direct_preview
 from quii_helper.io.paths import DATA_DIR
+from quii_helper.log import logger
 from quii_helper.preview.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
     PreviewCaptureSettings,
@@ -79,6 +80,29 @@ def _optional_path(value: object) -> Path | None:
     if not value:
         return None
     return Path(str(value))
+
+
+def _default_emit(obj: object) -> None:
+    logger.debug("{}", obj)
+
+
+def _default_status(message: str) -> None:
+    logger.info(message)
+
+
+def _capture_done_message(summary: dict) -> str:
+    artifact = (
+        summary.get("media_result") or summary.get("embedded_fallback") or {}
+    )
+    mp4_path = artifact.get("mp4_path")
+    snapshot_path = artifact.get("snapshot_path")
+    if artifact.get("mp4") and mp4_path:
+        return f"Done. Video saved: {mp4_path}"
+    if artifact.get("snapshot") and snapshot_path:
+        return f"Done. Snapshot saved: {snapshot_path}"
+    if artifact.get("written"):
+        return "Done. Media data was collected, but no final file was written"
+    return "Done. No media file was produced"
 
 
 @dataclass
@@ -183,9 +207,19 @@ class Camera:
         config: AutonomousConfig | None = None,
         *,
         device_id: str | None = None,
+        cloud_username: str | None = None,
         cloud_account: str | None = None,
         cloud_password: str | None = None,
         client_id: str | None = None,
+        service_url: str | None = None,
+        auth_url: str | None = None,
+        oem: str | None = None,
+        app_id: int | None = None,
+        client_type: int | None = None,
+        ca_path: str | Path | None = None,
+        cert_path: str | Path | None = None,
+        key_path: str | Path | None = None,
+        ip_region_id: int | None = None,
         live_play_payload: str | None = None,
         live_inner: bool | None = None,
         live_newcn: bool | None = None,
@@ -203,9 +237,19 @@ class Camera:
         self.config = self._resolve_config(
             config or AutonomousConfig(),
             device_id=device_id,
+            cloud_username=cloud_username,
             cloud_account=cloud_account,
             cloud_password=cloud_password,
             client_id=client_id,
+            service_url=service_url,
+            auth_url=auth_url,
+            oem=oem,
+            app_id=app_id,
+            client_type=client_type,
+            ca_path=ca_path,
+            cert_path=cert_path,
+            key_path=key_path,
+            ip_region_id=ip_region_id,
             live_play_payload=live_play_payload,
             live_inner=live_inner,
             live_newcn=live_newcn,
@@ -220,8 +264,8 @@ class Camera:
             preview_settings or DEFAULT_PREVIEW_CAPTURE_SETTINGS
         )
         self.data_dir = Path(data_dir)
-        self.emit = emit or (lambda obj: None)
-        self.status = status or (lambda message: None)
+        self.emit = emit or _default_emit
+        self.status = status or _default_status
         self.connector = CameraConnector(self.config)
 
     def capture(
@@ -294,16 +338,18 @@ class Camera:
         render_snapshot: bool,
         render_video: bool,
     ) -> dict:
-        self.status("fetching runtime credentials")
+        self.status("Fetching runtime credentials")
         credentials = self.connector.fetch_credentials()
-        self.status("opening preview session")
+        self.status("Opening preview session")
         with self.connector.open_preview(credentials=credentials) as session:
+            self.status("Connected")
             self.emit(session.connection_summary())
-            self.status("starting live preview")
+            self.status("Starting live preview")
             setup_acked = session.start_live_preview(
                 setup_seq=0, play_seq=1, setup_timeout=3.0
             )
             self.emit({"quii_setup_acked": setup_acked})
+            self.status("Receiving media packets")
             pipeline = PreviewPipelineFactory(
                 preview_settings=settings,
                 emit=self.emit,
@@ -318,6 +364,7 @@ class Camera:
             )
             summary = pipeline.capture()
             self.emit(summary)
+            self.status(_capture_done_message(summary))
             return summary
 
     def _capture_settings(
@@ -349,9 +396,19 @@ class Camera:
         config: AutonomousConfig,
         *,
         device_id: str | None,
+        cloud_username: str | None,
         cloud_account: str | None,
         cloud_password: str | None,
         client_id: str | None,
+        service_url: str | None,
+        auth_url: str | None,
+        oem: str | None,
+        app_id: int | None,
+        client_type: int | None,
+        ca_path: str | Path | None,
+        cert_path: str | Path | None,
+        key_path: str | Path | None,
+        ip_region_id: int | None,
         live_play_payload: str | None,
         live_inner: bool | None,
         live_newcn: bool | None,
@@ -364,15 +421,42 @@ class Camera:
     ) -> AutonomousConfig:
         if stream is not None and stream_quality is not None:
             raise ValueError("pass either stream or stream_quality, not both")
+        if (
+            cloud_username is not None
+            and cloud_account is not None
+            and cloud_username != cloud_account
+        ):
+            raise ValueError(
+                "pass either cloud_username or cloud_account, not both"
+            )
         values: dict[str, Any] = {}
         if device_id is not None:
             values["device_id"] = device_id
-        if cloud_account is not None:
-            values["cloud_account"] = cloud_account
+        resolved_cloud_account = cloud_username or cloud_account
+        if resolved_cloud_account is not None:
+            values["cloud_account"] = resolved_cloud_account
         if cloud_password is not None:
             values["cloud_password"] = cloud_password
         if client_id is not None:
             values["client_id"] = client_id
+        if service_url is not None:
+            values["service_url"] = service_url
+        if auth_url is not None:
+            values["auth_url"] = auth_url
+        if oem is not None:
+            values["oem"] = oem
+        if app_id is not None:
+            values["app_id"] = app_id
+        if client_type is not None:
+            values["client_type"] = client_type
+        if ca_path is not None:
+            values["ca_path"] = Path(ca_path)
+        if cert_path is not None:
+            values["cert_path"] = Path(cert_path)
+        if key_path is not None:
+            values["key_path"] = Path(key_path)
+        if ip_region_id is not None:
+            values["ip_region_id"] = ip_region_id
         if live_play_payload is not None:
             values["live_play_payload"] = live_play_payload
         if live_inner is not None:

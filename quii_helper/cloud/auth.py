@@ -13,10 +13,21 @@ def login_cloud(
     account: str,
     password: str,
     *,
-    ip_region_id: int = 6,
-    client_id: str | None = None,
+    auth_url: str,
+    ip_region_id: int,
+    client_id: str,
+    oem: str,
+    app_id: int,
+    client_type: int,
     debug: bool = False,
 ):
+    _validate_userauth_identity(
+        client_id=client_id,
+        oem=oem,
+        app_id=app_id,
+        client_type=client_type,
+        ip_region_id=ip_region_id,
+    )
     hashed_password = userauth_password(password)
 
     def content_builder(content: ET.Element):
@@ -33,8 +44,11 @@ def login_cloud(
         session_id=None,
         seq=CLOUD_LOGIN_SEQ,
         client_id=client_id,
+        oem=oem,
+        app_id=app_id,
+        client_type=client_type,
     )
-    root, raw = request_userauth(xml_body, debug=debug)
+    root, raw = request_userauth(xml_body, auth_url=auth_url, debug=debug)
 
     header = root.find("./header")
     if header is None:
@@ -64,10 +78,21 @@ def get_device_token(
     session_id: str,
     device_id: str,
     *,
+    auth_url: str,
+    client_id: str,
+    oem: str,
+    app_id: int,
+    client_type: int,
     is_hs_device=None,
-    client_id: str | None = None,
     debug: bool = False,
 ):
+    _validate_userauth_identity(
+        client_id=client_id,
+        oem=oem,
+        app_id=app_id,
+        client_type=client_type,
+    )
+
     def content_builder(content: ET.Element):
         ET.SubElement(content, "device-id").text = device_id
         if is_hs_device is not None:
@@ -80,8 +105,11 @@ def get_device_token(
         session_id=session_id,
         seq=0,
         client_id=client_id,
+        oem=oem,
+        app_id=app_id,
+        client_type=client_type,
     )
-    root, raw = request_userauth(xml_body, debug=debug)
+    root, raw = request_userauth(xml_body, auth_url=auth_url, debug=debug)
 
     header = root.find("./header")
     if header is None:
@@ -132,3 +160,29 @@ def get_device_token(
         ).strip(),
         "raw": raw,
     }
+
+
+def _validate_userauth_identity(
+    *,
+    client_id: str,
+    oem: str,
+    app_id: int,
+    client_type: int,
+    ip_region_id: int | None = None,
+) -> None:
+    missing = []
+    if not client_id:
+        missing.append("client_id")
+    if not oem:
+        missing.append("oem")
+    if app_id <= 0:
+        missing.append("app_id")
+    if client_type <= 0:
+        missing.append("client_type")
+    if ip_region_id is not None and ip_region_id <= 0:
+        missing.append("ip_region_id")
+    if missing:
+        raise ValueError(
+            "missing required userauth identity values: "
+            f"{', '.join(missing)}"
+        )

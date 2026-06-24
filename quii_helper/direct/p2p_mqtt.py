@@ -1,6 +1,7 @@
 import time
 
 from quii_helper.config import AutonomousConfig
+from quii_helper.log import logger
 from quii_helper.protocols.mqtt.bootstrap import MqttP2PBootstrap
 from quii_helper.protocols.p2p.models import (
     P2PConnectRequest,
@@ -38,8 +39,8 @@ def run_mqtt_p2pconnect_attempt(
         local_udp_port=local_udp_port,
     )
     if not has_probe_targets(response):
-        print(
-            "[P2PDiag] empty_p2pconnect_response",
+        logger.debug(
+            "[P2PDiag] empty_p2pconnect_response {}",
             {
                 "attempt": attempt_index + 1,
                 "response_local_ips": response.local_ips,
@@ -52,9 +53,9 @@ def run_mqtt_p2pconnect_attempt(
         )
         raise RuntimeError("empty p2pconnect response without probe targets")
     if config.preconnect_settle_delay > 0:
-        print(
-            f"[Prewarm] settle delay {config.preconnect_settle_delay:.1f}s "
-            "before UDP probe"
+        logger.debug(
+            "[Prewarm] settle delay {:.1f}s before UDP probe",
+            config.preconnect_settle_delay,
         )
         time.sleep(config.preconnect_settle_delay)
     return response
@@ -69,8 +70,8 @@ def wait_for_device_online(
             timeout=config.prewarm_timeout,
             retry_interval=config.prewarm_retry_interval,
         )
-        print(
-            "[Prewarm] device online",
+        logger.debug(
+            "[Prewarm] device online {}",
             {
                 "device_ids": state.device_ids,
                 "online": state.online,
@@ -79,4 +80,4 @@ def wait_for_device_online(
             },
         )
     except TimeoutError as exc:
-        print(f"[Prewarm] online wait timeout: {exc}")
+        logger.debug("[Prewarm] online wait timeout: {}", exc)

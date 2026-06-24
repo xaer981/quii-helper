@@ -4,12 +4,17 @@ from quii_helper.cloud.service_discovery import (
     fetch_runtime_credentials,
     populate_discovered_services,
 )
-from quii_helper.config import AutonomousConfig, RuntimeCredentials
+from quii_helper.config import (
+    AutonomousConfig,
+    RuntimeCredentials,
+    validate_camera_app_config,
+)
 from quii_helper.direct.p2p_session import establish_direct_p2pconnect_session
 from quii_helper.direct.peer_selection import (
     log_p2pconnect_response,
     probe_and_select_direct_peers,
 )
+from quii_helper.log import logger
 from quii_helper.network import (
     discover_local_ips,
     discover_public_ip,
@@ -32,6 +37,7 @@ def open_direct_preview(
     ParsedP2PTestResponse,
     DirectKcpQuiiTunnel,
 ]:
+    validate_camera_app_config(config)
     if not config.ust_address or not config.ust_test_address:
         populate_discovered_services(config)
 
@@ -39,14 +45,14 @@ def open_direct_preview(
     rng = random.Random(config.rng_seed)
     public_ip = discover_public_ip()
     local_ips = discover_local_ips()
-    print(f"[NetInfo] public_ip={public_ip} local_ips={local_ips}")
+    logger.debug("[NetInfo] public_ip={} local_ips={}", public_ip, local_ips)
     udp_sock = make_dualstack_udp_socket()
     local_udp_port = udp_sock.getsockname()[1]
     public_udp_port = local_udp_port
 
     if config.log_peer_diagnostics:
-        print(
-            "[P2PDiag] response_candidates_pending",
+        logger.debug(
+            "[P2PDiag] response_candidates_pending {}",
             {
                 "local_udp_port": local_udp_port,
                 "local_ips": local_ips,

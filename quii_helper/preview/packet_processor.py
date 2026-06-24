@@ -152,22 +152,24 @@ class PreviewPacketProcessor(PreviewFragmentFlowMixin):
             )
             return False, b""
 
-        candidates = direct_blob_decode_candidates(
-            blob=blob,
-            key=self.key,
-            source=source,
-            decoded=decoded,
-            phase=phase,
-        )
-        record_direct_blob_sample(
-            artifacts=self.artifacts,
-            blob=blob,
-            message_index=self.message_index,
-            source=source,
-            meta=meta,
-            candidates=candidates,
-            phase=phase,
-        )
+        candidates = []
+        if self.artifacts.diagnostics_enabled:
+            candidates = direct_blob_decode_candidates(
+                blob=blob,
+                key=self.key,
+                source=source,
+                decoded=decoded,
+                phase=phase,
+            )
+            record_direct_blob_sample(
+                artifacts=self.artifacts,
+                blob=blob,
+                message_index=self.message_index,
+                source=source,
+                meta=meta,
+                candidates=candidates,
+                phase=phase,
+            )
 
         fragment_partial_analysis = self._analyze_fragment_partial(
             blob,
@@ -178,16 +180,18 @@ class PreviewPacketProcessor(PreviewFragmentFlowMixin):
         if decoded["plausible"]:
             self.decoded_messages.append(decoded)
 
-        wrapped_tail_analysis = wrapped_tail_diagnostics(
-            artifacts=self.artifacts,
-            blob=blob,
-            key=self.key,
-            decoded=decoded,
-            message_index=self.message_index,
-            source=source,
-            meta=meta,
-            phase=phase,
-        )
+        wrapped_tail_analysis = None
+        if self.artifacts.diagnostics_enabled:
+            wrapped_tail_analysis = wrapped_tail_diagnostics(
+                artifacts=self.artifacts,
+                blob=blob,
+                key=self.key,
+                decoded=decoded,
+                message_index=self.message_index,
+                source=source,
+                meta=meta,
+                phase=phase,
+            )
 
         summary = build_quii_packet_summary(
             decoded,

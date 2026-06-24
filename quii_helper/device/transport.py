@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 
 from quii_helper.device.auth import get_encrypt_password
 from quii_helper.device.xml import build_request_xml
+from quii_helper.log import logger
 
 
 def request_cgi(
@@ -84,18 +85,20 @@ def _post_cgi_xml(
     except urllib.error.HTTPError as exc:
         data = exc.read()
         if debug:
-            print("HTTP status:", exc.code)
+            logger.debug("HTTP status: {}", exc.code)
             _debug_exchange(xml_body, data)
         raise
     except Exception:
         if debug:
-            print("Request XML:")
-            print(xml_body.decode("utf-8"))
+            logger.debug(
+                "Request XML:\n{}",
+                xml_body.decode("utf-8", errors="replace"),
+            )
         raise
 
 
 def _debug_exchange(xml_body: bytes, data: bytes) -> None:
-    print("Request XML:")
-    print(xml_body.decode("utf-8"))
-    print("Raw response:")
-    print(data.decode("utf-8", errors="replace"))
+    logger.debug(
+        "Request XML:\n{}", xml_body.decode("utf-8", errors="replace")
+    )
+    logger.debug("Raw response:\n{}", data.decode("utf-8", errors="replace"))

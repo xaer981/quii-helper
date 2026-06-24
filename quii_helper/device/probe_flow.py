@@ -4,6 +4,7 @@ from quii_helper.device.probe_modes import (
     primary_streamkey_mode,
     status_probe_kwargs,
 )
+from quii_helper.log import logger
 
 
 class DeviceCgiProbeRunner:
@@ -21,23 +22,23 @@ class DeviceCgiProbeRunner:
         self._run_fallback_modes()
 
     def try_mode(self, name: str, **kwargs) -> bool:
-        print(f"\n=== {name} ===")
+        logger.debug("=== {} ===", name)
         try:
             secret = request_streamkey(debug=True, **kwargs)
-            print("SUCCESS:", secret)
+            logger.debug("SUCCESS: {}", secret)
             return True
         except Exception as exc:
-            print("FAILED:", exc)
+            logger.debug("FAILED: {}", exc)
             return False
 
     def probe_mode(self, name: str, command: str, **kwargs) -> bool:
-        print(f"\n=== {name} ===")
+        logger.debug("=== {} ===", name)
         try:
             result = request_cgi(command=command, debug=True, **kwargs)
-            print("RESULT ERROR:", result["error"])
+            logger.debug("RESULT ERROR: {}", result["error"])
             return True
         except Exception as exc:
-            print("FAILED:", exc)
+            logger.debug("FAILED: {}", exc)
             return False
 
     def _run_fallback_modes(self) -> None:

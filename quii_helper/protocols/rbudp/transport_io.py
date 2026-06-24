@@ -10,6 +10,7 @@ class RbUdpTransportIOMixin:
     _peer_addr: tuple[str, int]
     _transport_peer_addr: tuple[str, int]
     _p2p_session_flag: str
+    _stop: object
 
     def _dbg(self, message: str, **kwargs) -> None:
         raise NotImplementedError
@@ -24,27 +25,49 @@ class RbUdpTransportIOMixin:
 
     def _send_udp(self, packet: bytes) -> None:
         if self._udp_sock is None:
+            if self._stop.is_set():
+                return
             raise RuntimeError("RB UDP tunnel requires a UDP socket")
-        self._udp_sock.sendto(
-            packet,
-            udp_target_tuple(
-                self._udp_sock, self._peer_addr[0], self._peer_addr[1]
-            ),
-        )
+        if self._stop.is_set():
+            return
+        try:
+            self._udp_sock.sendto(
+                packet,
+                udp_target_tuple(
+                    self._udp_sock, self._peer_addr[0], self._peer_addr[1]
+                ),
+            )
+        except OSError:
+            if self._stop.is_set():
+                return
+            raise
 
     def _send_transport_udp(
         self, packet: bytes, peer_addr: tuple[str, int] | None = None
     ) -> None:
         if self._udp_sock is None:
+            if self._stop.is_set():
+                return
             raise RuntimeError("RB UDP tunnel requires a UDP socket")
-        target = peer_addr or self._transport_peer_addr
-        self._udp_sock.sendto(
-            packet, udp_target_tuple(self._udp_sock, target[0], target[1])
-        )
+        if self._stop.is_set():
+            return
+        try:
+            target = peer_addr or self._transport_peer_addr
+            self._udp_sock.sendto(
+                packet, udp_target_tuple(self._udp_sock, target[0], target[1])
+            )
+        except OSError:
+            if self._stop.is_set():
+                return
+            raise
 
     def _prime_lan_transport(self, *, seq_base: int | None = None) -> None:
         if self._udp_sock is None:
+            if self._stop.is_set():
+                return
             raise RuntimeError("RB UDP tunnel requires a UDP socket")
+        if self._stop.is_set():
+            return
         local_udp_port = self._udp_sock.getsockname()[1]
         for idx, tail_code in enumerate((200, 102)):
             packet = build_p2p_active_packet(
