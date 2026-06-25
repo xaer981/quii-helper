@@ -59,7 +59,7 @@ class MqttP2PBootstrap(MqttBootstrapWaitMixin, MqttBootstrapPublishMixin):
         self._all_messages.put((message.topic, payload))
         self._messages.put(payload)
 
-    def connect(self):
+    def connect(self) -> None:
         self._client.tls_set(
             ca_certs=str(self.config.ca_path),
             certfile=str(self.config.cert_path),
@@ -83,7 +83,7 @@ class MqttP2PBootstrap(MqttBootstrapWaitMixin, MqttBootstrapPublishMixin):
         if not self._connected.wait(self.config.mqtt_timeout):
             raise TimeoutError("MQTT connect timeout")
 
-    def close(self):
+    def close(self) -> None:
         try:
             self._client.loop_stop()
         finally:

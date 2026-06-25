@@ -1,14 +1,15 @@
-from quii_helper.support.lazy import lazy_exports
+"""P2P transport packet helpers."""
 
-_EXPORTS = {
-    "run_p2p_active_handshake": (
-        "quii_helper.protocols.p2p.handshake.active",
-        "run_p2p_active_handshake",
-    ),
-    "run_udp_probe": (
-        "quii_helper.protocols.p2p.probing.udp_probe",
-        "run_udp_probe",
-    ),
-}
+from quii_helper.protocols.p2p.transport.packets import (
+    build_p2p_active_packet,
+    build_p2p_transport_ack,
+    build_p2p_transport_packet,
+    parse_p2p_transport_frame,
+)
 
-__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())
+__all__ = [
+    "build_p2p_active_packet",
+    "build_p2p_transport_ack",
+    "build_p2p_transport_packet",
+    "parse_p2p_transport_frame",
+]

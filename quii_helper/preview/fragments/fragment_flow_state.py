@@ -1,9 +1,12 @@
-﻿from typing import Any
+﻿from collections.abc import Callable
+from typing import Any
 
 from quii_helper.preview.processing.packets.summary import (
     attach_media_frame_summary,
     build_quii_packet_summary,
 )
+
+MediaMessageSink = Callable[[dict], None]
 
 
 def has_decoded_media_frames(decoded: dict) -> bool:
@@ -105,6 +108,8 @@ def record_fragmented_media_decoded(
     blob_len: int,
     source: str,
     meta: dict,
+    media_message_sink: MediaMessageSink | None = None,
+    store_media_messages: bool = True,
 ) -> None:
     if decoded["plausible"]:
         decoded_messages.append(decoded)
@@ -117,7 +122,10 @@ def record_fragmented_media_decoded(
         fragmented_media=decoded.get("fragmented_media", {}),
     )
     if attach_media_frame_summary(summary, decoded):
-        media_messages.append(decoded)
+        if store_media_messages:
+            media_messages.append(decoded)
+        if media_message_sink is not None:
+            media_message_sink(decoded)
     summary_emitter.emit_packet_summary(
         summary, source=source, decoded=decoded
     )

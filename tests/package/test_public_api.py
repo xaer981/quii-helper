@@ -2,9 +2,51 @@ import importlib
 import unittest
 
 import quii_helper
-from quii_helper.support.root_exports import ROOT_EXPORTS
 
-LAZY_EXPORT_PACKAGES = (
+ROOT_PUBLIC_API = [
+    "AutonomousConfig",
+    "Camera",
+    "CameraCaptureError",
+    "CameraCaptureResult",
+    "CameraConnector",
+    "CameraPreviewApplication",
+    "CameraPreviewSession",
+    "DATA_DIR",
+    "DirectKcpQuiiTunnel",
+    "MqttP2PBootstrap",
+    "P2PConnectRequest",
+    "P2PConnectResponse",
+    "PreviewArtifactManager",
+    "PreviewCapturePipeline",
+    "PreviewCaptureSettings",
+    "PreviewOutputWriter",
+    "PreviewPacketProcessor",
+    "PreviewPipelineFactory",
+    "QuiiClient",
+    "RbUdpQuiiTunnel",
+    "RuntimeCredentials",
+    "STREAM_HIGH_QUALITY",
+    "STREAM_LOW_BANDWIDTH",
+    "TcpLiveProbeCapture",
+    "TcpProbeRunner",
+    "TcpSocketTransport",
+    "TunnelPacketStream",
+    "aes_cbc_crypt",
+    "assemble_h264_stream_from_messages",
+    "build_live_keepalive_packet",
+    "build_live_play_packet",
+    "build_live_setup_packet",
+    "create_request_session_id",
+    "create_session_flag",
+    "decode_quii_blob",
+    "open_direct_preview",
+    "resolve_data_path",
+    "resolve_stream_quality",
+    "timestamped_output_base",
+    "write_h264_stream",
+]
+
+EXPORT_PACKAGES = (
     "quii_helper",
     "quii_helper.cloud",
     "quii_helper.device",
@@ -22,6 +64,10 @@ LAZY_EXPORT_PACKAGES = (
     "quii_helper.protocols.rbudp",
     "quii_helper.protocols.tcp",
     "quii_helper.protocols.ust",
+    "quii_helper.streaming",
+    "quii_helper.streaming.h264",
+    "quii_helper.streaming.rtp",
+    "quii_helper.streaming.rtsp",
 )
 
 
@@ -36,12 +82,12 @@ class PublicApiTests(unittest.TestCase):
 
         self.assertEqual([], failures)
 
-    def test_root_all_matches_root_export_map(self) -> None:
-        self.assertEqual(sorted(ROOT_EXPORTS), quii_helper.__all__)
+    def test_root_all_matches_static_public_api(self) -> None:
+        self.assertEqual(ROOT_PUBLIC_API, quii_helper.__all__)
 
-    def test_lazy_export_packages_import_all_symbols(self) -> None:
+    def test_export_packages_import_all_symbols(self) -> None:
         failures = []
-        for package_name in LAZY_EXPORT_PACKAGES:
+        for package_name in EXPORT_PACKAGES:
             package = importlib.import_module(package_name)
             for name in package.__all__:
                 try:
@@ -53,9 +99,18 @@ class PublicApiTests(unittest.TestCase):
 
         self.assertEqual([], failures)
 
+    def test_root_package_uses_static_exports(self) -> None:
+        self.assertFalse(hasattr(quii_helper, "__getattr__"))
+
     def test_camera_high_level_methods_exist(self) -> None:
         camera_cls = quii_helper.Camera
-        for method_name in ("capture", "snapshot", "save_video", "record"):
+        for method_name in (
+            "capture",
+            "snapshot",
+            "save_video",
+            "record",
+            "serve_rtsp",
+        ):
             self.assertTrue(callable(getattr(camera_cls, method_name, None)))
 
 

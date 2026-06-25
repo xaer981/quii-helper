@@ -1,32 +1,21 @@
 """Preview use-case package."""
 
-from quii_helper.support.lazy import lazy_exports
+from quii_helper.preview.pipeline.capture_pipeline import (
+    PreviewCapturePipeline,
+)
+from quii_helper.preview.pipeline.config import (
+    DEFAULT_PREVIEW_CAPTURE_SETTINGS,
+    PreviewCaptureSettings,
+)
+from quii_helper.preview.pipeline.factory import PreviewPipelineFactory
+from quii_helper.preview.pipeline.stream import TunnelPacketStream
+from quii_helper.preview.tools.application import CameraPreviewApplication
 
-_EXPORTS = {
-    "CameraPreviewApplication": (
-        "quii_helper.preview.tools.application",
-        "CameraPreviewApplication",
-    ),
-    "DEFAULT_PREVIEW_CAPTURE_SETTINGS": (
-        "quii_helper.preview.pipeline.config",
-        "DEFAULT_PREVIEW_CAPTURE_SETTINGS",
-    ),
-    "PreviewCapturePipeline": (
-        "quii_helper.preview.pipeline.capture_pipeline",
-        "PreviewCapturePipeline",
-    ),
-    "PreviewCaptureSettings": (
-        "quii_helper.preview.pipeline.config",
-        "PreviewCaptureSettings",
-    ),
-    "PreviewPipelineFactory": (
-        "quii_helper.preview.pipeline.factory",
-        "PreviewPipelineFactory",
-    ),
-    "TunnelPacketStream": (
-        "quii_helper.preview.pipeline.stream",
-        "TunnelPacketStream",
-    ),
-}
-
-__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())
+__all__ = [
+    "CameraPreviewApplication",
+    "DEFAULT_PREVIEW_CAPTURE_SETTINGS",
+    "PreviewCapturePipeline",
+    "PreviewCaptureSettings",
+    "PreviewPipelineFactory",
+    "TunnelPacketStream",
+]

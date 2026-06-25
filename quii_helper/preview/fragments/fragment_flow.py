@@ -127,6 +127,8 @@ class PreviewFragmentFlowMixin:
             blob_len=blob_len,
             source=source,
             meta=meta,
+            media_message_sink=getattr(self, "media_message_sink", None),
+            store_media_messages=getattr(self, "store_media_messages", True),
         )
 
     def fragmented_media_summary(self) -> dict[str, object]:

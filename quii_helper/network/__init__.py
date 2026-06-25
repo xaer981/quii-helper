@@ -95,7 +95,9 @@ def make_dualstack_udp_socket(
         return sock
 
 
-def udp_target_tuple(sock: socket.socket, host: str, port: int):
+def udp_target_tuple(
+    sock: socket.socket, host: str, port: int
+) -> tuple[str, int] | tuple[str, int, int, int]:
     if sock.family == socket.AF_INET6:
         return (f"::ffff:{host}", port, 0, 0)
     return (host, port)

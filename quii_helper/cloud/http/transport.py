@@ -7,7 +7,7 @@ from quii_helper.cloud.config.defaults import CLOUD_COOKIE, CLOUD_COOKIE_JAR
 from quii_helper.support.log import logger
 
 
-def build_cloud_opener():
+def build_cloud_opener() -> urllib.request.OpenerDirector:
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -17,14 +17,16 @@ def build_cloud_opener():
     )
 
 
-def dump_cookie_jar():
+def dump_cookie_jar() -> list[str]:
     cookies = []
     for cookie in CLOUD_COOKIE_JAR:
         cookies.append(f"{cookie.name}={cookie.value}")
     return cookies
 
 
-def request_userauth(xml_body: bytes, *, auth_url: str, debug: bool = False):
+def request_userauth(
+    xml_body: bytes, *, auth_url: str, debug: bool = False
+) -> tuple[ET.Element, str]:
     headers = {
         "Content-Type": "application/xml",
         "Charset": "utf-8",

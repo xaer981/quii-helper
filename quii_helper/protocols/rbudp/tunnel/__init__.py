@@ -1,14 +1,6 @@
-from quii_helper.support.lazy import lazy_exports
+from quii_helper.protocols.rbudp.tunnel.session import (
+    DirectKcpQuiiTunnel,
+    RbUdpQuiiTunnel,
+)
 
-_EXPORTS = {
-    "DirectKcpQuiiTunnel": (
-        "quii_helper.protocols.rbudp.tunnel.session",
-        "DirectKcpQuiiTunnel",
-    ),
-    "RbUdpQuiiTunnel": (
-        "quii_helper.protocols.rbudp.tunnel.session",
-        "RbUdpQuiiTunnel",
-    ),
-}
-
-__all__, __getattr__ = lazy_exports(__name__, _EXPORTS, globals())
+__all__ = ["DirectKcpQuiiTunnel", "RbUdpQuiiTunnel"]

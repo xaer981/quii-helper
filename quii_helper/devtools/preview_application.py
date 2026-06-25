@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from quii_helper.camera import CameraConnector
+from quii_helper.camera.connection.session import CameraConnector
 from quii_helper.config import AutonomousConfig
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,

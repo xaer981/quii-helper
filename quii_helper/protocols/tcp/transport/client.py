@@ -29,7 +29,7 @@ class QuiiClient:
         *,
         use_inner: bool = False,
         transport_factory: TcpTransportFactory = TcpSocketTransport,
-    ):
+    ) -> None:
         self.host = host
         self.port = port
         self.username = username
@@ -47,10 +47,10 @@ class QuiiClient:
             use_inner=use_inner,
         )
 
-    def connect(self, timeout: float = 8.0):
+    def connect(self, timeout: float = 8.0) -> None:
         self.transport.connect(timeout=timeout)
 
-    def close(self):
+    def close(self) -> None:
         self.transport.close()
 
     def recv_exact(self, size: int) -> bytes:
@@ -61,7 +61,7 @@ class QuiiClient:
         self.transport.send_all(packet)
         return packet
 
-    def recv_setup(self) -> dict:
+    def recv_setup(self) -> dict[str, int | bytes]:
         response = self.recv_exact(32)
         status = response[9]
         crypto_mode = response[10]
@@ -90,7 +90,7 @@ class QuiiClient:
             stream_flag=stream_flag,
         )
 
-    def recv_message(self, dump_file: Path | None = None) -> dict:
+    def recv_message(self, dump_file: Path | None = None) -> dict[str, object]:
         header_raw = self.recv_exact(32)
         decoded_header = decode_tcp_header(
             header_raw,
@@ -123,7 +123,7 @@ class QuiiClient:
 
     def probe_live(
         self, dump_file: Path, *, num_messages: int, play_param: int = 1
-    ) -> dict:
+    ) -> dict[str, object]:
         return TcpLiveProbeCapture(
             client=self,
             dump_file=dump_file,

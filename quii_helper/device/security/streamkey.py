@@ -1,9 +1,10 @@
 import xml.etree.ElementTree as ET
+from typing import Any
 
 from quii_helper.device.http.transport import request_cgi
 
 
-def request_streamkey(**kwargs):
+def request_streamkey(**kwargs: Any) -> dict[str, str]:
     result = request_cgi("get.device.streamkey", **kwargs)
     if result["error"] != "0":
         raise RuntimeError(f"device error: {result['error']}")

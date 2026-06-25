@@ -21,6 +21,7 @@ class PackageLayoutTests(unittest.TestCase):
             ("quii_helper", "protocols", "p2p"),
             ("quii_helper", "protocols", "rbudp"),
             ("quii_helper", "protocols", "tcp"),
+            ("quii_helper", "streaming"),
         ]
         for package_root in package_roots:
             with self.subTest(package_root=package_root):

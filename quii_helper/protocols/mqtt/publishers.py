@@ -11,7 +11,7 @@ class MqttBootstrapPublishMixin:
     def _app_topic(self) -> str:
         return f"app/ust/json/{self.config.client_id}"
 
-    def publish_register(self):
+    def publish_register(self) -> None:
         payload = build_ust_register_request(
             client_id=self.config.client_id,
             client_type=self.config.client_type,
@@ -21,11 +21,11 @@ class MqttBootstrapPublishMixin:
         )
         self._client.publish(self._app_topic(), payload.encode("utf-8"), qos=0)
 
-    def publish_unregister(self):
+    def publish_unregister(self) -> None:
         payload = build_ust_unregister_request(client_id=self.config.client_id)
         self._client.publish(self._app_topic(), payload.encode("utf-8"), qos=0)
 
-    def publish_sub_device_state(self):
+    def publish_sub_device_state(self) -> None:
         payload = build_ust_sub_device_state_request(
             client_id=self.config.client_id,
             client_type=self.config.client_type,
@@ -36,7 +36,7 @@ class MqttBootstrapPublishMixin:
         )
         self._client.publish(self._app_topic(), payload.encode("utf-8"), qos=0)
 
-    def publish_p2pconnect(self, request: P2PConnectRequest):
+    def publish_p2pconnect(self, request: P2PConnectRequest) -> None:
         self._client.publish(
             self._app_topic(), request.to_json().encode("utf-8"), qos=0
         )
@@ -48,7 +48,7 @@ class MqttBootstrapPublishMixin:
         public_udp_port: int,
         local_ips: list[str],
         local_udp_port: int,
-    ):
+    ) -> None:
         payload = build_ust_update_netinfo_request(
             client_id=self.config.client_id,
             client_type=self.config.client_type,

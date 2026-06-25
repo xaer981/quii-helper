@@ -243,6 +243,39 @@ class PreviewPacketProcessorStateTests(unittest.TestCase):
         self.assertEqual("0xe1", summary["frame_tag"])
         self.assertEqual(42, summary["frame_len"])
 
+    def test_record_processed_packet_can_stream_media_without_storing(
+        self,
+    ) -> None:
+        decoded_messages = []
+        media_messages = []
+        streamed = []
+        emitter = _FakeEmitter()
+        decoded = _decoded(
+            media_frame={
+                "frame_tag": 0xE1,
+                "frame_len": 42,
+                "frame_stamp": 123,
+                "width": 960,
+                "height": 576,
+            }
+        )
+
+        record_processed_packet(
+            decoded_messages=decoded_messages,
+            media_messages=media_messages,
+            summary_emitter=emitter,
+            summary={},
+            decoded=decoded,
+            source="direct",
+            phase="live",
+            media_message_sink=streamed.append,
+            store_media_messages=False,
+        )
+
+        self.assertEqual([decoded], decoded_messages)
+        self.assertEqual([], media_messages)
+        self.assertEqual([decoded], streamed)
+
     def test_record_processed_packet_does_not_append_flush_media(self) -> None:
         decoded_messages = []
         media_messages = []

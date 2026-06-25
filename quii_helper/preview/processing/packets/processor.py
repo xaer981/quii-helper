@@ -56,6 +56,8 @@ class PreviewPacketProcessor(PreviewFragmentFlowMixin):
     direct_blob_summary_limit: int
     decoded_messages: list[dict] = field(default_factory=list)
     media_messages: list[dict] = field(default_factory=list)
+    media_message_sink: Callable[[dict], None] | None = None
+    store_media_messages: bool = True
     fragmented_media_stats: dict[str, int] = field(default_factory=dict)
     chained_packet_stats: dict[str, int] = field(default_factory=dict)
     quii_packet_buffers: dict[tuple[object, ...], bytes] = field(
@@ -179,6 +181,8 @@ class PreviewPacketProcessor(PreviewFragmentFlowMixin):
             decoded=decoded,
             source=source,
             phase=phase,
+            media_message_sink=self.media_message_sink,
+            store_media_messages=self.store_media_messages,
         )
         return (
             should_stop_packet_processing(

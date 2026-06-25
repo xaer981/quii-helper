@@ -16,6 +16,7 @@ from quii_helper.preview.processing.packets.summary import (
 
 ProcessPacketBlob = Callable[..., tuple[bool, bytes]]
 MessageIndexProvider = Callable[[], int]
+MediaMessageSink = Callable[[dict], None]
 
 
 def process_chained_packet_blob(
@@ -86,12 +87,17 @@ def record_processed_packet(
     decoded: dict,
     source: str,
     phase: str,
+    media_message_sink: MediaMessageSink | None = None,
+    store_media_messages: bool = True,
 ) -> None:
     if decoded["plausible"]:
         decoded_messages.append(decoded)
 
     if phase == "live" and attach_media_frame_summary(summary, decoded):
-        media_messages.append(decoded)
+        if store_media_messages:
+            media_messages.append(decoded)
+        if media_message_sink is not None:
+            media_message_sink(decoded)
 
     summary_emitter.emit_packet_summary(
         summary, source=source, decoded=decoded

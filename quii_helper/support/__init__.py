@@ -1,1 +1,1 @@
-"""Internal support helpers for package exports, logging, and wiring."""
+"""Internal support helpers for logging and wiring."""

@@ -20,7 +20,7 @@ def request_cgi(
     scheme: str = "http",
     passwordencode: str | None = None,
     debug: bool = False,
-):
+) -> dict[str, str]:
     if encrypted:
         security = "usernametoken"
         request_password = get_encrypt_password(username, password, nc)

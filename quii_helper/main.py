@@ -1,10 +1,13 @@
+import time
+
 from quii_helper import Camera
 
-camera = Camera(stream_quality="high", live_newcn=True)
+try:
+    camera = Camera(stream_quality="high", live_newcn=True)
+    with camera.serve_rtsp(port=8554) as stream:
+        print(f"RTSP URL: {stream.url}")
 
-result = camera.capture(
-    duration_seconds=15,
-    render_snapshot=False,
-    render_video=True,
-    stop_when_decodable=False,
-)
+        while True:
+            time.sleep(1)
+except KeyboardInterrupt:
+    pass

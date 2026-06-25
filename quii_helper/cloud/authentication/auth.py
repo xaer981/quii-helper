@@ -24,7 +24,7 @@ def login_cloud(
     app_id: int,
     client_type: int,
     debug: bool = False,
-):
+) -> dict[str, str]:
     _validate_userauth_identity(
         client_id=client_id,
         oem=oem,
@@ -34,7 +34,7 @@ def login_cloud(
     )
     hashed_password = userauth_password(password)
 
-    def content_builder(content: ET.Element):
+    def content_builder(content: ET.Element) -> None:
         ET.SubElement(content, "account").text = account
         ET.SubElement(content, "auth-code").text = ""
         ET.SubElement(content, "ip-region-id").text = str(ip_region_id)
@@ -65,9 +65,9 @@ def get_device_token(
     oem: str,
     app_id: int,
     client_type: int,
-    is_hs_device=None,
+    is_hs_device: object | None = None,
     debug: bool = False,
-):
+) -> dict[str, str]:
     _validate_userauth_identity(
         client_id=client_id,
         oem=oem,
@@ -75,7 +75,7 @@ def get_device_token(
         client_type=client_type,
     )
 
-    def content_builder(content: ET.Element):
+    def content_builder(content: ET.Element) -> None:
         ET.SubElement(content, "device-id").text = device_id
         if is_hs_device is not None:
             ET.SubElement(content, "is-hs-device").text = str(is_hs_device)
