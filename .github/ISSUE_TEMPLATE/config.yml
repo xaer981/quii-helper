@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup and compatibility notes
+    url: https://github.com/xaer981/quii-helper#setup
+    about: Read the setup guide before opening an issue.
+  - name: Compatibility list
+    url: https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md
+    about: Check known devices and report format.

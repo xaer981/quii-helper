@@ -25,6 +25,12 @@ dependencies = [
     "python-dotenv>=1.2.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/xaer981/quii-helper"
+Repository = "https://github.com/xaer981/quii-helper"
+Issues = "https://github.com/xaer981/quii-helper/issues"
+Changelog = "https://github.com/xaer981/quii-helper/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 dev = [
     "black==25.1.0",

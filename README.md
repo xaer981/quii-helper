@@ -1,4 +1,4 @@
-# QUII Helper 📷
+# QUII Helper
 
 Python helpers for opening a QUII camera preview, receiving stream packets,
 decoding media payloads, and saving snapshots or MP4 recordings.
@@ -17,6 +17,9 @@ often have TCP port `34567` open.
 Known working devices:
 
 - `Tantos Marilyn Wi-Fi s`
+
+See `COMPATIBILITY.md` for a compatibility checklist and device report
+template.
 
 ## Setup
 
@@ -171,6 +174,12 @@ callback logs the RTSP URL after the camera has started producing media:
 with camera.serve_rtsp(port=8554) as rtsp_stream:
     rtsp_stream.wait()
 ```
+
+Runnable examples are available in `examples/`:
+
+- `examples/snapshot.py`
+- `examples/save_video.py`
+- `examples/serve_rtsp.py`
 
 `snapshot(timeout_seconds=...)` waits up to that many seconds for a decodable
 frame. `save_video(duration_seconds=...)` reads the live stream for the

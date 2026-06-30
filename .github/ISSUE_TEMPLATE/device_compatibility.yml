@@ -1,0 +1,66 @@
+name: Device compatibility
+description: Report a device that works or fails with quii-helper.
+title: "[Device]: "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste secrets, `.env` contents, private keys, tokens, or raw APK assets.
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      placeholder: "Tantos Marilyn Wi-Fi s"
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      placeholder: "Unknown"
+    validations:
+      required: false
+  - type: input
+    id: app
+    attributes:
+      label: Mobile app and version
+      placeholder: "vHome 2.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: header
+    attributes:
+      label: "Does the device return `Server: Qualvision -HTTPServer`?"
+      options:
+        - "Yes"
+        - "No"
+        - "Not checked"
+    validations:
+      required: true
+  - type: dropdown
+    id: port
+    attributes:
+      label: Is TCP port 34567 open?
+      options:
+        - "Yes"
+        - "No"
+        - "Not checked"
+    validations:
+      required: true
+  - type: checkboxes
+    id: features
+    attributes:
+      label: Tested features
+      options:
+        - label: Snapshot works
+        - label: MP4 capture works
+        - label: RTSP serving works
+        - label: Cloud/P2P login works
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes and redacted logs
+      render: text
+    validations:
+      required: false
