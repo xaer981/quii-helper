@@ -7,6 +7,17 @@ Runtime files are written under `data/`. The repository keeps `data/.gitkeep`,
 while generated captures, logs, binaries, and JSONL diagnostics are ignored by
 git.
 
+## Compatibility And Discovery
+
+This package targets QUII/Qualvision-based cameras and video intercoms used by
+the `vHome 2.2` mobile application. Devices in this family may expose a web
+server that responds with the HTTP header `Server: Qualvision -HTTPServer` and
+often have TCP port `34567` open.
+
+Known working devices:
+
+- `Tantos Marilyn Wi-Fi s`
+
 ## Setup
 
 Before running the package on a new vendor app, extract the APK with `jadx`,
