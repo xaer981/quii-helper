@@ -1,4 +1,4 @@
-# QUII Helper
+# QUII Helper 📷
 
 Python helpers for opening a QUII camera preview, receiving stream packets,
 decoding media payloads, and saving snapshots or MP4 recordings.
@@ -223,3 +223,7 @@ option should only be used for diagnostics against older captured behavior.
 - `quii_helper.protocols.ust`: UST message/credential crypto helpers.
 - `quii_helper.io`: runtime output paths and JSONL writer.
 - `quii_helper.diagnostics`: payload/tail diagnostic helpers.
+
+<p align=center>
+  <a href="url"><img src="https://github.com/xaer981/xaer981/blob/main/main_cat.gif" align="center" height="40" width="128"></a>
+</p>
