@@ -15,10 +15,11 @@ keys, or app identity values.
 
 Required files from the extracted APK:
 
-- Copy `assets/ca.pem` to `assets/ca.pem`.
-- Copy `assets/client.pem` to `assets/client.pem`.
-- Copy `assets/client.txt` to `assets/client.txt`.
-- Copy `lib/arm64-v8a/libqv-p2p-v2.so` to `assets/libqv-p2p-v2.so`.
+- Copy `<extracted-apk>/assets/ca.pem` to `assets/ca.pem`.
+- Copy `<extracted-apk>/assets/client.pem` to `assets/client.pem`.
+- Copy `<extracted-apk>/assets/client.txt` to `assets/client.txt`.
+- Copy `<extracted-apk>/lib/arm64-v8a/libqv-p2p-v2.so` to
+  `assets/libqv-p2p-v2.so`.
 
 `lib/armeabi-v7a/libqv-p2p-v2.so` is not recommended for the current code path
 because the UST table offsets were matched against the arm64 library.
@@ -150,6 +151,14 @@ Optional explicit output names are normalized into `data/`:
 ```python
 camera.snapshot(output_path="front-door.jpg")
 camera.save_video(10, output_path="front-door.mp4")
+```
+
+RTSP serving keeps running until the context is closed. The default status
+callback logs the RTSP URL after the camera has started producing media:
+
+```python
+with camera.serve_rtsp(port=8554) as rtsp_stream:
+    rtsp_stream.wait()
 ```
 
 `snapshot(timeout_seconds=...)` waits up to that many seconds for a decodable

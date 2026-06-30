@@ -1,0 +1,11 @@
+title = "quii-helper gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow deterministic non-secret test fixture keys."
+regexTarget = "line"
+regexes = [
+  '''data_encode_key\s*=\s*"0123456789abcdef0123456789abcdef"''',
+]

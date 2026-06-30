@@ -1,6 +1,9 @@
 __pycache__/
 venv/
 .env
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # Extracted APK certs, private keys, and native libraries must stay local.
 assets/*
@@ -17,3 +20,5 @@ data/*
 *.h264
 *.jsonl
 *.log
+gitleaks-*.json
+gitleaks-*.sarif

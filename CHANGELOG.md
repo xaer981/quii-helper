@@ -13,3 +13,6 @@ being stabilized.
 - Added explicit environment settings loading.
 - Added explicit TLS verification configuration and debug-log redaction.
 - Added initial packaging and quality-tooling configuration.
+- Added pre-release CI smoke checks and RTSP usage documentation.
+- Added Gitleaks configuration and CI secret scanning.
+- Pinned development tool versions used by CI.

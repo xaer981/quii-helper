@@ -24,6 +24,9 @@ python -m black --check .
 python -m mypy
 python -m mypy quii_helper --strict --no-incremental
 python -m pytest
+python -m pip check
+python -c "from quii_helper import Camera; print(Camera.__name__)"
+go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config .gitleaks.toml --redact --verbose .
 ```
 
 If you changed packet handling, RBUDP, QUII decoding, or media assembly, add a

@@ -9,7 +9,9 @@ Use this checklist before publishing a public release.
 - Run `python -m mypy`.
 - Run `python -m mypy quii_helper --strict --no-incremental`.
 - Run `python -m pytest`.
+- Run `python -m pip check`.
 - Run package import smoke tests, including `from quii_helper import Camera`.
+- Run `go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config .gitleaks.toml --redact --verbose .`.
 - Verify any protocol changes against packet fixtures and native/original-client
   behavior.
 

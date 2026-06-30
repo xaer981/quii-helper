@@ -296,9 +296,9 @@ class Camera:
 
         Example:
             ```python
-            with camera.serve_rtsp(port=8554) as stream:
-                print(stream.url)
-                stream.wait()
+            with camera.serve_rtsp(port=8554) as rtsp_stream:
+                # The status callback logs the URL after media is available.
+                rtsp_stream.wait()
             ```
 
         Args:
