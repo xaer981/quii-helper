@@ -1,5 +1,4 @@
 import socket
-import unittest
 
 from quii_helper.streaming.rtsp import RtspH264Server
 
@@ -23,14 +22,11 @@ def _rtsp_request(
     return ("\r\n".join(lines) + "\r\n\r\n").encode("ascii")
 
 
-class RtspH264ServerTests(unittest.TestCase):
+class RtspH264ServerTests:
     def test_wildcard_bind_url_uses_loopback_connect_host(self) -> None:
         server = RtspH264Server(host="0.0.0.0", port=0).start()
         try:
-            self.assertEqual(
-                f"rtsp://127.0.0.1:{server.port}/live",
-                server.url,
-            )
+            assert f"rtsp://127.0.0.1:{server.port}/live" == (server.url)
         finally:
             server.close()
 
@@ -43,7 +39,7 @@ class RtspH264ServerTests(unittest.TestCase):
             with socket.create_connection(("127.0.0.1", server.port)) as sock:
                 sock.settimeout(2.0)
                 sock.sendall(_rtsp_request("OPTIONS", uri, 1))
-                self.assertIn(b"200 OK", _recv_until(sock, b"\r\n\r\n"))
+                assert b"200 OK" in _recv_until(sock, b"\r\n\r\n")
 
                 sock.sendall(
                     _rtsp_request(
@@ -54,7 +50,7 @@ class RtspH264ServerTests(unittest.TestCase):
                     )
                 )
                 describe = _recv_until(sock, b"a=control:trackID=0\r\n")
-                self.assertIn(b"application/sdp", describe)
+                assert b"application/sdp" in describe
 
                 sock.sendall(
                     _rtsp_request(
@@ -65,19 +61,19 @@ class RtspH264ServerTests(unittest.TestCase):
                     )
                 )
                 setup = _recv_until(sock, b"\r\n\r\n")
-                self.assertIn(b"interleaved=2-3", setup)
+                assert b"interleaved=2-3" in setup
 
                 sock.sendall(_rtsp_request("PLAY", uri, 4))
-                self.assertIn(b"200 OK", _recv_until(sock, b"\r\n\r\n"))
+                assert b"200 OK" in _recv_until(sock, b"\r\n\r\n")
 
                 server.publish(b"\x00\x00\x00\x01\x65idr")
                 frame_header = sock.recv(4)
-                self.assertEqual(b"$", frame_header[:1])
-                self.assertEqual(2, frame_header[1])
+                assert b"$" == frame_header[:1]
+                assert 2 == frame_header[1]
                 frame_len = int.from_bytes(frame_header[2:4], "big")
                 frame = sock.recv(frame_len)
-                self.assertEqual(0xE0, frame[1])
-                self.assertEqual(b"\x65idr", frame[12:])
+                assert 0xE0 == frame[1]
+                assert b"\x65idr" == frame[12:]
         finally:
             server.close()
 
@@ -109,19 +105,15 @@ class RtspH264ServerTests(unittest.TestCase):
                         )
                     )
                     setup = _recv_until(sock, b"\r\n\r\n")
-                    self.assertIn(b"200 OK", setup)
-                    self.assertIn(b"server_port=", setup)
+                    assert b"200 OK" in setup
+                    assert b"server_port=" in setup
 
                     sock.sendall(_rtsp_request("PLAY", uri, 2))
-                    self.assertIn(b"200 OK", _recv_until(sock, b"\r\n\r\n"))
+                    assert b"200 OK" in _recv_until(sock, b"\r\n\r\n")
 
                     server.publish(b"\x00\x00\x00\x01\x65idr")
                     packet, _address = rtp_sock.recvfrom(2048)
-                    self.assertEqual(0xE0, packet[1])
-                    self.assertEqual(b"\x65idr", packet[12:])
+                    assert 0xE0 == packet[1]
+                    assert b"\x65idr" == packet[12:]
         finally:
             server.close()
-
-
-if __name__ == "__main__":
-    unittest.main()

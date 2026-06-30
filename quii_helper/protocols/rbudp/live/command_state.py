@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Any
 
 
 def build_native_play_profile(
@@ -34,7 +35,7 @@ def build_quii_play_common_args(
     seq: int,
     profile: dict[str, int],
     data_encode_key: bytes | str,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "src_id": src_id,
         "dest_id": dest_id,
@@ -52,10 +53,10 @@ def build_quii_play_common_args(
 
 
 def select_live_command_lane_destinations(
-    pairs: Sequence[tuple[dict, int]],
+    pairs: Sequence[tuple[dict[str, Any], int]],
     *,
     active_src_id: int,
-) -> list[tuple[dict, int]]:
+) -> list[tuple[dict[str, Any], int]]:
     active_pairs = [
         (lane, dest_id)
         for lane, dest_id in pairs

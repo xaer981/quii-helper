@@ -1,3 +1,5 @@
+from quii_helper.support.errors import ConfigurationError
+
 STREAM_HIGH_QUALITY = 1
 STREAM_LOW_BANDWIDTH = 2
 
@@ -25,7 +27,9 @@ REQUIRED_CAMERA_APP_FIELDS = {
 
 def resolve_stream_quality(value: str | int) -> int:
     if isinstance(value, bool):
-        raise ValueError("stream quality must be a stream id or profile name")
+        raise ConfigurationError(
+            "stream quality must be a stream id or profile name"
+        )
     if isinstance(value, int):
         stream = value
     else:
@@ -34,18 +38,18 @@ def resolve_stream_quality(value: str | int) -> int:
             stream = STREAM_QUALITY_ALIASES[key]
         except KeyError as exc:
             names = ", ".join(sorted(STREAM_QUALITY_ALIASES))
-            raise ValueError(
+            raise ConfigurationError(
                 f"unknown stream quality {value!r}; expected one of: {names}"
             ) from exc
     if stream <= 0:
-        raise ValueError("stream id must be greater than zero")
+        raise ConfigurationError("stream id must be greater than zero")
     return stream
 
 
 def validate_camera_app_config(config: object) -> None:
     missing = missing_camera_app_fields(config)
     if missing:
-        raise ValueError(
+        raise ConfigurationError(
             "missing required app-specific camera configuration: "
             f"{', '.join(missing)}. "
             "Extract these values from the decompiled vendor app and put "

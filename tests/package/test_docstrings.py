@@ -1,5 +1,4 @@
 import inspect
-import unittest
 
 from quii_helper import Camera
 from quii_helper.camera.outputs.results import CameraCaptureResult
@@ -28,15 +27,11 @@ DOCUMENTED_OBJECTS = (
 )
 
 
-class PublicDocstringTests(unittest.TestCase):
+class PublicDocstringTests:
     def test_high_level_api_has_docstrings(self) -> None:
         missing = [
             obj.__qualname__
             for obj in DOCUMENTED_OBJECTS
             if not inspect.getdoc(obj)
         ]
-        self.assertEqual([], missing)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert [] == missing

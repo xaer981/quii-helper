@@ -2,9 +2,11 @@ import ssl
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+from typing import cast
 
 from quii_helper.device.http.xml import build_request_xml
 from quii_helper.device.security.auth import get_encrypt_password
+from quii_helper.support import redaction
 from quii_helper.support.log import logger
 
 
@@ -20,10 +22,11 @@ def request_cgi(
     scheme: str = "http",
     passwordencode: str | None = None,
     debug: bool = False,
+    verify_tls: bool = True,
 ) -> dict[str, str]:
     if encrypted:
         security = "usernametoken"
-        request_password = get_encrypt_password(username, password, nc)
+        request_password = get_encrypt_password(username, password, str(nc))
     else:
         security = "username"
         request_password = password
@@ -42,6 +45,7 @@ def request_cgi(
         port=port,
         scheme=scheme,
         debug=debug,
+        verify_tls=verify_tls,
     )
     if debug:
         _debug_exchange(xml_body, data)
@@ -65,6 +69,7 @@ def _post_cgi_xml(
     port: int,
     scheme: str,
     debug: bool,
+    verify_tls: bool,
 ) -> bytes:
     req = urllib.request.Request(
         f"{scheme}://{host}:{port}/tdkcgi",
@@ -75,13 +80,15 @@ def _post_cgi_xml(
 
     context = None
     if scheme == "https":
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
+        context = (
+            ssl.create_default_context()
+            if verify_tls
+            else ssl._create_unverified_context()
+        )
 
     try:
         with urllib.request.urlopen(req, timeout=10, context=context) as resp:
-            return resp.read()
+            return cast(bytes, resp.read())
     except urllib.error.HTTPError as exc:
         data = exc.read()
         if debug:
@@ -92,13 +99,19 @@ def _post_cgi_xml(
         if debug:
             logger.debug(
                 "Request XML:\n{}",
-                xml_body.decode("utf-8", errors="replace"),
+                redaction.redact_xml_text(
+                    xml_body.decode("utf-8", errors="replace")
+                ),
             )
         raise
 
 
 def _debug_exchange(xml_body: bytes, data: bytes) -> None:
     logger.debug(
-        "Request XML:\n{}", xml_body.decode("utf-8", errors="replace")
+        "Request XML:\n{}",
+        redaction.redact_xml_text(xml_body.decode("utf-8", errors="replace")),
     )
-    logger.debug("Raw response:\n{}", data.decode("utf-8", errors="replace"))
+    logger.debug(
+        "Raw response:\n{}",
+        redaction.redact_xml_text(data.decode("utf-8", errors="replace")),
+    )

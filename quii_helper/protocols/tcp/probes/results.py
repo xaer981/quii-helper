@@ -1,5 +1,6 @@
 from typing import Any
 
+from quii_helper.models.capture import MediaArtifactSummary
 from quii_helper.protocols.tcp.probes.candidates import (
     QuiiCredentialCandidate,
     QuiiStreamCombo,
@@ -23,7 +24,7 @@ def tcp_probe_attempt_summary(
     combo: QuiiStreamCombo,
     credential: QuiiCredentialCandidate,
     result: dict[str, Any],
-    extracted: dict[str, Any] | None,
+    extracted: MediaArtifactSummary | None,
 ) -> dict[str, Any]:
     return {
         "channel": combo.channel,
@@ -45,7 +46,7 @@ def tcp_probe_compact_summary(
     combo: QuiiStreamCombo,
     credential: QuiiCredentialCandidate,
     result: dict[str, Any],
-    extracted: dict[str, Any] | None,
+    extracted: MediaArtifactSummary | None,
 ) -> dict[str, Any]:
     return {
         "channel": combo.channel,

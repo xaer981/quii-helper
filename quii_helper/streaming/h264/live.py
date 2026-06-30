@@ -1,5 +1,6 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from quii_helper.media.frames.assembler_state import (
     MEDIA_PACKET_TYPES,
@@ -7,6 +8,7 @@ from quii_helper.media.frames.assembler_state import (
     frame_info_from_parsed_frame,
 )
 from quii_helper.media.frames.parsing import QuiiCFramePack
+from quii_helper.models.capture import MediaFrameSummary
 
 AccessUnitSink = Callable[[bytes], None]
 
@@ -15,10 +17,10 @@ AccessUnitSink = Callable[[bytes], None]
 class H264LiveAssembler:
     sink: AccessUnitSink | None = None
     packer: QuiiCFramePack = field(default_factory=QuiiCFramePack)
-    frame_info: list[dict] = field(default_factory=list)
+    frame_info: list[MediaFrameSummary] = field(default_factory=list)
     access_unit_count: int = 0
 
-    def feed_message(self, decoded: dict) -> list[bytes]:
+    def feed_message(self, decoded: Mapping[str, Any]) -> list[bytes]:
         header = decoded.get("header")
         if header is None or header.packet_type not in MEDIA_PACKET_TYPES:
             return []
@@ -40,7 +42,7 @@ class H264LiveAssembler:
         return access_units
 
     @property
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, Any]:
         return {
             "frames": len(self.frame_info),
             "access_units": self.access_unit_count,

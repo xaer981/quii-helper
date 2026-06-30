@@ -1,7 +1,9 @@
 import queue
 import time
+from collections.abc import Callable
 from typing import Any
 
+from quii_helper.config import AutonomousConfig
 from quii_helper.protocols.p2p.codec.json_codec import (
     parse_p2pconnect_response,
     parse_sub_device_state_response,
@@ -12,7 +14,26 @@ from quii_helper.protocols.p2p.models import (
 )
 
 
-class MqttBootstrapWaitMixin:
+class MqttBootstrapWaiter:
+    """Waits for MQTT bootstrap responses and device state changes."""
+
+    def __init__(
+        self,
+        *,
+        config: AutonomousConfig,
+        messages: "queue.Queue[dict[str, Any]]",
+        all_messages: "queue.Queue[tuple[str, dict[str, Any]]]",
+        publish_sub_device_state: Callable[[], None],
+    ):
+        self.config: AutonomousConfig = config
+        self._messages: queue.Queue[dict[str, Any]] = messages
+        self._all_messages: queue.Queue[tuple[str, dict[str, Any]]] = (
+            all_messages
+        )
+        self._publish_sub_device_state: Callable[[], None] = (
+            publish_sub_device_state
+        )
+
     def wait_for_command(
         self, command: str, timeout: float
     ) -> tuple[str, dict[str, Any]]:
@@ -47,7 +68,7 @@ class MqttBootstrapWaitMixin:
         while time.time() < deadline:
             now = time.time()
             if now >= next_retry_at:
-                self.publish_sub_device_state()
+                self._publish_sub_device_state()
                 next_retry_at = now + retry_interval
             remaining = min(max(0.1, deadline - now), retry_interval)
             try:

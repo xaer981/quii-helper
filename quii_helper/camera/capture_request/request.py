@@ -1,5 +1,6 @@
 ﻿from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any, cast
 
 from quii_helper.camera.capture_request.request_state import (
     capture_settings_overrides,
@@ -28,7 +29,11 @@ def resolve_capture_settings(
         save_diagnostic_artifacts=save_diagnostic_artifacts,
         stop_when_decodable=stop_when_decodable,
     )
-    return replace(preview_settings, **values) if values else preview_settings
+    return (
+        replace(preview_settings, **cast(Any, values))
+        if values
+        else preview_settings
+    )
 
 
 def resolve_capture_request(

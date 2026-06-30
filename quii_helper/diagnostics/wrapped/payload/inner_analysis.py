@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.diagnostics.wrapped.payload.probe import (
     analyze_payload_embedded_probe,
 )
@@ -10,8 +12,8 @@ from quii_helper.protocols.quii.blob import (
 )
 
 
-def analyze_partial_wrapped_inner(blob: bytes, key: str) -> dict:
-    analysis: dict[str, object] = {
+def analyze_partial_wrapped_inner(blob: bytes, key: str) -> dict[str, Any]:
+    analysis: dict[str, Any] = {
         "blob_len": len(blob),
         "blob_prefix": blob[:96].hex(),
     }

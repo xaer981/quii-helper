@@ -1,5 +1,7 @@
 ﻿from dataclasses import dataclass
+from typing import Any
 
+from quii_helper.models.packets import DecodedQuiiMessage, PacketMeta
 from quii_helper.preview.outputs.manager.artifacts import (
     PreviewArtifactManager,
 )
@@ -12,8 +14,8 @@ from quii_helper.preview.processing.payloads.diagnostics import (
 
 @dataclass(frozen=True)
 class PreviewPacketDiagnostics:
-    decode_candidates: list[dict]
-    wrapped_tail_analysis: dict | None
+    decode_candidates: list[dict[str, Any]]
+    wrapped_tail_analysis: dict[str, Any] | None
 
 
 def collect_packet_diagnostics(
@@ -21,10 +23,10 @@ def collect_packet_diagnostics(
     artifacts: PreviewArtifactManager,
     blob: bytes,
     key: str,
-    decoded: dict,
+    decoded: DecodedQuiiMessage,
     message_index: int,
     source: str,
-    meta: dict,
+    meta: PacketMeta,
     phase: str,
 ) -> PreviewPacketDiagnostics:
     if not artifacts.diagnostics_enabled:

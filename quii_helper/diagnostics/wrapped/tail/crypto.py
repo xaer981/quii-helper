@@ -1,19 +1,21 @@
+from typing import Any
+
 from quii_helper.protocols.quii.crypto import aes_cbc_crypt
 
 
 def extract_wrapped_quii_tail(
-    blob: bytes, decoded: dict
+    blob: bytes, decoded: dict[str, Any]
 ) -> tuple[bytes, bytes, int]:
     header = decoded["header"]
     consumed = 32 + header.payload_size
     if len(blob) <= consumed:
         return b"", b"", consumed
     tail = blob[consumed:]
-    return tail, tail.rstrip(b"\xBB"), consumed
+    return tail, tail.rstrip(b"\xbb"), consumed
 
 
 def decrypt_wrapped_quii_tail_bytes(
-    blob: bytes, key: str, decoded: dict
+    blob: bytes, key: str, decoded: dict[str, Any]
 ) -> bytes:
     _tail, tail_trimmed, _consumed = extract_wrapped_quii_tail(blob, decoded)
     decryptable_len = len(tail_trimmed) - (len(tail_trimmed) % 16)

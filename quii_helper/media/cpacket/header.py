@@ -1,4 +1,6 @@
-﻿from quii_helper.media.cpacket.constants import (
+from typing import Any
+
+from quii_helper.media.cpacket.constants import (
     CPACKET_HEADER_LEN,
     CPACKET_START_PREFIX,
     CPACKET_START_TYPE_MAX,
@@ -15,9 +17,9 @@ def cpacket_codec_name(codec: int) -> str:
     return f"codec_{codec}"
 
 
-def parse_cpacket_header(blob: bytes, offset: int = 0) -> dict:
+def parse_cpacket_header(blob: bytes, offset: int = 0) -> dict[str, Any]:
     available = max(0, len(blob) - offset)
-    result: dict[str, object] = {
+    result: dict[str, Any] = {
         "offset": offset,
         "available": available,
         "complete_header": available >= CPACKET_HEADER_LEN,
@@ -97,7 +99,7 @@ def parse_cpacket_header(blob: bytes, offset: int = 0) -> dict:
 
 def _analyze_cpacket_media_payload(
     payload: bytes, *, is_h264: bool
-) -> dict[str, object]:
+) -> dict[str, Any]:
     if not is_h264 or not payload:
         return {}
     start4 = payload.find(b"\x00\x00\x00\x01")

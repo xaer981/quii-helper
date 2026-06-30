@@ -1,6 +1,8 @@
 from dataclasses import replace
+from typing import Any, cast
 
 from quii_helper.config import AutonomousConfig
+from quii_helper.support.errors import ConfigurationError
 
 
 def resolve_runtime_config(
@@ -17,6 +19,7 @@ def resolve_runtime_config(
     app_id: int | None,
     client_type: int | None,
     ip_region_id: int | None,
+    tls_verify: bool | None = None,
 ) -> AutonomousConfig:
     if isinstance(config, AutonomousConfig):
         resolved = config
@@ -32,7 +35,7 @@ def resolve_runtime_config(
         and cloud_account is not None
         and cloud_username != cloud_account
     ):
-        raise ValueError(
+        raise ConfigurationError(
             "pass either cloud_username or cloud_account, not both"
         )
 
@@ -49,10 +52,11 @@ def resolve_runtime_config(
             "app_id": app_id,
             "client_type": client_type,
             "ip_region_id": ip_region_id,
+            "tls_verify": tls_verify,
         }.items()
         if value is not None
     }
-    return replace(resolved, **values) if values else resolved
+    return replace(resolved, **cast(Any, values)) if values else resolved
 
 
 def validate_runtime_config(config: AutonomousConfig) -> None:
@@ -66,6 +70,6 @@ def validate_runtime_config(config: AutonomousConfig) -> None:
         if not value
     ]
     if missing:
-        raise ValueError(
+        raise ConfigurationError(
             f"missing required camera credentials: {', '.join(missing)}"
         )

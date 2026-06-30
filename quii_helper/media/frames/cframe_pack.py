@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.media.cpacket import (
     CPACKET_MAX_FRAME_LEN,
     cpacket_frame_len,
@@ -28,8 +30,8 @@ class QuiiCFramePack:
         self._fragment_count = 0
         self.stats: dict[str, int] = initial_cframe_pack_stats()
 
-    def feed(self, payload: bytes) -> list[dict]:
-        frames: list[dict] = []
+    def feed(self, payload: bytes) -> list[dict[str, Any]]:
+        frames: list[dict[str, Any]] = []
         offset = 0
         while offset < len(payload):
             if starts_cpacket(payload, offset):

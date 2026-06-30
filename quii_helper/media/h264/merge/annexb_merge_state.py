@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.media.merge.bytes import suffix_prefix_overlap
 
 MIN_ANNEXB_STREAM_OVERLAP = 16
@@ -6,9 +8,9 @@ MergeDecision = tuple[bytes, str]
 
 def false_positive_or_degraded_merge_decision(
     left: bytes,
-    left_analysis: dict,
+    left_analysis: dict[str, Any],
     right: bytes,
-    right_analysis: dict,
+    right_analysis: dict[str, Any],
 ) -> MergeDecision | None:
     if is_false_positive_sps_only(
         left_analysis
@@ -65,9 +67,9 @@ def overlap_merge_decision(
 
 def sps_only_tie_break_decision(
     left: bytes,
-    left_analysis: dict,
+    left_analysis: dict[str, Any],
     right: bytes,
-    right_analysis: dict,
+    right_analysis: dict[str, Any],
 ) -> MergeDecision | None:
     if is_sps_only(left_analysis) and is_sps_only(right_analysis):
         return (
@@ -76,7 +78,7 @@ def sps_only_tie_break_decision(
     return None
 
 
-def is_sps_only(analysis: dict) -> bool:
+def is_sps_only(analysis: dict[str, Any]) -> bool:
     counts = analysis.get("counts", {})
     return (
         not analysis.get("has_vcl")
@@ -86,12 +88,12 @@ def is_sps_only(analysis: dict) -> bool:
     )
 
 
-def is_degraded_sps_only(analysis: dict) -> bool:
+def is_degraded_sps_only(analysis: dict[str, Any]) -> bool:
     return (
         is_sps_only(analysis)
         and int(analysis.get("counts", {}).get("sps", 0)) > 1
     )
 
 
-def is_false_positive_sps_only(analysis: dict) -> bool:
+def is_false_positive_sps_only(analysis: dict[str, Any]) -> bool:
     return bool(analysis.get("false_positive_sps_only"))

@@ -1,3 +1,5 @@
+from quii_helper.models.capture import H264AnalysisSummary, H264NalUnitSummary
+
 NAL_TYPE_NAMES = {
     1: "non_idr_slice",
     5: "idr_slice",
@@ -25,9 +27,9 @@ def find_start_codes(buf: bytes) -> list[tuple[int, int]]:
     return starts
 
 
-def analyze_nal_units(stream: bytes) -> dict:
+def analyze_nal_units(stream: bytes) -> H264AnalysisSummary:
     starts = find_start_codes(stream)
-    nal_units: list[dict] = []
+    nal_units: list[H264NalUnitSummary] = []
     counts: dict[str, int] = {}
     largest_payload_len = 0
     for idx, (start, sc_len) in enumerate(starts):

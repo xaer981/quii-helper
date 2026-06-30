@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 from quii_helper.camera.settings.config_state import (
     non_negative_float,
@@ -34,6 +35,7 @@ def resolve_camera_config(
     live_keepalive_interval: float | None,
     play_sync_iterations: int | None,
     enable_play_probes: bool | None,
+    tls_verify: bool | None,
     channel: int | None,
     stream: int | None,
     stream_quality: str | int | None,
@@ -88,10 +90,12 @@ def resolve_camera_config(
         )
     if enable_play_probes is not None:
         values["enable_play_probes"] = bool(enable_play_probes)
+    if tls_verify is not None:
+        values["tls_verify"] = bool(tls_verify)
     if channel is not None:
         values["channel"] = channel
     if stream is not None:
         values["stream"] = resolve_stream_quality(stream)
     if stream_quality is not None:
         values["stream"] = resolve_stream_quality(stream_quality)
-    return replace(config, **values) if values else config
+    return replace(config, **cast(Any, values)) if values else config

@@ -1,10 +1,18 @@
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from quii_helper.models.capture import (
+    H264AnalysisSummary,
+    MediaCollectionSummary,
+    MediaNalSample,
+)
+
 MEDIA_PACKET_TYPES = {0xA0, 0xA1, 0xA2, 0xA3}
 
 
-def media_decrypt_stats(media_messages: Iterable[Mapping[str, Any]]) -> dict:
+def media_decrypt_stats(
+    media_messages: Iterable[Mapping[str, Any]],
+) -> MediaCollectionSummary:
     media_decrypt_packets = 0
     media_decrypt_bytes = 0
     media_decrypt_candidate_packets = 0
@@ -27,22 +35,25 @@ def media_decrypt_stats(media_messages: Iterable[Mapping[str, Any]]) -> dict:
     }
 
 
-def frame_nal_sample(frame: Mapping[str, Any], nal: Mapping[str, Any]) -> dict:
+def frame_nal_sample(
+    frame: Mapping[str, Any],
+    nal: Mapping[str, Any],
+) -> MediaNalSample:
     return {
         "frame_tag": hex(int(frame.get("frame_tag", 0))),
         "frame_len": int(frame.get("frame_len", 0)),
         "cframe_fragments": int(frame.get("cframe_fragments", 0)),
         "nal": {
             "counts": nal.get("counts", {}),
-            "has_sps": nal.get("has_sps"),
-            "has_pps": nal.get("has_pps"),
-            "has_idr": nal.get("has_idr"),
+            "has_sps": bool(nal.get("has_sps")),
+            "has_pps": bool(nal.get("has_pps")),
+            "has_idr": bool(nal.get("has_idr")),
             "nal_units": nal.get("nal_units", [])[:3],
         },
     }
 
 
-def decoded_media_frames(decoded: Mapping[str, Any]) -> list[dict]:
+def decoded_media_frames(decoded: Mapping[str, Any]) -> list[dict[str, Any]]:
     frames = decoded.get("media_frames")
     if isinstance(frames, list):
         return [frame for frame in frames if isinstance(frame, dict)]
@@ -50,7 +61,7 @@ def decoded_media_frames(decoded: Mapping[str, Any]) -> list[dict]:
     return [frame] if isinstance(frame, dict) else []
 
 
-def initial_nal_collection_state() -> dict:
+def initial_nal_collection_state() -> MediaCollectionSummary:
     return {
         "counts": {},
         "has_sps": False,
@@ -63,9 +74,9 @@ def initial_nal_collection_state() -> dict:
 
 
 def record_frame_nal_summary(
-    state: dict,
+    state: MediaCollectionSummary,
     frame: Mapping[str, Any],
-    nal: Mapping[str, Any],
+    nal: H264AnalysisSummary,
     *,
     sample_limit: int = 6,
 ) -> None:
@@ -86,7 +97,9 @@ def record_frame_nal_summary(
         nal_samples.append(frame_nal_sample(frame, nal))
 
 
-def nal_collection_payload(state: Mapping[str, Any]) -> dict:
+def nal_collection_payload(
+    state: Mapping[str, Any],
+) -> MediaCollectionSummary:
     has_sps = bool(state["has_sps"])
     has_pps = bool(state["has_pps"])
     has_vcl = bool(state["has_vcl"])
@@ -94,7 +107,7 @@ def nal_collection_payload(state: Mapping[str, Any]) -> dict:
         "keyframes": state["keyframes"],
         "has_sps": has_sps,
         "has_pps": has_pps,
-        "has_idr": state["has_idr"],
+        "has_idr": bool(state["has_idr"]),
         "has_vcl": has_vcl,
         "counts": state["counts"],
         "nal_samples": state["nal_samples"],

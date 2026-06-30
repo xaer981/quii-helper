@@ -4,7 +4,6 @@ from quii_helper.protocols.ust.credentials import (
     decrypt_ust_ciphertext,
 )
 from quii_helper.protocols.ust.crypto_tables import (
-    P2P_SO_CANDIDATES,
     P2P_TABLE1_FILE_OFFSET,
     P2P_TABLE2_FILE_OFFSET,
     P2P_TABLE3_FILE_OFFSET,
@@ -33,7 +32,6 @@ _load_p2p_crypto_tables = load_p2p_crypto_tables
 
 
 __all__ = [
-    "P2P_SO_CANDIDATES",
     "P2P_TABLE1_FILE_OFFSET",
     "P2P_TABLE2_FILE_OFFSET",
     "P2P_TABLE3_FILE_OFFSET",

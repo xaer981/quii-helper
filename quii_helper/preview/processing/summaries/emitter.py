@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from quii_helper.models.packets import DecodedQuiiMessage, QuiiPacketSummary
+
 Emitter = Callable[[object], None]
 
 
@@ -15,7 +17,11 @@ class PreviewSummaryEmitter:
         return self.state.get("implausible_direct_suppressed", 0)
 
     def emit_packet_summary(
-        self, summary: dict, *, source: str, decoded: dict
+        self,
+        summary: QuiiPacketSummary,
+        *,
+        source: str,
+        decoded: DecodedQuiiMessage,
     ) -> None:
         if source == "direct_quii_blob" and not decoded.get("plausible"):
             self.state["implausible_direct_seen"] = (

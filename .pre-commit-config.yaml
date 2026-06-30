@@ -7,25 +7,16 @@
         - id: end-of-file-fixer
         - id: trailing-whitespace
         - id: mixed-line-ending
-          args: [ --fix=crlf ]
+          args: [ --fix=lf ]
 
     - repo: https://github.com/psf/black
-      rev: 24.4.2
+      rev: 25.1.0
       hooks:
         - id: black
           args: [ --line-length=79 ]
 
-    - repo: https://github.com/pycqa/isort
-      rev: 5.13.2
+    - repo: https://github.com/astral-sh/ruff-pre-commit
+      rev: v0.8.6
       hooks:
-        - id: isort
-          args: ["--profile", "black", "--filter-files", "--line-length=79"]
-
-    - repo: https://github.com/PyCQA/flake8
-      rev: 7.0.0
-      hooks:
-        - id: flake8
-          additional_dependencies:
-            - pep8-naming
-            - flake8-broken-line
-            - flake8-return
+        - id: ruff
+          args: [ --fix ]

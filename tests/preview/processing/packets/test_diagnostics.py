@@ -1,4 +1,3 @@
-﻿import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -7,7 +6,7 @@ from quii_helper.preview.processing.packets.diagnostics import (
 )
 
 
-class PreviewPacketDiagnosticsTests(unittest.TestCase):
+class PreviewPacketDiagnosticsTests:
     def test_collect_packet_diagnostics_returns_empty_when_disabled(
         self,
     ) -> None:
@@ -22,8 +21,8 @@ class PreviewPacketDiagnosticsTests(unittest.TestCase):
             phase="live",
         )
 
-        self.assertEqual([], diagnostics.decode_candidates)
-        self.assertIsNone(diagnostics.wrapped_tail_analysis)
+        assert diagnostics.decode_candidates == []
+        assert diagnostics.wrapped_tail_analysis is None
 
     def test_collect_packet_diagnostics_runs_candidate_and_tail_hooks(
         self,
@@ -63,9 +62,5 @@ class PreviewPacketDiagnosticsTests(unittest.TestCase):
         direct_candidates.assert_called_once()
         record_sample.assert_called_once()
         wrapped_tail.assert_called_once()
-        self.assertEqual(candidates, diagnostics.decode_candidates)
-        self.assertEqual(tail, diagnostics.wrapped_tail_analysis)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert diagnostics.decode_candidates == candidates
+        assert diagnostics.wrapped_tail_analysis == tail

@@ -1,6 +1,5 @@
 import json
 import tempfile
-import unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,7 +7,7 @@ from quii_helper.io.paths import resolve_data_dir
 from quii_helper.preview.fragments.collectors import FragmentPartialCollector
 
 
-class PreviewFragmentPartialCollectorTests(unittest.TestCase):
+class PreviewFragmentPartialCollectorTests:
     def test_records_fragment_partial_sample_with_existing_payload_shape(
         self,
     ) -> None:
@@ -45,17 +44,14 @@ class PreviewFragmentPartialCollectorTests(unittest.TestCase):
 
             sample_text = sample_path.read_text(encoding="utf-8")
             rows = [json.loads(line) for line in sample_text.splitlines()]
-            self.assertEqual(
-                {"payload_decode": {"plausible": False}},
-                analysis,
-            )
-            self.assertEqual([b"probe"], collector.container_probe_candidates)
-            self.assertEqual(1, len(rows))
-            self.assertIn("sha1", rows[0])
-            self.assertEqual(7, rows[0]["msg_index"])
-            self.assertEqual("wrapped_fragment_partial", rows[0]["source"])
-            self.assertEqual({"src": "test"}, rows[0]["meta"])
-            self.assertEqual(analysis, rows[0]["analysis"])
+            assert {"payload_decode": {"plausible": False}} == (analysis)
+            assert [b"probe"] == collector.container_probe_candidates
+            assert 1 == len(rows)
+            assert "sha1" in rows[0]
+            assert 7 == rows[0]["msg_index"]
+            assert "wrapped_fragment_partial" == rows[0]["source"]
+            assert {"src": "test"} == rows[0]["meta"]
+            assert analysis == rows[0]["analysis"]
 
     def test_fragment_partial_sample_limit_and_dedupe_are_shared_with_recorder(
         self,
@@ -104,8 +100,8 @@ class PreviewFragmentPartialCollectorTests(unittest.TestCase):
                 )
 
             rows = sample_path.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(1, len(rows))
-            self.assertEqual(1, len(collector.seen_hashes))
+            assert 1 == len(rows)
+            assert 1 == len(collector.seen_hashes)
 
     def test_fragment_partial_samples_update_seen_hashes_when_disabled(
         self,
@@ -136,9 +132,5 @@ class PreviewFragmentPartialCollectorTests(unittest.TestCase):
                     message_index=1,
                 )
 
-            self.assertFalse(sample_path.exists())
-            self.assertEqual(1, len(collector.seen_hashes))
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert not sample_path.exists()
+            assert 1 == len(collector.seen_hashes)

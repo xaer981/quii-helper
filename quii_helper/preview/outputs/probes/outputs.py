@@ -1,4 +1,5 @@
 ﻿from pathlib import Path
+from typing import Any
 
 from quii_helper.io.safe_read import read_existing_bytes
 from quii_helper.media.cpacket.stream import analyze_cpacket_stream
@@ -13,7 +14,7 @@ from quii_helper.preview.outputs.probes.state import (
 
 def write_container_probe_summary(
     base_name: str | Path, probe_blobs: list[bytes]
-) -> dict | None:
+) -> dict[str, Any] | None:
     unique, selected, strategy = merge_binary_candidates(probe_blobs)
     if not unique:
         return None
@@ -44,7 +45,7 @@ def write_container_probe_summary(
 
 def write_cpacket_probe_summary(
     base_name: str | Path, cpacket_blobs: list[bytes]
-) -> dict | None:
+) -> dict[str, Any] | None:
     unique, selected, strategy = merge_binary_candidates(cpacket_blobs)
     if not unique:
         return None

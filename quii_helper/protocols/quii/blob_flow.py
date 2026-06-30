@@ -1,4 +1,6 @@
-﻿from quii_helper.media.frames.models import QuiiHeader
+from typing import Any
+
+from quii_helper.media.frames.models import QuiiHeader
 from quii_helper.media.frames.parsing import iter_quii_media_frames
 from quii_helper.media.h264.merge.probe_analysis import analyze_annexb_h264
 
@@ -69,7 +71,7 @@ def decode_candidate_summary(
     *,
     offset: int,
     header: QuiiHeader,
-    decoded: dict,
+    decoded: dict[str, Any],
 ) -> dict[str, object]:
     return {
         "offset": offset,

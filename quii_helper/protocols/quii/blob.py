@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.media.frames.models import QuiiHeader
 from quii_helper.media.frames.parsing import iter_quii_media_frames
 from quii_helper.protocols.quii.blob_flow import (
@@ -26,7 +28,7 @@ __all__ = [
 
 def decode_quii_blob(
     blob: bytes, key: str, *, crypto_mode: int = 2, offset: int = 0
-) -> dict:
+) -> dict[str, Any]:
     if len(blob) - offset < 32:
         raise ValueError(
             f"blob too short for QUII packet: {len(blob)} offset={offset}"
@@ -140,8 +142,8 @@ def decode_quii_blob(
 
 def find_quii_decode_candidates(
     blob: bytes, key: str, *, crypto_mode: int = 2, max_offsets: int = 32
-) -> list[dict]:
-    candidates: list[dict] = []
+) -> list[dict[str, object]]:
+    candidates: list[dict[str, object]] = []
     limit = min(max_offsets, max(0, len(blob) - 32) + 1)
     for offset in range(limit):
         try:

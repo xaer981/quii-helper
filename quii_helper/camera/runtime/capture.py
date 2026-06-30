@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from quii_helper.camera.outputs.results import capture_done_message
+from quii_helper.models.capture import CaptureSummary
 from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 from quii_helper.preview.pipeline.factory import PreviewPipelineFactory
 
@@ -32,7 +33,7 @@ def capture_preview_summary(
     pipeline_factory_cls: type[PreviewPipelineFactory] = (
         PreviewPipelineFactory
     ),
-) -> dict:
+) -> CaptureSummary:
     status(STATUS_FETCHING_CREDENTIALS)
     credentials = connector.fetch_credentials()
     status(STATUS_OPENING_PREVIEW)

@@ -1,4 +1,3 @@
-﻿import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -60,7 +59,7 @@ def _implausible_decoded(
     return decoded
 
 
-class PreviewPacketProcessorTests(unittest.TestCase):
+class PreviewPacketProcessorTests:
     def test_process_packet_buffers_short_header_without_decoding(
         self,
     ) -> None:
@@ -71,22 +70,15 @@ class PreviewPacketProcessorTests(unittest.TestCase):
             phase="live",
         )
 
-        self.assertFalse(stopped)
-        self.assertEqual(
-            {("global", "direct_quii_blob"): b"short"},
-            processor.quii_packet_buffers,
-        )
-        self.assertEqual(1, processor.chained_packet_stats["buffered_packets"])
-        self.assertEqual(
-            5,
-            processor.chained_packet_stats["buffered_packet_bytes"],
-        )
-        self.assertEqual(
-            1,
-            processor.chained_packet_stats["buffered_short_header"],
-        )
-        self.assertEqual(0, processor.message_index)
-        self.assertEqual([], emitted)
+        assert not stopped
+        assert processor.quii_packet_buffers == {
+            ("global", "direct_quii_blob"): b"short"
+        }
+        assert processor.chained_packet_stats["buffered_packets"] == 1
+        assert processor.chained_packet_stats["buffered_packet_bytes"] == 5
+        assert processor.chained_packet_stats["buffered_short_header"] == 1
+        assert processor.message_index == 0
+        assert emitted == []
 
     def test_process_packet_buffers_incomplete_decoded_packet(self) -> None:
         processor, emitted = _processor()
@@ -97,7 +89,7 @@ class PreviewPacketProcessorTests(unittest.TestCase):
         with patch(
             (
                 "quii_helper.preview.processing."
-                "packets.processor.decode_quii_blob"
+                "packets.decoder.decode_quii_blob"
             ),
             return_value=decoded,
         ):
@@ -106,19 +98,17 @@ class PreviewPacketProcessorTests(unittest.TestCase):
                 phase="live",
             )
 
-        self.assertFalse(stopped)
-        self.assertEqual(
-            {("global", "direct_quii_blob"): blob},
-            processor.quii_packet_buffers,
+        assert not stopped
+        assert processor.quii_packet_buffers == {
+            ("global", "direct_quii_blob"): blob
+        }
+        assert processor.chained_packet_stats["buffered_packets"] == 1
+        assert (
+            processor.chained_packet_stats["buffered_incomplete_packet"] == 1
         )
-        self.assertEqual(1, processor.chained_packet_stats["buffered_packets"])
-        self.assertEqual(
-            1,
-            processor.chained_packet_stats["buffered_incomplete_packet"],
-        )
-        self.assertEqual(1, processor.message_index)
-        self.assertEqual([], processor.decoded_messages)
-        self.assertEqual([], emitted)
+        assert processor.message_index == 1
+        assert processor.decoded_messages == []
+        assert emitted == []
 
     def test_process_packet_processes_chained_remainder_in_order(self) -> None:
         processor, emitted = _processor()
@@ -128,7 +118,7 @@ class PreviewPacketProcessorTests(unittest.TestCase):
         with patch(
             (
                 "quii_helper.preview.processing."
-                "packets.processor.decode_quii_blob"
+                "packets.decoder.decode_quii_blob"
             ),
             side_effect=[
                 _decoded(read_size=4, payload=b"body"),
@@ -140,24 +130,20 @@ class PreviewPacketProcessorTests(unittest.TestCase):
                 phase="live",
             )
 
-        self.assertFalse(stopped)
-        self.assertEqual(2, processor.message_index)
-        self.assertEqual(2, len(processor.decoded_messages))
-        self.assertEqual(1, processor.chained_packet_stats["split_remainders"])
-        self.assertEqual(
-            len(second_blob),
-            processor.chained_packet_stats["split_remainder_bytes"],
+        assert not stopped
+        assert processor.message_index == 2
+        assert len(processor.decoded_messages) == 2
+        assert processor.chained_packet_stats["split_remainders"] == 1
+        assert processor.chained_packet_stats["split_remainder_bytes"] == len(
+            second_blob
         )
-        self.assertEqual(2, len(emitted))
-        self.assertNotIn("meta", emitted[0])
-        self.assertEqual(
-            {
-                "from_chained_msg_index": 1,
-                "chained_packet": 1,
-                "remainder_len": len(second_blob),
-            },
-            emitted[1]["meta"],
-        )
+        assert len(emitted) == 2
+        assert "meta" not in emitted[0]
+        assert emitted[1]["meta"] == {
+            "from_chained_msg_index": 1,
+            "chained_packet": 1,
+            "remainder_len": len(second_blob),
+        }
 
     def test_process_packet_attaches_direct_decode_candidates(self) -> None:
         processor, emitted = _processor(diagnostics_enabled=True)
@@ -168,7 +154,7 @@ class PreviewPacketProcessorTests(unittest.TestCase):
             patch(
                 (
                     "quii_helper.preview.processing."
-                    "packets.processor.decode_quii_blob"
+                    "packets.decoder.decode_quii_blob"
                 ),
                 return_value=_implausible_decoded(
                     read_size=4,
@@ -190,11 +176,11 @@ class PreviewPacketProcessorTests(unittest.TestCase):
                 phase="live",
             )
 
-        self.assertFalse(stopped)
+        assert not stopped
         decode_candidates.assert_called_once()
         record_sample.assert_called_once()
-        self.assertEqual(candidates, emitted[0]["decode_candidates"])
-        self.assertEqual([], processor.decoded_messages)
+        assert emitted[0]["decode_candidates"] == candidates
+        assert processor.decoded_messages == []
 
     def test_process_packet_attaches_wrapped_tail_analysis(self) -> None:
         processor, emitted = _processor(diagnostics_enabled=True)
@@ -205,7 +191,7 @@ class PreviewPacketProcessorTests(unittest.TestCase):
             patch(
                 (
                     "quii_helper.preview.processing."
-                    "packets.processor.decode_quii_blob"
+                    "packets.decoder.decode_quii_blob"
                 ),
                 return_value=_decoded(read_size=4, payload=b"body"),
             ),
@@ -220,11 +206,7 @@ class PreviewPacketProcessorTests(unittest.TestCase):
                 phase="live",
             )
 
-        self.assertFalse(stopped)
+        assert not stopped
         wrapped_tail.assert_called_once()
-        self.assertEqual(tail_analysis, emitted[0]["wrapped_tail_analysis"])
-        self.assertEqual(1, len(processor.decoded_messages))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert emitted[0]["wrapped_tail_analysis"] == tail_analysis
+        assert len(processor.decoded_messages) == 1

@@ -1,4 +1,12 @@
-def media_frame_summary_fields(decoded: dict) -> dict | None:
+from collections.abc import Mapping
+from typing import Any, cast
+
+from quii_helper.models.packets import QuiiPacketSummary
+
+
+def media_frame_summary_fields(
+    decoded: Mapping[str, Any],
+) -> QuiiPacketSummary | None:
     frames = decoded.get("media_frames")
     if not isinstance(frames, list):
         frame = decoded.get("media_frame")
@@ -20,4 +28,4 @@ def media_frame_summary_fields(decoded: dict) -> dict | None:
         fields["frame_tags"] = [
             hex(int(item["frame_tag"])) for item in frames[:8]
         ]
-    return fields
+    return cast(QuiiPacketSummary, fields)

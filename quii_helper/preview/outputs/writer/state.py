@@ -1,18 +1,20 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from quii_helper.io.paths import resolve_data_dir, timestamped_output_base
+
+ArtifactT = TypeVar("ArtifactT")
 
 
 def capture_artifacts(
     *,
-    media_result: dict | None,
-    embedded_fallback: dict | None,
-    container_probe_summary: dict | None,
-    cpacket_probe_summary: dict | None,
-    artifacts_cls: type,
-) -> Any:
+    media_result: object | None,
+    embedded_fallback: object | None,
+    container_probe_summary: dict[str, Any] | None,
+    cpacket_probe_summary: dict[str, Any] | None,
+    artifacts_cls: Callable[..., ArtifactT],
+) -> ArtifactT:
     return artifacts_cls(
         media_result=media_result,
         embedded_fallback=embedded_fallback,
@@ -44,7 +46,10 @@ def media_result_has_assembled_units(
 ) -> bool:
     if media_result is None:
         return False
-    return media_result.get("summary", {}).get("assembled_units", 0) != 0
+    summary = media_result.get("summary", {})
+    if not isinstance(summary, Mapping):
+        return False
+    return cast(object, summary.get("assembled_units", 0)) != 0
 
 
 def should_write_embedded_fallback(

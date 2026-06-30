@@ -1,8 +1,10 @@
+from typing import Any
+
 from quii_helper.media.cpacket.header import parse_cpacket_header
 from quii_helper.media.cpacket.scanner import find_cpacket_offsets
 
 
-def analyze_cpacket_stream(blob: bytes) -> dict:
+def analyze_cpacket_stream(blob: bytes) -> dict[str, Any]:
     offsets = find_cpacket_offsets(blob, limit=16)
     frames = [parse_cpacket_header(blob, offset) for offset in offsets[:8]]
     complete_frames = sum(1 for frame in frames if frame.get("complete_frame"))

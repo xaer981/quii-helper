@@ -1,5 +1,4 @@
 import json
-import unittest
 
 from quii_helper.protocols.p2p import request_models, response_models
 from quii_helper.protocols.p2p.models import (
@@ -11,26 +10,24 @@ from quii_helper.protocols.p2p.models import (
 )
 
 
-class P2PModelTests(unittest.TestCase):
+class P2PModelTests:
     def test_kcp_params_preserves_native_dict_shape(self) -> None:
-        self.assertEqual({"mode": "normal"}, KcpParams().to_dict())
-        self.assertEqual(
-            {"mode": "normal", "mtu": 1200},
-            KcpParams(mtu=1200).to_dict(),
+        assert {"mode": "normal"} == KcpParams().to_dict()
+        assert {"mode": "normal", "mtu": 1200} == (
+            KcpParams(mtu=1200).to_dict()
         )
-        self.assertEqual(
-            {
-                "mode": "custom",
-                "sndwnd": 1,
-                "rcvwnd": 2,
-                "mtu": 1300,
-            },
+        assert {
+            "mode": "custom",
+            "sndwnd": 1,
+            "rcvwnd": 2,
+            "mtu": 1300,
+        } == (
             KcpParams(
                 mode="custom",
                 sndwnd=1,
                 rcvwnd=2,
                 mtu=1300,
-            ).to_dict(),
+            ).to_dict()
         )
 
     def test_p2p_connect_request_serializes_optional_fields(self) -> None:
@@ -55,25 +52,22 @@ class P2PModelTests(unittest.TestCase):
         data = request.to_dict()
         parsed_json = json.loads(request.to_json())
 
-        self.assertEqual(data, parsed_json)
-        self.assertEqual("tdkcloud", data["header"]["flag"])
-        self.assertEqual("p2pconnect", data["header"]["command"])
-        self.assertEqual("1", data["header"]["client"]["type"])
-        self.assertEqual("7", data["header"]["client"]["app"])
-        self.assertEqual(9, data["header"]["seq"])
-        self.assertEqual("session-1", data["header"]["session"])
-        self.assertEqual("user-data", data["header"]["userdata"])
-        self.assertEqual("device-1", data["content"]["devid"])
-        self.assertEqual("flag-1", data["content"]["session-flag"])
-        self.assertEqual(123, data["content"]["requ-session-id"])
-        self.assertEqual(1, data["content"]["force-trans"])
-        self.assertEqual(
-            {"mode": "normal", "mtu": 1200},
-            data["content"]["kcpParam"],
-        )
-        self.assertEqual({"monChn": 2}, data["content"]["devTrans"])
-        self.assertEqual("ipc", data["content"]["devType"])
-        self.assertEqual("sub", data["content"]["devSubState"])
+        assert data == parsed_json
+        assert "tdkcloud" == data["header"]["flag"]
+        assert "p2pconnect" == data["header"]["command"]
+        assert "1" == data["header"]["client"]["type"]
+        assert "7" == data["header"]["client"]["app"]
+        assert 9 == data["header"]["seq"]
+        assert "session-1" == data["header"]["session"]
+        assert "user-data" == data["header"]["userdata"]
+        assert "device-1" == data["content"]["devid"]
+        assert "flag-1" == data["content"]["session-flag"]
+        assert 123 == data["content"]["requ-session-id"]
+        assert 1 == data["content"]["force-trans"]
+        assert {"mode": "normal", "mtu": 1200} == (data["content"]["kcpParam"])
+        assert {"monChn": 2} == data["content"]["devTrans"]
+        assert "ipc" == data["content"]["devType"]
+        assert "sub" == data["content"]["devSubState"]
 
     def test_response_properties_keep_truthy_port_behavior(self) -> None:
         response = P2PConnectResponse(
@@ -83,8 +77,8 @@ class P2PModelTests(unittest.TestCase):
             utd_public_udp_port=1000,
         )
 
-        self.assertFalse(response.supports_p2p_test)
-        self.assertTrue(response.supports_trans_test)
+        assert not response.supports_p2p_test
+        assert response.supports_trans_test
 
     def test_small_response_flags_keep_existing_semantics(self) -> None:
         ok = ParsedP2PTestResponse(
@@ -106,19 +100,12 @@ class P2PModelTests(unittest.TestCase):
             tail_code=102,
         )
 
-        self.assertTrue(ok.ok)
-        self.assertTrue(request_frame.is_request)
-        self.assertFalse(request_frame.is_response)
+        assert ok.ok
+        assert request_frame.is_request
+        assert not request_frame.is_response
 
     def test_models_module_keeps_compatibility_class_identities(self) -> None:
-        self.assertIs(request_models.KcpParams, KcpParams)
-        self.assertIs(request_models.P2PConnectRequest, P2PConnectRequest)
-        self.assertIs(response_models.P2PConnectResponse, P2PConnectResponse)
-        self.assertIs(
-            response_models.ParsedP2PTestResponse,
-            ParsedP2PTestResponse,
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert request_models.KcpParams is KcpParams
+        assert request_models.P2PConnectRequest is P2PConnectRequest
+        assert response_models.P2PConnectResponse is P2PConnectResponse
+        assert response_models.ParsedP2PTestResponse is (ParsedP2PTestResponse)

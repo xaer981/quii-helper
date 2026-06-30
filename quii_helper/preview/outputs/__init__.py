@@ -2,9 +2,11 @@
 
 from quii_helper.io.jsonl_writer import append_jsonl
 from quii_helper.io.output_paths import data_base_path, data_file_path
-from quii_helper.preview.fragments.embedded_h264 import (
+from quii_helper.media.h264.merge.annexb_merge import (
     merge_annexb_candidates,
     merge_two_streams,
+)
+from quii_helper.preview.fragments.embedded_h264 import (
     write_embedded_h264_fallback,
 )
 from quii_helper.preview.outputs.probes.outputs import (

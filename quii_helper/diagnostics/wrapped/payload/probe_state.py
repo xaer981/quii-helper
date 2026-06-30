@@ -1,6 +1,9 @@
+from typing import Any
+
+
 def payload_embedded_probe_context(
     payload: bytes, *, marker: bytes
-) -> dict | None:
+) -> dict[str, Any] | None:
     marker_offset = payload.find(marker)
     if marker_offset < 0:
         return None

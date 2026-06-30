@@ -1,4 +1,4 @@
-import unittest
+import pytest
 
 from quii_helper.camera.settings.init_state import (
     CAMERA_CONFIG_KWARG_NAMES,
@@ -6,7 +6,7 @@ from quii_helper.camera.settings.init_state import (
 )
 
 
-class CameraInitStateTests(unittest.TestCase):
+class CameraInitStateTests:
     def test_camera_config_kwargs_filters_only_config_override_names(
         self,
     ) -> None:
@@ -27,15 +27,11 @@ class CameraInitStateTests(unittest.TestCase):
 
         kwargs = camera_config_kwargs(values)
 
-        self.assertEqual(set(CAMERA_CONFIG_KWARG_NAMES), set(kwargs))
-        self.assertNotIn("self", kwargs)
-        self.assertNotIn("preview_settings", kwargs)
-        self.assertEqual("value-0", kwargs[CAMERA_CONFIG_KWARG_NAMES[0]])
+        assert set(CAMERA_CONFIG_KWARG_NAMES) == set(kwargs)
+        assert "self" not in kwargs
+        assert "preview_settings" not in kwargs
+        assert "value-0" == kwargs[CAMERA_CONFIG_KWARG_NAMES[0]]
 
     def test_camera_config_kwargs_requires_complete_init_locals(self) -> None:
-        with self.assertRaises(KeyError):
+        with pytest.raises(KeyError):
             camera_config_kwargs({})
-
-
-if __name__ == "__main__":
-    unittest.main()

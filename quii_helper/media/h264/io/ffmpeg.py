@@ -1,5 +1,7 @@
-﻿import subprocess
+import subprocess
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from quii_helper.media.h264.io.ffmpeg_state import (
     decodable_mp4_skip_reason,
@@ -29,7 +31,7 @@ def _run_ffmpeg(command: list[str]) -> tuple[bool, str]:
 
 
 def write_h264_mp4(
-    stream_path: Path, mp4_path: Path, nal_analysis: dict
+    stream_path: Path, mp4_path: Path, nal_analysis: Mapping[str, Any]
 ) -> tuple[bool, str, str]:
     skipped_reason = mp4_skip_reason(nal_analysis)
     if skipped_reason:
@@ -41,7 +43,7 @@ def write_h264_mp4(
 def write_h264_mp4_if_decodable(
     stream_path: Path,
     mp4_path: Path,
-    h264_analysis: dict,
+    h264_analysis: Mapping[str, Any],
     *,
     input_fps: float | None = None,
 ) -> tuple[bool, str, str]:

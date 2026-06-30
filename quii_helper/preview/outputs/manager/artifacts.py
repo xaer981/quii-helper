@@ -92,7 +92,7 @@ class PreviewArtifactManager:
         msg_index: int,
         source: str,
         meta: dict[str, Any],
-        candidates: list[dict],
+        candidates: list[dict[str, Any]],
     ) -> None:
         self._direct_samples.record(
             blob,
@@ -128,7 +128,7 @@ class PreviewArtifactManager:
         msg_index: int,
         source: str,
         meta: dict[str, Any],
-        analysis: dict,
+        analysis: dict[str, Any],
     ) -> None:
         self._wrapped_tail_samples.record(
             blob,
@@ -144,7 +144,7 @@ class PreviewArtifactManager:
     def write_capture_outputs(
         self,
         *,
-        decoded_messages: list[dict],
+        decoded_messages: list[dict[str, Any]],
         fragment_partial_collector: FragmentPartialCollector,
         target_duration_seconds: float | None = None,
     ) -> CaptureArtifacts:

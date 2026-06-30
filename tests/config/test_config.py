@@ -1,4 +1,4 @@
-import unittest
+import pytest
 
 from quii_helper.config import (
     REQUIRED_CAMERA_APP_FIELDS,
@@ -12,27 +12,24 @@ from quii_helper.config import (
 from quii_helper.config import validation as config_validation
 
 
-class ConfigTests(unittest.TestCase):
+class ConfigTests:
     def test_resolve_stream_quality_aliases(self) -> None:
-        self.assertEqual(STREAM_HIGH_QUALITY, resolve_stream_quality("high"))
-        self.assertEqual(STREAM_HIGH_QUALITY, resolve_stream_quality("main"))
-        self.assertEqual(STREAM_HIGH_QUALITY, resolve_stream_quality("clear"))
-        self.assertEqual(STREAM_HIGH_QUALITY, resolve_stream_quality("HD"))
-        self.assertEqual(STREAM_LOW_BANDWIDTH, resolve_stream_quality("low"))
-        self.assertEqual(STREAM_LOW_BANDWIDTH, resolve_stream_quality("sub"))
-        self.assertEqual(STREAM_LOW_BANDWIDTH, resolve_stream_quality("sd"))
-        self.assertEqual(
-            STREAM_LOW_BANDWIDTH,
-            resolve_stream_quality("smooth"),
-        )
-        self.assertEqual(3, resolve_stream_quality(3))
+        assert STREAM_HIGH_QUALITY == resolve_stream_quality("high")
+        assert STREAM_HIGH_QUALITY == resolve_stream_quality("main")
+        assert STREAM_HIGH_QUALITY == resolve_stream_quality("clear")
+        assert STREAM_HIGH_QUALITY == resolve_stream_quality("HD")
+        assert STREAM_LOW_BANDWIDTH == resolve_stream_quality("low")
+        assert STREAM_LOW_BANDWIDTH == resolve_stream_quality("sub")
+        assert STREAM_LOW_BANDWIDTH == resolve_stream_quality("sd")
+        assert STREAM_LOW_BANDWIDTH == (resolve_stream_quality("smooth"))
+        assert 3 == resolve_stream_quality(3)
 
     def test_resolve_stream_quality_rejects_invalid_values(self) -> None:
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             resolve_stream_quality(True)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             resolve_stream_quality(0)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             resolve_stream_quality("unknown")
 
     def test_validate_camera_app_config_accepts_complete_values(self) -> None:
@@ -59,22 +56,15 @@ class ConfigTests(unittest.TestCase):
             ip_region_id=0,
         )
 
-        with self.assertRaisesRegex(
-            ValueError,
-            "CLOUD_SERVICE_URL.*CLOUD_AUTH_URL.*CAMERA_OEM",
+        with pytest.raises(
+            ValueError, match="CLOUD_SERVICE_URL.*CLOUD_AUTH_URL.*CAMERA_OEM"
         ):
             validate_camera_app_config(config)
 
     def test_config_reexports_validation_constants(self) -> None:
-        self.assertIs(
-            config_validation.STREAM_QUALITY_ALIASES,
-            STREAM_QUALITY_ALIASES,
+        assert config_validation.STREAM_QUALITY_ALIASES is (
+            STREAM_QUALITY_ALIASES
         )
-        self.assertIs(
-            config_validation.REQUIRED_CAMERA_APP_FIELDS,
-            REQUIRED_CAMERA_APP_FIELDS,
+        assert config_validation.REQUIRED_CAMERA_APP_FIELDS is (
+            REQUIRED_CAMERA_APP_FIELDS
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

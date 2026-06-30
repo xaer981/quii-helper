@@ -1,4 +1,3 @@
-import unittest
 from types import SimpleNamespace
 
 from quii_helper.media.fragments.state import (
@@ -11,7 +10,7 @@ from quii_helper.media.fragments.state import (
 )
 
 
-class MediaFragmentedMediaStateTests(unittest.TestCase):
+class MediaFragmentedMediaStateTests:
     def test_fragmented_media_lengths_derive_body_and_media_lengths(
         self,
     ) -> None:
@@ -21,7 +20,7 @@ class MediaFragmentedMediaStateTests(unittest.TestCase):
             "payload_raw": b"12345",
         }
 
-        self.assertEqual((20, 12, 5), fragmented_media_lengths(decoded))
+        assert (20, 12, 5) == fragmented_media_lengths(decoded)
 
     def test_build_fragmented_media_state_preserves_decoded_fields(
         self,
@@ -47,20 +46,20 @@ class MediaFragmentedMediaStateTests(unittest.TestCase):
             message_index=7,
         )
 
-        self.assertEqual(b"head", state["header_raw"])
-        self.assertEqual(bytearray(b"payload"), state["body"])
-        self.assertEqual(20, state["expected_body_len"])
-        self.assertEqual(7, state["start_msg_index"])
-        self.assertEqual("wrapped_quii", state["source"])
-        self.assertEqual({"lane": 1}, state["meta"])
-        self.assertEqual(0xA0, state["packet_type"])
-        self.assertEqual(30, state["payload_size"])
-        self.assertEqual(40, state["raw_size"])
-        self.assertEqual(1, state["flag15"])
-        self.assertEqual(8, state["media_payload_offset"])
-        self.assertEqual(0xE1, state["frame_tag"])
-        self.assertEqual(16, state["frame_len"])
-        self.assertEqual(1, state["fragments"])
+        assert b"head" == state["header_raw"]
+        assert bytearray(b"payload") == state["body"]
+        assert 20 == state["expected_body_len"]
+        assert 7 == state["start_msg_index"]
+        assert "wrapped_quii" == state["source"]
+        assert {"lane": 1} == state["meta"]
+        assert 0xA0 == state["packet_type"]
+        assert 30 == state["payload_size"]
+        assert 40 == state["raw_size"]
+        assert 1 == state["flag15"]
+        assert 8 == state["media_payload_offset"]
+        assert 0xE1 == state["frame_tag"]
+        assert 16 == state["frame_len"]
+        assert 1 == state["fragments"]
 
     def test_append_fragmented_media_body_updates_state_until_complete(
         self,
@@ -75,11 +74,11 @@ class MediaFragmentedMediaStateTests(unittest.TestCase):
             state, b"567890"
         )
 
-        self.assertEqual(4, take)
-        self.assertTrue(complete)
-        self.assertEqual(8, expected_body_len)
-        self.assertEqual(bytearray(b"12345678"), state["body"])
-        self.assertEqual(2, state["fragments"])
+        assert 4 == take
+        assert complete
+        assert 8 == expected_body_len
+        assert bytearray(b"12345678") == state["body"]
+        assert 2 == state["fragments"]
 
     def test_fragmented_media_append_summary_shape(self) -> None:
         state = {
@@ -103,21 +102,21 @@ class MediaFragmentedMediaStateTests(unittest.TestCase):
             expected_body_len=10,
         )
 
-        self.assertEqual(9, summary["msg_index"])
-        self.assertEqual("wrapped_quii", summary["source"])
-        self.assertEqual(6, summary["blob_len"])
-        self.assertEqual("append", summary["fragmented_media"])
-        self.assertEqual(2, summary["start_msg_index"])
-        self.assertEqual(3, summary["fragments"])
-        self.assertEqual(10, summary["expected_body_len"])
-        self.assertEqual(6, summary["have_body_len"])
-        self.assertEqual(4, summary["taken_len"])
-        self.assertEqual(2, summary["remainder_len"])
-        self.assertEqual("0xa0", summary["packet_type"])
-        self.assertEqual(80, summary["raw_size"])
-        self.assertEqual("0xe1", summary["frame_tag"])
-        self.assertEqual(64, summary["frame_len"])
-        self.assertEqual({"src": "0x1"}, summary["meta"])
+        assert 9 == summary["msg_index"]
+        assert "wrapped_quii" == summary["source"]
+        assert 6 == summary["blob_len"]
+        assert "append" == summary["fragmented_media"]
+        assert 2 == summary["start_msg_index"]
+        assert 3 == summary["fragments"]
+        assert 10 == summary["expected_body_len"]
+        assert 6 == summary["have_body_len"]
+        assert 4 == summary["taken_len"]
+        assert 2 == summary["remainder_len"]
+        assert "0xa0" == summary["packet_type"]
+        assert 80 == summary["raw_size"]
+        assert "0xe1" == summary["frame_tag"]
+        assert 64 == summary["frame_len"]
+        assert {"src": "0x1"} == summary["meta"]
 
     def test_complete_blob_and_decode_meta_shapes(self) -> None:
         state = {
@@ -127,19 +126,14 @@ class MediaFragmentedMediaStateTests(unittest.TestCase):
             "fragments": 2,
         }
 
-        self.assertEqual(b"head1234", complete_fragmented_blob(state, 4))
-        self.assertEqual(
-            {
-                "start_msg_index": 3,
-                "end_msg_index": 8,
-                "fragments": 2,
-                "expected_body_len": 4,
-            },
+        assert b"head1234" == complete_fragmented_blob(state, 4)
+        assert {
+            "start_msg_index": 3,
+            "end_msg_index": 8,
+            "fragments": 2,
+            "expected_body_len": 4,
+        } == (
             fragmented_media_decode_meta(
                 state, message_index=8, expected_body_len=4
-            ),
+            )
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

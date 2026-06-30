@@ -1,6 +1,7 @@
 import hashlib
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from typing import cast
 
 from quii_helper.cloud.config.defaults import CLOUD_AUTH_VERSION
 
@@ -45,5 +46,7 @@ def build_userauth_xml(
     ET.SubElement(header, "user-data")
     ET.SubElement(header, "version").text = CLOUD_AUTH_VERSION
 
-    xml = ET.tostring(envelope, encoding="utf-8", xml_declaration=False)
+    xml = cast(
+        bytes, ET.tostring(envelope, encoding="utf-8", xml_declaration=False)
+    )
     return b'<?xml version="1.0" encoding="UTF-8"?>' + xml

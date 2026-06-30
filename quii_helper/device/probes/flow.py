@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.device.http.cgi import request_cgi, request_streamkey
 from quii_helper.device.probes.modes import (
     fallback_streamkey_modes,
@@ -21,7 +23,7 @@ class DeviceCgiProbeRunner:
 
         self._run_fallback_modes()
 
-    def try_mode(self, name: str, **kwargs) -> bool:
+    def try_mode(self, name: str, **kwargs: Any) -> bool:
         logger.debug("=== {} ===", name)
         try:
             secret = request_streamkey(debug=True, **kwargs)
@@ -31,7 +33,7 @@ class DeviceCgiProbeRunner:
             logger.debug("FAILED: {}", exc)
             return False
 
-    def probe_mode(self, name: str, command: str, **kwargs) -> bool:
+    def probe_mode(self, name: str, command: str, **kwargs: Any) -> bool:
         logger.debug("=== {} ===", name)
         try:
             result = request_cgi(command=command, debug=True, **kwargs)
@@ -46,9 +48,9 @@ class DeviceCgiProbeRunner:
             self.try_mode(name, **kwargs)
 
 
-def try_mode(name: str, **kwargs) -> bool:
+def try_mode(name: str, **kwargs: Any) -> bool:
     return DeviceCgiProbeRunner().try_mode(name, **kwargs)
 
 
-def probe_mode(name: str, command: str, **kwargs) -> bool:
+def probe_mode(name: str, command: str, **kwargs: Any) -> bool:
     return DeviceCgiProbeRunner().probe_mode(name, command, **kwargs)

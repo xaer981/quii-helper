@@ -34,8 +34,11 @@ def query_service_addresses(
         config, seq=seq, server_types=server_types
     )
 
-    ctx = ssl.create_default_context(cafile=str(config.ca_path))
-    ctx.check_hostname = False
+    ctx = (
+        ssl.create_default_context(cafile=str(config.ca_path))
+        if config.tls_verify
+        else ssl._create_unverified_context()
+    )
     ctx.load_cert_chain(
         certfile=str(config.cert_path), keyfile=str(config.key_path)
     )
@@ -70,6 +73,7 @@ def fetch_runtime_credentials(
     app_id: int | None = None,
     client_type: int | None = None,
     ip_region_id: int | None = None,
+    tls_verify: bool | None = None,
 ) -> RuntimeCredentials:
     resolved = resolve_runtime_config(
         config,
@@ -84,6 +88,7 @@ def fetch_runtime_credentials(
         app_id=app_id,
         client_type=client_type,
         ip_region_id=ip_region_id,
+        tls_verify=tls_verify,
     )
     validate_runtime_config(resolved)
     validate_camera_app_config(resolved)

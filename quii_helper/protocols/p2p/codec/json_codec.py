@@ -22,7 +22,7 @@ __all__ = [
 
 
 def parse_p2pconnect_response(
-    data: dict[str, Any] | str
+    data: dict[str, Any] | str,
 ) -> P2PConnectResponse:
     """
     Parse the P2P connect response content handled by
@@ -59,7 +59,7 @@ def parse_p2pconnect_response(
 
 
 def parse_sub_device_state_response(
-    data: dict[str, Any] | str
+    data: dict[str, Any] | str,
 ) -> ParsedSubDeviceState:
     data = decoded_json_object(data)
     content = content_or_self(data)

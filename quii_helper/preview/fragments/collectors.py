@@ -1,5 +1,6 @@
 ﻿from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from quii_helper.diagnostics.wrapped.payload.inner_analysis import (
     analyze_partial_wrapped_inner,
@@ -13,6 +14,7 @@ from quii_helper.diagnostics.wrapped.tail.candidate_extractors import (
     candidate_cpacket_stream,
     candidate_embedded_h264,
 )
+from quii_helper.models.packets import PacketMeta
 from quii_helper.preview.outputs.manager.sample_recorder import (
     PreviewJsonlSampleRecorder,
 )
@@ -44,8 +46,8 @@ class FragmentPartialCollector:
         )
 
     def analyze(
-        self, blob: bytes, *, source: str, meta: dict, message_index: int
-    ) -> dict | None:
+        self, blob: bytes, *, source: str, meta: PacketMeta, message_index: int
+    ) -> dict[str, Any] | None:
         if source != "wrapped_fragment_partial":
             return None
 
@@ -96,7 +98,7 @@ class FragmentPartialCollector:
             fragment_partial_sample_payload(
                 msg_index=message_index,
                 source=source,
-                meta=meta,
+                meta=cast(dict[str, Any], meta),
                 analysis=analysis,
             ),
         )

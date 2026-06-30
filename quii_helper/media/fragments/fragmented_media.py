@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.media.cpacket.constants import (
     CPACKET_HEADER_LEN,
     CPACKET_START_PREFIX,
@@ -35,7 +37,9 @@ def cframe_total_len(payload: bytes) -> int:
     return total_len
 
 
-def should_start_fragmented_media(decoded: dict, source: str) -> bool:
+def should_start_fragmented_media(
+    decoded: dict[str, Any], source: str
+) -> bool:
     if source not in FRAGMENTED_MEDIA_SOURCES:
         return False
     if not decoded.get("is_media"):
@@ -53,22 +57,26 @@ def should_start_fragmented_media(decoded: dict, source: str) -> bool:
 
 
 def start_fragmented_media(
-    decoded: dict, *, source: str, meta: dict, message_index: int
-) -> dict:
+    decoded: dict[str, Any],
+    *,
+    source: str,
+    meta: dict[str, Any],
+    message_index: int,
+) -> dict[str, Any]:
     return build_fragmented_media_state(
         decoded, source=source, meta=meta, message_index=message_index
     )
 
 
 def append_fragmented_media(
-    state: dict,
+    state: dict[str, Any],
     blob: bytes,
     key: str,
     *,
     source: str,
-    meta: dict,
+    meta: dict[str, Any],
     message_index: int,
-) -> tuple[dict | None, bytes, dict]:
+) -> tuple[dict[str, Any] | None, bytes, dict[str, Any]]:
     take, complete, expected_body_len = append_fragmented_media_body(
         state, blob
     )

@@ -25,7 +25,7 @@ def empty_embedded_h264_result(
     *,
     paths: dict[str, Path],
     persistent_before: bytes,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "candidate_count": 0,
         "merge_strategy": "none",
@@ -50,7 +50,7 @@ def embedded_h264_result_payload(
     merge_strategy: str,
     persistent_strategy: str,
     persistent_before: bytes,
-    nal_analysis: dict,
+    nal_analysis: dict[str, Any],
     persistent_written: bool,
     mp4_ok: bool,
     mp4_error: str,
@@ -58,7 +58,7 @@ def embedded_h264_result_payload(
     snapshot_error: str,
     ffmpeg_skipped_reason: str,
     paths: dict[str, Path],
-) -> dict:
+) -> dict[str, Any]:
     return {
         "candidate_count": len(unique),
         "merge_strategy": merge_strategy,

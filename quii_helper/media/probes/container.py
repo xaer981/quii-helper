@@ -1,8 +1,10 @@
-﻿from quii_helper.media.cpacket.stream import analyze_cpacket_stream
+from typing import Any
+
+from quii_helper.media.cpacket.stream import analyze_cpacket_stream
 from quii_helper.media.h264.merge.probe_analysis import analyze_annexb_h264
 
 
-def analyze_container_probe(blob: bytes) -> dict:
+def analyze_container_probe(blob: bytes) -> dict[str, Any]:
     marker = bytes.fromhex("c0034002")
     marker_hits: list[int] = []
     cursor = 0

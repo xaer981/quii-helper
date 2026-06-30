@@ -1,4 +1,7 @@
-def empty_decrypted_tail_analysis() -> dict:
+from typing import Any, Literal
+
+
+def empty_decrypted_tail_analysis() -> dict[str, Any]:
     return {
         "decrypted_prefix": "",
         "decrypted_text_preview": "",
@@ -17,7 +20,7 @@ def empty_decrypted_tail_analysis() -> dict:
     }
 
 
-def container_probe_without_marker() -> dict:
+def container_probe_without_marker() -> dict[str, Any]:
     return {
         "first_marker_offset": -1,
         "pre_marker_hex": "",
@@ -29,7 +32,10 @@ def container_probe_without_marker() -> dict:
     }
 
 
-def dwords_from_bytes(blob: bytes, byteorder: str) -> list[int]:
+def dwords_from_bytes(
+    blob: bytes,
+    byteorder: Literal["little", "big"],
+) -> list[int]:
     aligned_len = len(blob) - (len(blob) % 4)
     return [
         int.from_bytes(blob[i : i + 4], byteorder)
@@ -39,7 +45,7 @@ def dwords_from_bytes(blob: bytes, byteorder: str) -> list[int]:
 
 def container_probe_context(
     decrypted: bytes, first_marker_offset: int, *, marker: bytes
-) -> dict:
+) -> dict[str, Any]:
     pre_start = max(0, first_marker_offset - 16)
     pre_marker = decrypted[pre_start:first_marker_offset]
     post_marker = decrypted[first_marker_offset : first_marker_offset + 32]

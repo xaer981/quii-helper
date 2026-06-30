@@ -1,5 +1,6 @@
 import socket
 from collections.abc import Iterable, Sequence
+from typing import Any
 
 
 def non_loopback_ipv4(value: str | None) -> str:
@@ -28,10 +29,16 @@ def local_ip_result(
     return list(discovered) or ["127.0.0.1"]
 
 
-def collect_non_loopback_ipv4s(addrinfo_rows: Iterable[tuple]) -> list[str]:
+def collect_non_loopback_ipv4s(
+    addrinfo_rows: Iterable[tuple[Any, Any, Any, Any, Any]],
+) -> list[str]:
     values: list[str] = []
     for row in addrinfo_rows:
-        append_unique_non_loopback_ipv4(values, row[4][0])
+        sockaddr = row[4]
+        candidate = sockaddr[0] if isinstance(sockaddr, tuple) else None
+        append_unique_non_loopback_ipv4(
+            values, candidate if isinstance(candidate, str) else None
+        )
     return values
 
 

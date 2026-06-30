@@ -1,0 +1,1 @@
+"""Shared typed payload models."""

@@ -1,5 +1,6 @@
-﻿import unittest
 from types import SimpleNamespace
+
+import pytest
 
 from quii_helper.preview.outputs.writer.output_writer import CaptureArtifacts
 from quii_helper.preview.pipeline.capture_pipeline import (
@@ -98,7 +99,7 @@ class _FakeTunnel:
         return False
 
 
-class PreviewCapturePipelineTests(unittest.TestCase):
+class PreviewCapturePipelineTests:
     def _pipeline(self, *, raise_on_live: bool = False) -> tuple[
         PreviewCapturePipeline,
         _FakeOutputWriter,
@@ -129,59 +130,41 @@ class PreviewCapturePipelineTests(unittest.TestCase):
 
         summary = pipeline.capture()
 
-        self.assertFalse(packet_stream.closed)
-        self.assertGreaterEqual(pipeline.elapsed_seconds, 0)
-        self.assertEqual(
-            [
-                ("live", {"packet": "live"}),
-                ("flush", {"packet": "flush"}),
-                ("close", {"packet": "close"}),
-            ],
-            processor.calls,
+        assert not packet_stream.closed
+        assert pipeline.elapsed_seconds >= 0
+        assert [
+            ("live", {"packet": "live"}),
+            ("flush", {"packet": "flush"}),
+            ("close", {"packet": "close"}),
+        ] == (processor.calls)
+        assert [
+            "live_packets",
+            "flush_fragment_partials",
+            "close_and_drain",
+        ] == ([name for name, _kwargs in packet_stream.calls])
+        assert {
+            "duration": 2.0,
+            "timeout": 5.0,
+            "keepalive_credentials": pipeline.credentials,
+        } == (packet_stream.calls[0][1])
+        assert {"drain_seconds": 1.0, "timeout": 0.1} == (
+            packet_stream.calls[1][1]
         )
-        self.assertEqual(
-            [
-                "live_packets",
-                "flush_fragment_partials",
-                "close_and_drain",
-            ],
-            [name for name, _kwargs in packet_stream.calls],
+        assert {"drain_seconds": 0.5, "timeout": 0.05} == (
+            packet_stream.calls[2][1]
         )
-        self.assertEqual(
-            {
-                "duration": 2.0,
-                "timeout": 5.0,
-                "keepalive_credentials": pipeline.credentials,
-            },
-            packet_stream.calls[0][1],
-        )
-        self.assertEqual(
-            {"drain_seconds": 1.0, "timeout": 0.1},
-            packet_stream.calls[1][1],
-        )
-        self.assertEqual(
-            {"drain_seconds": 0.5, "timeout": 0.05},
-            packet_stream.calls[2][1],
-        )
-        self.assertEqual(
-            2.0,
-            output_writer.calls[0]["target_duration_seconds"],
-        )
-        self.assertEqual(1, summary["decoded_messages"])
-        self.assertEqual({"written": True}, summary["media_result"])
+        assert 2.0 == (output_writer.calls[0]["target_duration_seconds"])
+        assert 1 == summary["decoded_messages"]
+        assert {"written": True} == summary["media_result"]
 
     def test_capture_closes_packet_stream_after_live_exception(self) -> None:
         pipeline, output_writer, _processor, packet_stream = self._pipeline(
             raise_on_live=True
         )
 
-        with self.assertRaises(RuntimeError):
+        with pytest.raises(RuntimeError):
             pipeline.capture()
 
-        self.assertTrue(packet_stream.closed)
-        self.assertGreaterEqual(pipeline.elapsed_seconds, 0)
-        self.assertEqual([], output_writer.calls)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert packet_stream.closed
+        assert pipeline.elapsed_seconds >= 0
+        assert [] == output_writer.calls

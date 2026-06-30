@@ -1,5 +1,4 @@
-﻿import tempfile
-import unittest
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -8,7 +7,7 @@ from quii_helper.preview.outputs.writer.output_writer import (
 )
 
 
-class PreviewOutputWriterTests(unittest.TestCase):
+class PreviewOutputWriterTests:
     def test_write_capture_outputs_routes_diagnostic_probe_summaries(
         self,
     ) -> None:
@@ -43,13 +42,10 @@ class PreviewOutputWriterTests(unittest.TestCase):
                     fragment_partial_collector=collector,
                 )
 
-        self.assertIsNone(artifacts.media_result)
-        self.assertIsNone(artifacts.embedded_fallback)
-        self.assertEqual(
-            {"container": True},
-            artifacts.container_probe_summary,
-        )
-        self.assertEqual({"cpacket": True}, artifacts.cpacket_probe_summary)
+        assert artifacts.media_result is None
+        assert artifacts.embedded_fallback is None
+        assert artifacts.container_probe_summary == {"container": True}
+        assert artifacts.cpacket_probe_summary == {"cpacket": True}
         container_probe.assert_called_once()
         cpacket_probe.assert_called_once()
 
@@ -85,11 +81,7 @@ class PreviewOutputWriterTests(unittest.TestCase):
                     fragment_partial_collector=collector,
                 )
 
-        self.assertIsNone(artifacts.container_probe_summary)
-        self.assertIsNone(artifacts.cpacket_probe_summary)
+        assert artifacts.container_probe_summary is None
+        assert artifacts.cpacket_probe_summary is None
         container_probe.assert_not_called()
         cpacket_probe.assert_not_called()
-
-
-if __name__ == "__main__":
-    unittest.main()

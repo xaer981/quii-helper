@@ -17,7 +17,7 @@ def tunnel_has_pending_receive_stream_buffers(tunnel: Any) -> bool:
     return bool(has_pending_receive_streams and has_pending_receive_streams())
 
 
-def tunnel_capture_summary_fields(tunnel: Any) -> dict:
+def tunnel_capture_summary_fields(tunnel: Any) -> dict[str, Any]:
     return {
         "tunnel_config": tunnel.config,
         "play_sync": tunnel.play_sync_summary(),
@@ -31,7 +31,7 @@ def tunnel_capture_summary_fields(tunnel: Any) -> dict:
     }
 
 
-def processor_capture_summary_fields(processor: Any) -> dict:
+def processor_capture_summary_fields(processor: Any) -> dict[str, Any]:
     return {
         "decoded_messages": processor.decoded_messages,
         "media_messages": processor.media_messages,
@@ -45,7 +45,7 @@ def processor_capture_summary_fields(processor: Any) -> dict:
 
 def pending_drain_summary_fields(
     *, packets: int, elapsed_seconds: float
-) -> dict:
+) -> dict[str, Any]:
     return {
         "pending_quii_drain_packets": packets,
         "pending_quii_drain_elapsed_seconds": elapsed_seconds,

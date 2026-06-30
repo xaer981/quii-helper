@@ -56,7 +56,7 @@ def decode_tcp_payload(
     payload_raw: bytes,
     *,
     crypto_mode: int,
-    key: bytes
+    key: bytes,
 ) -> bytes:
     if not payload_raw or not crypto_mode:
         return payload_raw

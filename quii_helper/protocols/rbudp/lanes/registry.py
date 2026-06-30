@@ -1,5 +1,8 @@
 import random
 from collections.abc import Sequence
+from dataclasses import dataclass
+
+from quii_helper.protocols.rbudp.core.models import ParsedRbUdpControlPacket
 
 RbUdpLane = dict[str, int | bool]
 
@@ -68,3 +71,80 @@ def build_rbudp_lane_states(
             }
         )
     return lanes
+
+
+@dataclass
+class RbUdpLaneRegistry:
+    """Own lane state lookup while preserving native lane dictionaries."""
+
+    lanes: list[RbUdpLane]
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        src_ids: Sequence[int],
+        bootstrap_word4: int,
+        bootstrap_remote_id: int,
+        bootstrap_local_ids: Sequence[int],
+    ) -> "RbUdpLaneRegistry":
+        return cls(
+            build_rbudp_lane_states(
+                src_ids=src_ids,
+                bootstrap_word4=bootstrap_word4,
+                bootstrap_remote_id=bootstrap_remote_id,
+                bootstrap_local_ids=bootstrap_local_ids,
+            )
+        )
+
+    def for_packet_words(self, *, word4: int, word8: int) -> RbUdpLane | None:
+        for lane in self.lanes:
+            if (
+                int(lane["peer_word4"]) == word4
+                and int(lane["peer_word8"]) == word8
+            ):
+                return lane
+            if int(lane["word4"]) == word8 and int(lane["word8"]) == word4:
+                return lane
+            if (
+                int(lane["word8"]) == word4
+                or int(lane["bootstrap_word8"]) == word4
+            ):
+                return lane
+        return None
+
+    def active(self, src_id: int) -> RbUdpLane:
+        for lane in self.lanes:
+            if int(lane["src_id"]) == src_id:
+                return lane
+        return self.lanes[0]
+
+    def for_syn_ack(
+        self, control: ParsedRbUdpControlPacket
+    ) -> RbUdpLane | None:
+        for lane in self.lanes:
+            if control.word4 == int(lane["bootstrap_word8"]):
+                return lane
+        return None
+
+    def for_control(
+        self, control: ParsedRbUdpControlPacket
+    ) -> RbUdpLane | None:
+        for lane in self.lanes:
+            if (
+                int(lane["peer_word4"]) == control.word4
+                and int(lane["peer_word8"]) == control.word8
+            ):
+                return lane
+            if (
+                int(lane["word8"]) == control.word4
+                or int(lane["bootstrap_word8"]) == control.word4
+            ):
+                return lane
+        return None
+
+    def for_src_id(self, src_id: int) -> RbUdpLane | None:
+        for lane in self.lanes:
+            if int(lane["src_id"]) == src_id:
+                return lane
+        return None

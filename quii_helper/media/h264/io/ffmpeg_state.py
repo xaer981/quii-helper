@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -6,13 +6,13 @@ FALSE_POSITIVE_SPS_SKIP_REASON = "single_sps_without_pps_vcl_or_epb"
 MISSING_H264_CONTEXT_SKIP_REASON = "missing_sps_pps_or_vcl"
 
 
-def mp4_skip_reason(nal_analysis: dict[str, Any]) -> str:
+def mp4_skip_reason(nal_analysis: Mapping[str, Any]) -> str:
     if nal_analysis.get("false_positive_sps_only"):
         return FALSE_POSITIVE_SPS_SKIP_REASON
     return ""
 
 
-def decodable_mp4_skip_reason(h264_analysis: dict[str, Any]) -> str:
+def decodable_mp4_skip_reason(h264_analysis: Mapping[str, Any]) -> str:
     if not h264_analysis.get("decodable_h264_context"):
         return MISSING_H264_CONTEXT_SKIP_REASON
     return ""

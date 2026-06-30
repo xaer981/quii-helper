@@ -1,5 +1,7 @@
 from typing import Any
 
+from quii_helper.models.capture import MediaCollectionSummary
+
 
 def capture_settings_summary(
     *,
@@ -8,7 +10,7 @@ def capture_settings_summary(
     tunnel_config: Any,
     pending_quii_drain_packets: int,
     pending_quii_drain_elapsed_seconds: float,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "capture_seconds": preview_settings.capture_seconds,
         "stop_when_decodable": preview_settings.stop_when_decodable,
@@ -32,19 +34,19 @@ def capture_settings_summary(
 
 def common_capture_summary_fields(
     *,
-    capture_settings: dict,
-    play_sync: list[dict],
-    rbudp_fragments: dict,
-    fragmented_media: dict,
-    quii_packet_chaining: dict,
-    media_collection: dict,
+    capture_settings: dict[str, Any],
+    play_sync: list[dict[str, Any]],
+    rbudp_fragments: dict[str, Any],
+    fragmented_media: dict[str, Any],
+    quii_packet_chaining: dict[str, int],
+    media_collection: MediaCollectionSummary,
     implausible_direct_suppressed: int,
     stream_payload_count: int,
     stream_payload_filler_count: int,
     diagnostic_artifacts_saved: bool,
-    container_probe_summary: dict | None,
-    cpacket_probe_summary: dict | None,
-) -> dict:
+    container_probe_summary: dict[str, Any] | None,
+    cpacket_probe_summary: dict[str, Any] | None,
+) -> dict[str, Any]:
     return {
         "capture_settings": capture_settings,
         "play_sync": play_sync,

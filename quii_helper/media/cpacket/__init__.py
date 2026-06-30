@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.media.cpacket.constants import (
     CPACKET_HEADER_LEN,
     CPACKET_START_PREFIX,
@@ -46,7 +48,7 @@ def parse_cpacket_header(
     offset: int = 0,
     *,
     require_complete: bool = True,
-) -> dict | None:
+) -> dict[str, Any] | None:
     frame_len = cpacket_frame_len(payload, offset)
     if frame_len is None or frame_len <= 0:
         return None

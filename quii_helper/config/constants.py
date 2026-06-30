@@ -1,68 +1,41 @@
-import os
-from pathlib import Path
+from typing import Any
 
-from dotenv import load_dotenv
+from quii_helper.config.settings_loader import get_default_settings
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_SETTING_EXPORTS = {
+    "PROJECT_ROOT": "project_root",
+    "DEFAULT_ASSETS_DIR": "default_assets_dir",
+    "DEFAULT_NATIVE_LIB_DIR": "default_native_lib_dir",
+    "CLOUD_ACCOUNT": "cloud_account",
+    "CLOUD_PASSWORD": "cloud_password",
+    "DEVICE_ID": "device_id",
+    "AUTH_CODE": "auth_code",
+    "DEVICE_PASSWORD": "device_password",
+    "CLOUD_CLIENT_UUID": "cloud_client_uuid",
+    "LOG_LEVEL": "log_level",
+    "CLOUD_AUTH_VERSION": "cloud_auth_version",
+    "CLOUD_AUTH_URL": "cloud_auth_url",
+    "CLOUD_SERVICE_URL": "cloud_service_url",
+    "CAMERA_OEM": "camera_oem",
+    "CAMERA_APP_ID": "camera_app_id",
+    "CAMERA_CLIENT_TYPE": "camera_client_type",
+    "IP_REGION_ID": "ip_region_id",
+    "TLS_CA_PATH": "tls_ca_path",
+    "TLS_CERT_PATH": "tls_cert_path",
+    "TLS_KEY_PATH": "tls_key_path",
+    "P2P_SO_PATHS": "p2p_so_paths",
+    "CAMERA_CHANNEL": "camera_channel",
+    "CAMERA_STREAM": "camera_stream",
+    "TLS_VERIFY": "tls_verify",
+}
 
-load_dotenv(PROJECT_ROOT / ".env")
+__all__ = tuple(_SETTING_EXPORTS)
 
 
-def _getenv(*names: str, default: str = "") -> str:
-    for name in names:
-        value = os.getenv(name)
-        if value is not None and value.strip():
-            return value
-    return default
+def __getattr__(name: str) -> Any:
+    """Resolve legacy constants lazily from default settings."""
 
-
-def _getenv_int(*names: str, default: int) -> int:
-    for name in names:
-        value = os.getenv(name)
-        if value is None or not value.strip():
-            continue
-        try:
-            return int(value)
-        except ValueError as exc:
-            joined_names = ", ".join(names)
-            raise ValueError(
-                f"{name} must be an integer; checked {joined_names}"
-            ) from exc
-    return default
-
-
-DEFAULT_ASSETS_DIR = PROJECT_ROOT / "assets"
-DEFAULT_NATIVE_LIB_DIR = DEFAULT_ASSETS_DIR / "lib"
-
-CLOUD_ACCOUNT = _getenv("CLOUD_USERNAME", "CLOUD_ACCOUNT")
-CLOUD_PASSWORD = _getenv("CLOUD_PASSWORD")
-DEVICE_ID = _getenv("DEVICE_ID")
-AUTH_CODE = _getenv("AUTH_CODE")
-DEVICE_PASSWORD = _getenv("DEVICE_PASSWORD")
-CLOUD_CLIENT_UUID = _getenv("CLOUD_CLIENT_UUID")
-LOG_LEVEL = _getenv("LOG_LEVEL", default="INFO")
-CLOUD_AUTH_VERSION = _getenv("CLOUD_AUTH_VERSION")
-CLOUD_AUTH_URL = _getenv("CLOUD_AUTH_URL")
-CLOUD_SERVICE_URL = _getenv("CLOUD_SERVICE_URL")
-CAMERA_OEM = _getenv("CAMERA_OEM", "CLOUD_OEM")
-CAMERA_APP_ID = _getenv_int("CAMERA_APP_ID", "CLOUD_APP_ID", default=0)
-CAMERA_CLIENT_TYPE = _getenv_int(
-    "CAMERA_CLIENT_TYPE",
-    "CLOUD_CLIENT_TYPE",
-    default=0,
-)
-IP_REGION_ID = _getenv_int("IP_REGION_ID", default=0)
-TLS_CA_PATH = DEFAULT_ASSETS_DIR / "ca.pem"
-TLS_CERT_PATH = DEFAULT_ASSETS_DIR / "client.pem"
-TLS_KEY_PATH = DEFAULT_ASSETS_DIR / "client.txt"
-P2P_SO_PATHS = (
-    DEFAULT_ASSETS_DIR / "libqv-p2p-v2.so",
-    DEFAULT_NATIVE_LIB_DIR / "arm64-v8a" / "libqv-p2p-v2.so",
-)
-CAMERA_CHANNEL = _getenv_int(
-    "CAMERA_CHANNEL",
-    "VIDEO_PANEL",
-    "QUII_CHANNEL",
-    default=1,
-)
-CAMERA_STREAM = _getenv_int("CAMERA_STREAM", "QUII_STREAM", default=2)
+    setting_name = _SETTING_EXPORTS.get(name)
+    if setting_name is None:
+        raise AttributeError(name)
+    return getattr(get_default_settings(), setting_name)

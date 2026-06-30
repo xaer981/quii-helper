@@ -1,3 +1,6 @@
+import paho.mqtt.client as mqtt
+
+from quii_helper.config import AutonomousConfig
 from quii_helper.protocols.p2p.models import P2PConnectRequest
 from quii_helper.protocols.ust.messages import (
     build_ust_register_request,
@@ -7,7 +10,16 @@ from quii_helper.protocols.ust.messages import (
 )
 
 
-class MqttBootstrapPublishMixin:
+class MqttBootstrapPublisher:
+    """Publishes MQTT bootstrap commands for a configured camera session."""
+
+    def __init__(self, *, config: AutonomousConfig, client: mqtt.Client):
+        self.config = config
+        self._client = client
+
+    config: AutonomousConfig
+    _client: mqtt.Client
+
     def _app_topic(self) -> str:
         return f"app/ust/json/{self.config.client_id}"
 

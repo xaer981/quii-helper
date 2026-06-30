@@ -1,4 +1,3 @@
-import unittest
 from types import SimpleNamespace
 
 from quii_helper.preview.pipeline.capture_pipeline_state import (
@@ -43,54 +42,43 @@ class _FakeTunnel:
         return self.pending
 
 
-class PreviewCapturePipelineStateTests(unittest.TestCase):
+class PreviewCapturePipelineStateTests:
     def test_remaining_pending_drain_seconds_subtracts_elapsed(self) -> None:
         settings = PreviewCaptureSettings(pending_quii_drain_seconds=12.0)
 
-        self.assertEqual(7.5, remaining_pending_drain_seconds(settings, 4.5))
+        assert 7.5 == remaining_pending_drain_seconds(settings, 4.5)
 
     def test_tunnel_has_pending_receive_stream_buffers_is_optional(
         self,
     ) -> None:
-        self.assertFalse(tunnel_has_pending_receive_stream_buffers(object()))
-        self.assertFalse(
-            tunnel_has_pending_receive_stream_buffers(_FakeTunnel())
-        )
-        self.assertTrue(
-            tunnel_has_pending_receive_stream_buffers(
-                _FakeTunnel(pending=True)
-            )
+        assert not tunnel_has_pending_receive_stream_buffers(object())
+        assert not tunnel_has_pending_receive_stream_buffers(_FakeTunnel())
+        assert tunnel_has_pending_receive_stream_buffers(
+            _FakeTunnel(pending=True)
         )
 
     def test_tunnel_capture_summary_fields_shape(self) -> None:
         fields = tunnel_capture_summary_fields(_FakeTunnel())
 
-        self.assertEqual(1, fields["tunnel_config"].stream)
-        self.assertEqual([{"sync": True}], fields["play_sync"])
-        self.assertEqual({"fragments": True}, fields["rbudp_fragments"])
-        self.assertEqual(1, fields["stream_payload_count"])
-        self.assertEqual(2, fields["stream_payload_filler_count"])
-        self.assertEqual(3, fields["stream_payload_early_count"])
-        self.assertEqual(4, fields["stream_payload_early_filler_count"])
+        assert 1 == fields["tunnel_config"].stream
+        assert [{"sync": True}] == fields["play_sync"]
+        assert {"fragments": True} == fields["rbudp_fragments"]
+        assert 1 == fields["stream_payload_count"]
+        assert 2 == fields["stream_payload_filler_count"]
+        assert 3 == fields["stream_payload_early_count"]
+        assert 4 == fields["stream_payload_early_filler_count"]
 
     def test_processor_capture_summary_fields_shape(self) -> None:
         fields = processor_capture_summary_fields(_FakeProcessor())
 
-        self.assertEqual([{"decoded": True}], fields["decoded_messages"])
-        self.assertEqual([{"media": True}], fields["media_messages"])
-        self.assertEqual({"fragmented": True}, fields["fragmented_media"])
-        self.assertEqual({"chained": True}, fields["quii_packet_chaining"])
-        self.assertEqual(3, fields["implausible_direct_suppressed"])
+        assert [{"decoded": True}] == fields["decoded_messages"]
+        assert [{"media": True}] == fields["media_messages"]
+        assert {"fragmented": True} == fields["fragmented_media"]
+        assert {"chained": True} == fields["quii_packet_chaining"]
+        assert 3 == fields["implausible_direct_suppressed"]
 
     def test_pending_drain_summary_fields_shape(self) -> None:
-        self.assertEqual(
-            {
-                "pending_quii_drain_packets": 5,
-                "pending_quii_drain_elapsed_seconds": 1.25,
-            },
-            pending_drain_summary_fields(packets=5, elapsed_seconds=1.25),
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert {
+            "pending_quii_drain_packets": 5,
+            "pending_quii_drain_elapsed_seconds": 1.25,
+        } == (pending_drain_summary_fields(packets=5, elapsed_seconds=1.25))

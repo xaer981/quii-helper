@@ -1,5 +1,3 @@
-import unittest
-
 from quii_helper.protocols.rbudp.receive.stream_packet import (
     RBUDP_RECEIVE_STREAM_HEADER_LEN,
     parse_receive_stream_packet,
@@ -19,27 +17,23 @@ def _packet(payload: bytes = b"payload") -> bytes:
     return bytes(header) + payload
 
 
-class RbUdpReceiveStreamPacketTests(unittest.TestCase):
+class RbUdpReceiveStreamPacketTests:
     def test_parse_receive_stream_packet_returns_none_for_short_data(
         self,
     ) -> None:
-        self.assertIsNone(parse_receive_stream_packet(b"x" * 10))
+        assert parse_receive_stream_packet(b"x" * 10) is None
 
     def test_parse_receive_stream_packet_reads_outer_header(self) -> None:
         parsed = parse_receive_stream_packet(_packet(b"abc"))
 
-        self.assertIsNotNone(parsed)
-        self.assertEqual(0xFFABEFC1, parsed.marker)
-        self.assertEqual(0x1000000, parsed.word4)
-        self.assertEqual(0x3D000022, parsed.word8)
-        self.assertEqual(123, parsed.local_id)
-        self.assertEqual(456, parsed.remote_id)
-        self.assertEqual(0x1900, parsed.status_word)
-        self.assertEqual(0xBEEF, parsed.rand16)
-        self.assertEqual(3, parsed.packet_len16)
-        self.assertEqual(b"abc", parsed.payload)
-        self.assertEqual((0x1000000, 0x3D000022), parsed.stream_key)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert parsed is not None
+        assert 0xFFABEFC1 == parsed.marker
+        assert 0x1000000 == parsed.word4
+        assert 0x3D000022 == parsed.word8
+        assert 123 == parsed.local_id
+        assert 456 == parsed.remote_id
+        assert 0x1900 == parsed.status_word
+        assert 0xBEEF == parsed.rand16
+        assert 3 == parsed.packet_len16
+        assert b"abc" == parsed.payload
+        assert (0x1000000, 0x3D000022) == parsed.stream_key

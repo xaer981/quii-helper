@@ -1,4 +1,3 @@
-import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -97,8 +96,8 @@ class _FakePipelineFactory:
         return _FakePipeline(self.events, self.summary)
 
 
-class CameraCaptureFlowTests(unittest.TestCase):
-    def setUp(self) -> None:
+class CameraCaptureFlowTests:
+    def setup_method(self) -> None:
         _FakePipelineFactory.instances = []
         _FakePipelineFactory.events = []
 
@@ -125,66 +124,42 @@ class CameraCaptureFlowTests(unittest.TestCase):
             pipeline_factory_cls=_FakePipelineFactory,
         )
 
-        self.assertEqual(_FakePipelineFactory.summary, summary)
-        self.assertEqual(
-            [
-                "Fetching runtime credentials",
-                "Opening preview session",
-                "Connected",
-                "Starting live preview",
-                "Receiving media packets",
-                "Done. Video saved: video.mp4",
-            ],
-            statuses,
-        )
-        self.assertEqual(
-            [
-                {"connected": True},
-                {"quii_setup_acked": True},
-                _FakePipelineFactory.summary,
-            ],
-            emitted,
-        )
-        self.assertEqual(
-            [
-                "connector.fetch_credentials",
-                "connector.open_preview",
-                "session.enter",
-                "session.connection_summary",
-                "session.start_live_preview:0:1:3.0",
-                "session.exit",
-            ],
-            events,
-        )
-        self.assertEqual(
-            [
-                "pipeline_factory.init",
-                "pipeline_factory.create",
-                "pipeline.capture",
-            ],
-            _FakePipelineFactory.events,
-        )
-
+        assert _FakePipelineFactory.summary == summary
+        assert [
+            "Fetching runtime credentials",
+            "Opening preview session",
+            "Connected",
+            "Starting live preview",
+            "Receiving media packets",
+            "Done. Video saved: video.mp4",
+        ] == (statuses)
+        assert [
+            {"connected": True},
+            {"quii_setup_acked": True},
+            _FakePipelineFactory.summary,
+        ] == (emitted)
+        assert [
+            "connector.fetch_credentials",
+            "connector.open_preview",
+            "session.enter",
+            "session.connection_summary",
+            "session.start_live_preview:0:1:3.0",
+            "session.exit",
+        ] == (events)
+        assert [
+            "pipeline_factory.init",
+            "pipeline_factory.create",
+            "pipeline.capture",
+        ] == (_FakePipelineFactory.events)
         factory = _FakePipelineFactory.instances[0]
-        self.assertIs(
-            DEFAULT_PREVIEW_CAPTURE_SETTINGS,
-            factory.preview_settings,
+        assert DEFAULT_PREVIEW_CAPTURE_SETTINGS is (factory.preview_settings)
+        assert emit is factory.emit
+        assert data_dir == factory.data_dir
+        assert not factory.render_snapshot
+        assert factory.render_video
+        assert connector.session.tunnel is (factory.create_kwargs["tunnel"])
+        assert "data-key" == factory.create_kwargs["data_key"]
+        assert connector.session.credentials is (
+            factory.create_kwargs["credentials"]
         )
-        self.assertIs(emit, factory.emit)
-        self.assertEqual(data_dir, factory.data_dir)
-        self.assertFalse(factory.render_snapshot)
-        self.assertTrue(factory.render_video)
-        self.assertIs(
-            connector.session.tunnel,
-            factory.create_kwargs["tunnel"],
-        )
-        self.assertEqual("data-key", factory.create_kwargs["data_key"])
-        self.assertIs(
-            connector.session.credentials,
-            factory.create_kwargs["credentials"],
-        )
-        self.assertEqual(output_base, factory.create_kwargs["output_base"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert output_base == factory.create_kwargs["output_base"]

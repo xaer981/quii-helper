@@ -4,12 +4,17 @@ from pathlib import Path
 from quii_helper.camera.outputs.result_state import (
     capture_done_message_for_artifact,
     capture_media_artifact,
+    media_render_error_message,
     optional_artifact_path,
 )
+from quii_helper.models.capture import CaptureSummary
+from quii_helper.support.errors import CameraCaptureError, MediaRenderError
 
-
-class CameraCaptureError(RuntimeError):
-    """Raised when a requested media artifact could not be produced."""
+__all__ = [
+    "CameraCaptureError",
+    "CameraCaptureResult",
+    "capture_done_message",
+]
 
 
 @dataclass(frozen=True)
@@ -28,7 +33,7 @@ class CameraCaptureResult:
         media_written: Whether any media artifact was written.
     """
 
-    summary: dict
+    summary: CaptureSummary
     snapshot_path: Path | None
     video_path: Path | None
     snapshot_written: bool
@@ -36,7 +41,7 @@ class CameraCaptureResult:
     media_written: bool
 
     @classmethod
-    def from_summary(cls, summary: dict) -> "CameraCaptureResult":
+    def from_summary(cls, summary: CaptureSummary) -> "CameraCaptureResult":
         """Build a result object from the low-level capture summary.
 
         Args:
@@ -69,6 +74,12 @@ class CameraCaptureResult:
         """
         if self.snapshot_written and self.snapshot_path is not None:
             return self.snapshot_path
+        message = media_render_error_message(
+            capture_media_artifact(self.summary),
+            kind="snapshot",
+        )
+        if message:
+            raise MediaRenderError(message)
         raise CameraCaptureError(
             "snapshot was not produced; "
             "inspect CameraCaptureResult.summary for details"
@@ -85,13 +96,19 @@ class CameraCaptureResult:
         """
         if self.video_written and self.video_path is not None:
             return self.video_path
+        message = media_render_error_message(
+            capture_media_artifact(self.summary),
+            kind="video",
+        )
+        if message:
+            raise MediaRenderError(message)
         raise CameraCaptureError(
             "video was not produced; "
             "inspect CameraCaptureResult.summary for details"
         )
 
 
-def capture_done_message(summary: dict) -> str:
+def capture_done_message(summary: CaptureSummary) -> str:
     """Format a user-facing completion message for a capture summary."""
     artifact = capture_media_artifact(summary)
     return capture_done_message_for_artifact(artifact)

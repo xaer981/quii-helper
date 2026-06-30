@@ -1,8 +1,12 @@
+from typing import Any
+
 from quii_helper.device.http.cgi import encode_device_password
 from quii_helper.protocols.tcp import settings
 
+CgiProbeKwargs = dict[str, Any]
 
-def status_probe_kwargs() -> dict:
+
+def status_probe_kwargs() -> CgiProbeKwargs:
     return {
         "host": settings.HOST,
         "port": 80,
@@ -14,7 +18,7 @@ def status_probe_kwargs() -> dict:
     }
 
 
-def primary_streamkey_mode() -> tuple[str, dict]:
+def primary_streamkey_mode() -> tuple[str, CgiProbeKwargs]:
     return (
         "lan_authcode_http",
         {
@@ -29,7 +33,7 @@ def primary_streamkey_mode() -> tuple[str, dict]:
     )
 
 
-def fallback_streamkey_modes() -> list[tuple[str, dict]]:
+def fallback_streamkey_modes() -> list[tuple[str, CgiProbeKwargs]]:
     return [
         (
             "lan_authcode_http_no_flag",
@@ -101,6 +105,7 @@ def fallback_streamkey_modes() -> list[tuple[str, dict]]:
                 "encrypted": True,
                 "nc": settings.NC,
                 "scheme": "https",
+                "verify_tls": settings.TLS_VERIFY,
                 "passwordencode": None,
             },
         ),
@@ -114,6 +119,7 @@ def fallback_streamkey_modes() -> list[tuple[str, dict]]:
                 "encrypted": True,
                 "nc": settings.NC,
                 "scheme": "https",
+                "verify_tls": settings.TLS_VERIFY,
                 "passwordencode": None,
             },
         ),

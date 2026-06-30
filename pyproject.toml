@@ -1,0 +1,172 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quii-helper"
+version = "0.1.0"
+description = "Python helpers for connecting to QUII-based cameras, capturing snapshots/video, and serving RTSP streams."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "cffi>=2.0.0",
+    "cryptography>=46.0.7",
+    "kcp>=0.1.6",
+    "loguru>=0.7.3",
+    "paho-mqtt>=2.1.0",
+    "python-dotenv>=1.2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=25.1.0",
+    "coverage>=7.6.0",
+    "mypy>=1.10.0",
+    "pre-commit>=4.3.0",
+    "pytest>=8.3.0",
+    "ruff>=0.8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["quii_helper*"]
+
+[tool.setuptools.package-data]
+quii_helper = ["py.typed"]
+
+[tool.black]
+target-version = ["py310"]
+line-length = 79
+
+[tool.ruff]
+target-version = "py310"
+line-length = 79
+
+[tool.ruff.lint]
+# Keep CI low-noise initially. Broader rule groups should be enabled package by
+# package after fixing existing findings.
+select = ["E9", "F63", "F7", "F82", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["quii_helper"]
+
+[tool.mypy]
+python_version = "3.10"
+files = [
+    "quii_helper/__init__.py",
+    "quii_helper/camera",
+    "quii_helper/cloud",
+    "quii_helper/config/__init__.py",
+    "quii_helper/config/constants.py",
+    "quii_helper/config/models.py",
+    "quii_helper/config/settings_loader.py",
+    "quii_helper/config/validation.py",
+    "quii_helper/device",
+    "quii_helper/direct",
+    "quii_helper/devtools",
+    "quii_helper/diagnostics",
+    "quii_helper/io/__init__.py",
+    "quii_helper/io/jsonl_writer.py",
+    "quii_helper/io/output_paths.py",
+    "quii_helper/io/paths.py",
+    "quii_helper/io/safe_read.py",
+    "quii_helper/main.py",
+    "quii_helper/media",
+    "quii_helper/models/capture.py",
+    "quii_helper/models/packets.py",
+    "quii_helper/network/__init__.py",
+    "quii_helper/network/state.py",
+    "quii_helper/preview",
+    "quii_helper/protocols/mqtt",
+    "quii_helper/protocols/p2p",
+    "quii_helper/protocols/quii",
+    "quii_helper/protocols/rbudp/__init__.py",
+    "quii_helper/protocols/rbudp/control/ack_status.py",
+    "quii_helper/protocols/rbudp/control/__init__.py",
+    "quii_helper/protocols/rbudp/control/dispatcher.py",
+    "quii_helper/protocols/rbudp/control/flow.py",
+    "quii_helper/protocols/rbudp/control/handler.py",
+    "quii_helper/protocols/rbudp/control/handshake.py",
+    "quii_helper/protocols/rbudp/control/lane_updates.py",
+    "quii_helper/protocols/rbudp/control/packets.py",
+    "quii_helper/protocols/rbudp/control/play_status.py",
+    "quii_helper/protocols/rbudp/control/progress.py",
+    "quii_helper/protocols/rbudp/core",
+    "quii_helper/protocols/rbudp/fragments/__init__.py",
+    "quii_helper/protocols/rbudp/fragments/ack.py",
+    "quii_helper/protocols/rbudp/fragments/flow.py",
+    "quii_helper/protocols/rbudp/fragments/gap.py",
+    "quii_helper/protocols/rbudp/fragments/packet.py",
+    "quii_helper/protocols/rbudp/fragments/partial.py",
+    "quii_helper/protocols/rbudp/fragments/remainder.py",
+    "quii_helper/protocols/rbudp/fragments/state.py",
+    "quii_helper/protocols/rbudp/fragments/stream.py",
+    "quii_helper/protocols/rbudp/kcp",
+    "quii_helper/protocols/rbudp/lanes/__init__.py",
+    "quii_helper/protocols/rbudp/lanes/control.py",
+    "quii_helper/protocols/rbudp/lanes/registry.py",
+    "quii_helper/protocols/rbudp/lanes/state.py",
+    "quii_helper/protocols/rbudp/live/__init__.py",
+    "quii_helper/protocols/rbudp/live/command_state.py",
+    "quii_helper/protocols/rbudp/live/play_probes.py",
+    "quii_helper/protocols/rbudp/live/play_stages.py",
+    "quii_helper/protocols/rbudp/live/play_sync.py",
+    "quii_helper/protocols/rbudp/live/play_sync_state.py",
+    "quii_helper/protocols/rbudp/live/sender.py",
+    "quii_helper/protocols/rbudp/receive/__init__.py",
+    "quii_helper/protocols/rbudp/receive/incoming_payload.py",
+    "quii_helper/protocols/rbudp/receive/loop.py",
+    "quii_helper/protocols/rbudp/receive/payload_queue.py",
+    "quii_helper/protocols/rbudp/receive/stream.py",
+    "quii_helper/protocols/rbudp/receive/stream_packet.py",
+    "quii_helper/protocols/rbudp/receive/stream_state.py",
+    "quii_helper/protocols/rbudp/transport/__init__.py",
+    "quii_helper/protocols/rbudp/transport/frame_handler.py",
+    "quii_helper/protocols/rbudp/transport/io.py",
+    "quii_helper/protocols/rbudp/tunnel/__init__.py",
+    "quii_helper/protocols/rbudp/tunnel/keepalive.py",
+    "quii_helper/protocols/rbudp/tunnel/lifecycle.py",
+    "quii_helper/protocols/rbudp/tunnel/session.py",
+    "quii_helper/protocols/rbudp/tunnel/state.py",
+    "quii_helper/protocols/rbudp/tunnel/threads.py",
+    "quii_helper/protocols/rbudp/wrapped/__init__.py",
+    "quii_helper/protocols/rbudp/wrapped/frame_handler.py",
+    "quii_helper/protocols/rbudp/wrapped/handler.py",
+    "quii_helper/protocols/rbudp/wrapped/lanes.py",
+    "quii_helper/protocols/rbudp/wrapped/packets.py",
+    "quii_helper/protocols/rbudp/wrapped/sender.py",
+    "quii_helper/protocols/tcp",
+    "quii_helper/protocols/ust",
+    "quii_helper/streaming",
+    "quii_helper/support/__init__.py",
+    "quii_helper/support/errors.py",
+    "quii_helper/support/log.py",
+    "quii_helper/support/redaction.py",
+]
+follow_imports = "silent"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+show_error_codes = true
+
+[tool.coverage.run]
+branch = true
+source = ["quii_helper"]
+
+[tool.coverage.report]
+skip_empty = true
+show_missing = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*", "*Tests"]

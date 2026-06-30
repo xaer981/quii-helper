@@ -33,6 +33,7 @@ class CloudProbeFlow:
             app_id=config.app_id,
             client_type=config.client_type,
             debug=True,
+            verify_tls=config.tls_verify,
         )
         logger.debug("=== cloud_login_parsed ===")
         logger.debug("{}", self._redact_raw(login_result))
@@ -56,6 +57,7 @@ class CloudProbeFlow:
             app_id=config.app_id,
             client_type=config.client_type,
             debug=True,
+            verify_tls=config.tls_verify,
         )
         logger.debug("=== get_device_token_parsed ===")
         logger.debug("{}", self._redact_raw(token_result))

@@ -27,7 +27,7 @@ def probe_endpoint() -> tuple[str, int]:
 
 
 def credential_candidates(
-    token_result: dict[str, Any]
+    token_result: dict[str, Any],
 ) -> list[QuiiCredentialCandidate]:
     if settings.QUII_USE_FORWARDED_RELAY:
         candidates = [

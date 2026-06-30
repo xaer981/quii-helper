@@ -1,4 +1,3 @@
-﻿import unittest
 from types import SimpleNamespace
 
 from quii_helper.preview.outputs.writer.output_writer import CaptureArtifacts
@@ -6,7 +5,7 @@ from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 from quii_helper.preview.summaries.capture_summary import build_capture_summary
 
 
-class PreviewCaptureSummaryTests(unittest.TestCase):
+class PreviewCaptureSummaryTests:
     def test_build_capture_summary_for_decoded_messages(self) -> None:
         settings = PreviewCaptureSettings(
             capture_seconds=10.0,
@@ -45,17 +44,16 @@ class PreviewCaptureSummaryTests(unittest.TestCase):
             pending_quii_drain_elapsed_seconds=1.98765,
         )
 
-        self.assertEqual(2, summary["decoded_messages"])
-        self.assertEqual(1, summary["media_messages"])
-        self.assertEqual({"mp4": True}, summary["media_result"])
-        self.assertNotIn("embedded_fallback", summary)
-        self.assertEqual(1.235, summary["capture_settings"]["elapsed_seconds"])
-        self.assertEqual(
-            1.988,
-            summary["capture_settings"]["pending_quii_drain_elapsed_seconds"],
+        assert 2 == summary["decoded_messages"]
+        assert 1 == summary["media_messages"]
+        assert {"mp4": True} == summary["media_result"]
+        assert "embedded_fallback" not in summary
+        assert 1.235 == summary["capture_settings"]["elapsed_seconds"]
+        assert 1.988 == (
+            summary["capture_settings"]["pending_quii_drain_elapsed_seconds"]
         )
-        self.assertTrue(summary["diagnostic_artifacts_saved"])
-        self.assertEqual(3, summary["implausible_direct_suppressed"])
+        assert summary["diagnostic_artifacts_saved"]
+        assert 3 == summary["implausible_direct_suppressed"]
 
     def test_build_capture_summary_for_no_decoded_messages(self) -> None:
         summary = build_capture_summary(
@@ -83,12 +81,8 @@ class PreviewCaptureSummaryTests(unittest.TestCase):
             pending_quii_drain_elapsed_seconds=0.0,
         )
 
-        self.assertEqual(0, summary["decoded_messages"])
-        self.assertNotIn("media_messages", summary)
-        self.assertEqual({"h264": True}, summary["embedded_fallback"])
-        self.assertEqual(2, summary["stream_payload_early_count"])
-        self.assertEqual(3, summary["stream_payload_early_filler_count"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert 0 == summary["decoded_messages"]
+        assert "media_messages" not in summary
+        assert {"h264": True} == summary["embedded_fallback"]
+        assert 2 == summary["stream_payload_early_count"]
+        assert 3 == summary["stream_payload_early_filler_count"]

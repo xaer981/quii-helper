@@ -1,5 +1,7 @@
 from collections.abc import Mapping
+from typing import Any, cast
 
+from quii_helper.models.packets import PacketMeta
 from quii_helper.preview.fragments.fragment_summary_state import (
     active_fragmented_media_summary,
     fragmented_media_summary,
@@ -27,13 +29,24 @@ __all__ = [
 ]
 
 
+def _int_value(value: object, default: int = 0) -> int:
+    if isinstance(value, int | str | bytes):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+    return default
+
+
 def packet_payload_context(
     packet: Mapping[str, object],
-) -> tuple[bytes, str, dict[str, object]]:
+) -> tuple[bytes, str, PacketMeta]:
+    payload = packet["payload"]
+    meta = packet.get("meta", {})
     return (
-        bytes(packet["payload"]),
+        payload if isinstance(payload, bytes) else bytes(cast(Any, payload)),
         str(packet.get("source", "unknown")),
-        dict(packet.get("meta", {})),
+        cast(PacketMeta, dict(meta) if isinstance(meta, Mapping) else {}),
     )
 
 
@@ -55,25 +68,19 @@ def fragment_key(
 
 
 def decoded_needs_more_data(decoded: Mapping[str, object]) -> bool:
-    try:
-        read_size = int(decoded.get("read_size", 0))
-        body_available = int(decoded.get("body_available", 0))
-    except (TypeError, ValueError):
-        return False
+    read_size = _int_value(decoded.get("read_size"))
+    body_available = _int_value(decoded.get("body_available"))
     return read_size > body_available
 
 
 def decoded_remainder(decoded: Mapping[str, object], blob: bytes) -> bytes:
     if not decoded.get("plausible"):
         return b""
-    try:
-        consumed = (
-            int(decoded.get("offset", 0))
-            + QUII_HEADER_SIZE
-            + int(decoded.get("read_size", 0))
-        )
-    except (TypeError, ValueError):
-        return b""
+    consumed = (
+        _int_value(decoded.get("offset"))
+        + QUII_HEADER_SIZE
+        + _int_value(decoded.get("read_size"))
+    )
     if consumed <= 0 or consumed >= len(blob):
         return b""
     return blob[consumed:]
@@ -103,13 +110,16 @@ def chained_remainder_meta(
     message_index: int,
     chain_index: int,
     remainder_len: int,
-) -> dict[str, object]:
-    return {
-        **dict(meta),
-        "from_chained_msg_index": message_index,
-        "chained_packet": chain_index,
-        "remainder_len": remainder_len,
-    }
+) -> PacketMeta:
+    return cast(
+        PacketMeta,
+        {
+            **dict(meta),
+            "from_chained_msg_index": message_index,
+            "chained_packet": chain_index,
+            "remainder_len": remainder_len,
+        },
+    )
 
 
 def chained_packet_summary(

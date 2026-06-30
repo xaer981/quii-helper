@@ -2,6 +2,7 @@ import socket
 from urllib.parse import urlparse
 
 from quii_helper.config import AutonomousConfig, ServiceQueryResponse
+from quii_helper.support.errors import QuiiConnectionError
 
 
 def apply_discovered_services(
@@ -10,9 +11,9 @@ def apply_discovered_services(
     p2papp = response.find("p2papp")
     natcheck = response.find("natcheck")
     if p2papp is None or not p2papp.url:
-        raise RuntimeError("query-hlrv2 did not return p2papp")
+        raise QuiiConnectionError("query-hlrv2 did not return p2papp")
     if natcheck is None or not natcheck.url:
-        raise RuntimeError("query-hlrv2 did not return natcheck")
+        raise QuiiConnectionError("query-hlrv2 did not return natcheck")
 
     config.ust_address = (
         f"{p2papp.url}{p2papp.uri}/?{p2papp.param}"

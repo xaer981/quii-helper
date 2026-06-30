@@ -1,5 +1,3 @@
-﻿import unittest
-
 from quii_helper.preview.fragments.fragment_summary_state import (
     active_fragmented_media_entry,
     active_fragmented_media_summary,
@@ -13,7 +11,7 @@ from quii_helper.preview.processing.packets.flow import (
 )
 
 
-class PreviewFragmentSummaryStateTests(unittest.TestCase):
+class PreviewFragmentSummaryStateTests:
     def test_active_fragmented_media_entry_shape(self) -> None:
         state = {
             "start_msg_index": 10,
@@ -26,26 +24,23 @@ class PreviewFragmentSummaryStateTests(unittest.TestCase):
             "frame_len": 99,
         }
 
-        self.assertEqual(
-            {
-                "fragment_key": ("rb_data", 1, 2),
-                "start_msg_index": 10,
-                "source": "wrapped_quii",
-                "fragments": 2,
-                "expected_body_len": 10,
-                "have_body_len": 4,
-                "missing_body_len": 6,
-                "packet_type": "0xa0",
-                "frame_tag": "0xe1",
-                "frame_len": 99,
-            },
-            active_fragmented_media_entry(("rb_data", 1, 2), state),
-        )
+        assert {
+            "fragment_key": ("rb_data", 1, 2),
+            "start_msg_index": 10,
+            "source": "wrapped_quii",
+            "fragments": 2,
+            "expected_body_len": 10,
+            "have_body_len": 4,
+            "missing_body_len": 6,
+            "packet_type": "0xa0",
+            "frame_tag": "0xe1",
+            "frame_len": 99,
+        } == (active_fragmented_media_entry(("rb_data", 1, 2), state))
 
     def test_active_fragmented_media_summary_returns_none_when_empty(
         self,
     ) -> None:
-        self.assertIsNone(active_fragmented_media_summary({}))
+        assert active_fragmented_media_summary({}) is None
 
     def test_fragmented_media_summary_combines_stats_and_active_state(
         self,
@@ -59,15 +54,11 @@ class PreviewFragmentSummaryStateTests(unittest.TestCase):
 
         summary = fragmented_media_summary({"started": 1}, states)
 
-        self.assertEqual(1, summary["started"])
-        self.assertEqual(3, summary["active"][0]["missing_body_len"])
+        assert 1 == summary["started"]
+        assert 3 == summary["active"][0]["missing_body_len"]
 
     def test_packet_flow_keeps_fragment_summary_compatibility_exports(
         self,
     ) -> None:
-        self.assertIs(facade_active_summary, active_fragmented_media_summary)
-        self.assertIs(facade_fragmented_summary, fragmented_media_summary)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert facade_active_summary is active_fragmented_media_summary
+        assert facade_fragmented_summary is fragmented_media_summary

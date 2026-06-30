@@ -1,4 +1,5 @@
 ﻿from pathlib import Path
+from typing import Any
 
 from quii_helper.io.safe_read import read_existing_bytes
 from quii_helper.media.h264.io.ffmpeg import (
@@ -20,7 +21,7 @@ from quii_helper.preview.fragments.embedded_h264_state import (
 
 def write_embedded_h264_fallback(
     base_name: str | Path, annexb_blobs: list[bytes]
-) -> dict:
+) -> dict[str, Any]:
     paths = embedded_h264_paths(base_name)
     stream_path = paths["stream_path"]
     mp4_path = paths["mp4_path"]

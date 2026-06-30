@@ -1,15 +1,23 @@
-﻿from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 
+from quii_helper.models.packets import (
+    DecodedQuiiMessage,
+    PacketMeta,
+    QuiiPacketSummary,
+)
+from quii_helper.preview.processing.packets.capture_stats import CaptureStats
 from quii_helper.preview.processing.packets.summary import (
-    attach_media_frame_summary,
     build_quii_packet_summary,
 )
+from quii_helper.preview.processing.summaries.emitter import (
+    PreviewSummaryEmitter,
+)
 
-MediaMessageSink = Callable[[dict], None]
+MediaMessageSink = Callable[[DecodedQuiiMessage], None]
 
 
-def has_decoded_media_frames(decoded: dict) -> bool:
+def has_decoded_media_frames(decoded: Mapping[str, Any]) -> bool:
     frames = decoded.get("media_frames")
     if isinstance(frames, list):
         return bool(frames)
@@ -17,16 +25,19 @@ def has_decoded_media_frames(decoded: dict) -> bool:
 
 
 def fragment_remainder_meta(
-    meta: dict,
+    meta: PacketMeta,
     *,
     message_index: int,
     remainder_len: int,
-) -> dict:
-    return {
-        **meta,
-        "from_msg_index": message_index,
-        "remainder_len": remainder_len,
-    }
+) -> PacketMeta:
+    return cast(
+        PacketMeta,
+        {
+            **meta,
+            "from_msg_index": message_index,
+            "remainder_len": remainder_len,
+        },
+    )
 
 
 def short_fragment_remainder_summary(
@@ -34,7 +45,7 @@ def short_fragment_remainder_summary(
     message_index: int,
     source: str,
     blob_len: int,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "msg_index": message_index,
         "source": source,
@@ -49,9 +60,9 @@ def fragment_start_summary(
     source: str,
     blob_len: int,
     fragment_key: tuple[object, ...],
-    state: dict,
-    meta: dict,
-) -> dict:
+    state: Mapping[str, Any],
+    meta: PacketMeta,
+) -> dict[str, Any]:
     return {
         "msg_index": message_index,
         "source": source,
@@ -75,9 +86,9 @@ def drop_active_fragment_summary(
     blob_len: int,
     reason: str,
     fragment_key: tuple[object, ...],
-    state: dict,
-    meta: dict,
-) -> dict:
+    state: Mapping[str, Any],
+    meta: PacketMeta,
+) -> dict[str, Any]:
     expected_body_len = int(state.get("expected_body_len", 0))
     body = state.get("body", b"")
     have_body_len = len(body) if isinstance(body, (bytes, bytearray)) else 0
@@ -100,32 +111,33 @@ def drop_active_fragment_summary(
 
 def record_fragmented_media_decoded(
     *,
-    decoded_messages: list[dict],
-    media_messages: list[dict],
-    summary_emitter: Any,
-    decoded: dict,
+    decoded_messages: list[DecodedQuiiMessage],
+    media_messages: list[DecodedQuiiMessage],
+    summary_emitter: PreviewSummaryEmitter,
+    decoded: DecodedQuiiMessage,
     message_index: int,
     blob_len: int,
     source: str,
-    meta: dict,
+    meta: PacketMeta,
     media_message_sink: MediaMessageSink | None = None,
     store_media_messages: bool = True,
 ) -> None:
-    if decoded["plausible"]:
-        decoded_messages.append(decoded)
-    summary = build_quii_packet_summary(
+    summary: QuiiPacketSummary = build_quii_packet_summary(
         decoded,
         message_index=message_index,
         source=source,
         blob_len=blob_len,
         meta=meta,
-        fragmented_media=decoded.get("fragmented_media", {}),
+        fragmented_media=cast(
+            dict[str, Any], decoded.get("fragmented_media", {})
+        ),
     )
-    if attach_media_frame_summary(summary, decoded):
-        if store_media_messages:
-            media_messages.append(decoded)
-        if media_message_sink is not None:
-            media_message_sink(decoded)
+    CaptureStats(
+        decoded_messages=decoded_messages,
+        media_messages=media_messages,
+        media_message_sink=media_message_sink,
+        store_media_messages=store_media_messages,
+    ).record_processed_packet(summary=summary, decoded=decoded, phase="live")
     summary_emitter.emit_packet_summary(
         summary, source=source, decoded=decoded
     )

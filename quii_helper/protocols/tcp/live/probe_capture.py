@@ -12,7 +12,7 @@ class TcpLiveProbeCapture:
     num_messages: int
     play_param: int = 1
 
-    def run(self) -> dict:
+    def run(self) -> dict[str, Any]:
         dump_file = self._prepare_dump_file()
 
         self.client.connect()
@@ -35,7 +35,7 @@ class TcpLiveProbeCapture:
         return dump_file
 
     def _read_messages(self, dump_file: Path) -> list[dict[str, Any]]:
-        messages = []
+        messages: list[dict[str, Any]] = []
         for _ in range(self.num_messages):
             try:
                 messages.append(self.client.recv_message(dump_file=dump_file))

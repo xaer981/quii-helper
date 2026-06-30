@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.diagnostics.wrapped.tail.probe_state import (
     container_probe_context,
     container_probe_without_marker,
@@ -9,7 +11,7 @@ from quii_helper.protocols.quii.blob import safe_text_preview
 CONTAINER_PROBE_MARKER = bytes.fromhex("c0034002")
 
 
-def analyze_decrypted_tail(decrypted: bytes) -> dict:
+def analyze_decrypted_tail(decrypted: bytes) -> dict[str, Any]:
     if not decrypted:
         return empty_decrypted_tail_analysis()
 
@@ -66,7 +68,7 @@ def find_start_code_offsets(
 
 def container_probe_for_first_h264(
     decrypted: bytes, start_code_offsets4: list[int]
-) -> dict:
+) -> dict[str, Any]:
     if not start_code_offsets4:
         return container_probe_without_marker()
 

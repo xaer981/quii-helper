@@ -1,5 +1,4 @@
 import tempfile
-import unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,7 +9,7 @@ from quii_helper.diagnostics.wrapped.tail.probe import CONTAINER_PROBE_MARKER
 from quii_helper.io.paths import resolve_data_dir
 
 
-class WrappedTailArtifactsTests(unittest.TestCase):
+class WrappedTailArtifactsTests:
     def test_dump_partial_tail_artifacts_writes_h264_startcode_artifact(
         self,
     ) -> None:
@@ -33,13 +32,12 @@ class WrappedTailArtifactsTests(unittest.TestCase):
                 )
 
             h264_path = Path(artifacts["h264_from_startcode_path"])
-            self.assertEqual(
-                str(len(b"prefix")), artifacts["h264_from_startcode_offset"]
+            assert (
+                str(len(b"prefix")) == artifacts["h264_from_startcode_offset"]
             )
-            self.assertEqual(b"\x00\x00\x00\x01gtail", h264_path.read_bytes())
-            self.assertEqual(
-                decrypted_tail,
-                Path(artifacts["decrypted_tail_path"]).read_bytes(),
+            assert b"\x00\x00\x00\x01gtail" == h264_path.read_bytes()
+            assert decrypted_tail == (
+                Path(artifacts["decrypted_tail_path"]).read_bytes()
             )
 
     def test_dump_partial_tail_artifacts_writes_container_probe_artifact(
@@ -66,14 +64,7 @@ class WrappedTailArtifactsTests(unittest.TestCase):
                 )
 
             container_path = Path(artifacts["container_probe_path"])
-            self.assertEqual(
-                str(len(b"prefix")), artifacts["container_probe_offset"]
+            assert str(len(b"prefix")) == artifacts["container_probe_offset"]
+            assert CONTAINER_PROBE_MARKER + b"\x00\x00\x00\x01g" == (
+                container_path.read_bytes()
             )
-            self.assertEqual(
-                CONTAINER_PROBE_MARKER + b"\x00\x00\x00\x01g",
-                container_path.read_bytes(),
-            )
-
-
-if __name__ == "__main__":
-    unittest.main()

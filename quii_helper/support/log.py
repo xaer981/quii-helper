@@ -2,7 +2,7 @@ import sys
 
 from loguru import logger
 
-from quii_helper.config.constants import LOG_LEVEL
+from quii_helper.config.settings_loader import get_default_settings
 
 _CONFIGURED = False
 _DISABLED_LEVELS = {"OFF", "NONE", "DISABLED", "FALSE", "0"}
@@ -11,7 +11,10 @@ _DISABLED_LEVELS = {"OFF", "NONE", "DISABLED", "FALSE", "0"}
 def configure_logging(level: str | None = None) -> None:
     global _CONFIGURED
 
-    resolved_level = (level or LOG_LEVEL or "INFO").strip().upper()
+    default_level = (
+        None if level is not None else get_default_settings().log_level
+    )
+    resolved_level = (level or default_level or "INFO").strip().upper()
     logger.remove()
     if resolved_level not in _DISABLED_LEVELS:
         logger.add(

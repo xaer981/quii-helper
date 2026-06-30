@@ -82,6 +82,7 @@ class RbUdpWrappedFragmentAssembler:
             inner_total_length=packet.inner_total_length,
             incoming_payload_len=len(packet.payload),
         ):
+            assert existing is not None
             self.debug(
                 "ignore_wrapped_fragment_stream_restart",
                 word4=hex(stream.word4),

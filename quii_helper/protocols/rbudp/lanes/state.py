@@ -1,45 +1,44 @@
+from collections.abc import Callable
+
 from quii_helper.protocols.rbudp.core.models import ParsedRbUdpControlPacket
-from quii_helper.protocols.rbudp.lanes.registry import RbUdpLane
+from quii_helper.protocols.rbudp.lanes.registry import (
+    RbUdpLane,
+    RbUdpLaneRegistry,
+)
 
 
-class RbUdpLaneStateMixin:
-    _lane_states: list[RbUdpLane]
-    src_id: int
-    src_ids: list[int]
+class RbUdpLaneState:
+    """Provide lane lookup and mutation helpers for an RBUDP tunnel."""
 
-    def _dbg(self, message: str, **kwargs) -> None:
-        raise NotImplementedError
+    def __init__(
+        self,
+        *,
+        lane_registry: RbUdpLaneRegistry,
+        src_id: int,
+        src_ids: list[int],
+        debug: Callable[..., None],
+    ) -> None:
+        self._lane_registry = lane_registry
+        self._src_id = src_id
+        self._src_ids = src_ids
+        self._debug = debug
 
-    def _lane_for_packet_words(
+    def lane_for_packet_words(
         self, *, word4: int, word8: int
     ) -> RbUdpLane | None:
-        for lane in self._lane_states:
-            if (
-                int(lane["peer_word4"]) == word4
-                and int(lane["peer_word8"]) == word8
-            ):
-                return lane
-            if int(lane["word4"]) == word8 and int(lane["word8"]) == word4:
-                return lane
-            if (
-                int(lane["word8"]) == word4
-                or int(lane["bootstrap_word8"]) == word4
-            ):
-                return lane
-        return None
+        return self._lane_registry.for_packet_words(word4=word4, word8=word8)
 
-    def _next_lane_nonce(self, lane: RbUdpLane) -> int:
+    def next_lane_nonce(self, lane: RbUdpLane) -> int:
         nonce = int(lane["nonce"]) & 0xFFFFFFFF
         lane["nonce"] = (nonce + 1) & 0xFFFFFFFF
         return nonce
 
-    def _effective_play_sync_remote_id(
-        self, lane: RbUdpLane, remote_id: int
-    ) -> int:
+    @staticmethod
+    def effective_play_sync_remote_id(lane: RbUdpLane, remote_id: int) -> int:
         bias = int(lane["play_sync_remote_bias"])
         return (remote_id + bias) & 0xFFFFFFFF
 
-    def _refresh_lane_word4(
+    def refresh_lane_word4(
         self,
         lane: RbUdpLane,
         *,
@@ -62,7 +61,7 @@ class RbUdpLaneStateMixin:
             )
         lane["word4"] = refreshed_word4
         lane["peer_word8"] = refreshed_word4
-        self._dbg(
+        self._debug(
             "refresh_lane_word4",
             src_id=hex(int(lane["src_id"])),
             word4=hex(refreshed_word4),
@@ -71,43 +70,22 @@ class RbUdpLaneStateMixin:
             peer_word8=hex(int(lane["peer_word8"])),
         )
 
-    def _late_family_target_word4(self, lane: RbUdpLane) -> int:
-        lane_offset = int(lane["src_id"]) - int(self.src_ids[0])
+    def late_family_target_word4(self, lane: RbUdpLane) -> int:
+        lane_offset = int(lane["src_id"]) - int(self._src_ids[0])
         return (0x3D000022 + (lane_offset * 0x01000001)) & 0xFFFFFFFF
 
-    def _active_lane(self) -> RbUdpLane:
-        for lane in self._lane_states:
-            if int(lane["src_id"]) == self.src_id:
-                return lane
-        return self._lane_states[0]
+    def active_lane(self) -> RbUdpLane:
+        return self._lane_registry.active(self._src_id)
 
-    def _lane_for_syn_ack(
+    def lane_for_syn_ack(
         self, control: ParsedRbUdpControlPacket
     ) -> RbUdpLane | None:
-        for lane in self._lane_states:
-            bootstrap_word8 = int(lane["bootstrap_word8"])
-            if control.word4 == bootstrap_word8:
-                return lane
-        return None
+        return self._lane_registry.for_syn_ack(control)
 
-    def _lane_for_control(
+    def lane_for_control(
         self, control: ParsedRbUdpControlPacket
     ) -> RbUdpLane | None:
-        for lane in self._lane_states:
-            if (
-                int(lane["peer_word4"]) == control.word4
-                and int(lane["peer_word8"]) == control.word8
-            ):
-                return lane
-            if (
-                int(lane["word8"]) == control.word4
-                or int(lane["bootstrap_word8"]) == control.word4
-            ):
-                return lane
-        return None
+        return self._lane_registry.for_control(control)
 
-    def _lane_for_src_id(self, src_id: int) -> RbUdpLane | None:
-        for lane in self._lane_states:
-            if int(lane["src_id"]) == src_id:
-                return lane
-        return None
+    def lane_for_src_id(self, src_id: int) -> RbUdpLane | None:
+        return self._lane_registry.for_src_id(src_id)

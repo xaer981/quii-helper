@@ -35,7 +35,10 @@ def maybe_int(value: Any) -> int | None:
 
 def decoded_json_object(data: dict[str, Any] | str) -> dict[str, Any]:
     if isinstance(data, str):
-        return json.loads(data)
+        decoded = json.loads(data)
+        if not isinstance(decoded, dict):
+            raise ValueError("expected JSON object")
+        return decoded
     return data
 
 

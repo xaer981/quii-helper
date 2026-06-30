@@ -1,4 +1,4 @@
-import unittest
+import pytest
 
 from quii_helper.protocols.rbudp.live.command_state import (
     build_native_play_profile,
@@ -8,7 +8,7 @@ from quii_helper.protocols.rbudp.live.command_state import (
 )
 
 
-class RbUdpLiveCommandStateTests(unittest.TestCase):
+class RbUdpLiveCommandStateTests:
     def test_build_native_play_profile_matches_channel_and_stream_bits(
         self,
     ) -> None:
@@ -18,13 +18,13 @@ class RbUdpLiveCommandStateTests(unittest.TestCase):
             inner=True,
         )
 
-        self.assertEqual(0x0201, profile["channel_id"])
-        self.assertEqual(0x01, profile["packet_type"])
-        self.assertEqual(0x01, profile["ext_len_low"])
-        self.assertEqual(0x02, profile["ext_len_high"])
-        self.assertEqual(0x01, profile["play_param"])
-        self.assertEqual(0x01, profile["stream_flag"])
-        self.assertEqual(1, profile["inner"])
+        assert 0x0201 == profile["channel_id"]
+        assert 0x01 == profile["packet_type"]
+        assert 0x01 == profile["ext_len_low"]
+        assert 0x02 == profile["ext_len_high"]
+        assert 0x01 == profile["play_param"]
+        assert 0x01 == profile["stream_flag"]
+        assert 1 == profile["inner"]
 
     def test_build_native_play_profile_clamps_and_masks_values(self) -> None:
         negative = build_native_play_profile(
@@ -38,19 +38,19 @@ class RbUdpLiveCommandStateTests(unittest.TestCase):
             inner=False,
         )
 
-        self.assertEqual(0, negative["channel_id"])
-        self.assertEqual(0, negative["stream_flag"])
-        self.assertEqual(0x2345, masked["channel_id"])
-        self.assertEqual(43, masked["stream_flag"])
+        assert 0 == negative["channel_id"]
+        assert 0 == negative["stream_flag"]
+        assert 0x2345 == masked["channel_id"]
+        assert 43 == masked["stream_flag"]
 
     def test_normalize_live_play_payload_accepts_supported_values(
         self,
     ) -> None:
-        self.assertEqual("path", normalize_live_play_payload("PATH"))
-        self.assertEqual("oem", normalize_live_play_payload("oem"))
+        assert "path" == normalize_live_play_payload("PATH")
+        assert "oem" == normalize_live_play_payload("oem")
 
     def test_normalize_live_play_payload_rejects_unknown_value(self) -> None:
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             normalize_live_play_payload("token")
 
     def test_build_quii_play_common_args_matches_native_crypto_defaults(
@@ -70,18 +70,18 @@ class RbUdpLiveCommandStateTests(unittest.TestCase):
             data_encode_key=b"key",
         )
 
-        self.assertEqual(0x4000006, common["src_id"])
-        self.assertEqual(0x12340000, common["dest_id"])
-        self.assertEqual(7, common["seq"])
-        self.assertEqual(0x01, common["packet_type"])
-        self.assertEqual(0x01, common["ext_len_low"])
-        self.assertEqual(0x00, common["ext_len_high"])
-        self.assertEqual(0x01, common["play_param"])
-        self.assertEqual(0x01, common["stream_flag"])
-        self.assertIs(True, common["inner"])
-        self.assertEqual(2, common["crypto_mode"])
-        self.assertEqual(b"key", common["key"])
-        self.assertIs(True, common["encrypt"])
+        assert 0x4000006 == common["src_id"]
+        assert 0x12340000 == common["dest_id"]
+        assert 7 == common["seq"]
+        assert 0x01 == common["packet_type"]
+        assert 0x01 == common["ext_len_low"]
+        assert 0x00 == common["ext_len_high"]
+        assert 0x01 == common["play_param"]
+        assert 0x01 == common["stream_flag"]
+        assert True is common["inner"]
+        assert 2 == common["crypto_mode"]
+        assert b"key" == common["key"]
+        assert True is common["encrypt"]
 
     def test_select_live_command_lane_destinations_prefers_active_src(
         self,
@@ -93,7 +93,7 @@ class RbUdpLiveCommandStateTests(unittest.TestCase):
             active_src_id=2,
         )
 
-        self.assertEqual([({"src_id": 2}, 200)], selected)
+        assert [({"src_id": 2}, 200)] == selected
 
     def test_select_live_command_lane_destinations_falls_back_to_first(
         self,
@@ -105,8 +105,4 @@ class RbUdpLiveCommandStateTests(unittest.TestCase):
             active_src_id=3,
         )
 
-        self.assertEqual([({"src_id": 1}, 100)], selected)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert [({"src_id": 1}, 100)] == selected

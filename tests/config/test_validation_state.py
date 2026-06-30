@@ -1,4 +1,3 @@
-import unittest
 from types import SimpleNamespace
 
 from quii_helper.config.validation import (
@@ -7,15 +6,15 @@ from quii_helper.config.validation import (
 )
 
 
-class ConfigValidationStateTests(unittest.TestCase):
+class ConfigValidationStateTests:
     def test_is_missing_config_value_preserves_existing_rules(self) -> None:
-        self.assertTrue(is_missing_config_value(None))
-        self.assertTrue(is_missing_config_value(""))
-        self.assertTrue(is_missing_config_value("   "))
-        self.assertTrue(is_missing_config_value(0))
-        self.assertFalse(is_missing_config_value("value"))
-        self.assertFalse(is_missing_config_value(1))
-        self.assertFalse(is_missing_config_value(object()))
+        assert is_missing_config_value(None)
+        assert is_missing_config_value("")
+        assert is_missing_config_value("   ")
+        assert is_missing_config_value(0)
+        assert not is_missing_config_value("value")
+        assert not is_missing_config_value(1)
+        assert not is_missing_config_value(object())
 
     def test_missing_camera_app_fields_preserves_field_order_and_env_names(
         self,
@@ -30,14 +29,11 @@ class ConfigValidationStateTests(unittest.TestCase):
             ip_region_id=None,
         )
 
-        self.assertEqual(
-            [
-                "service_url (CLOUD_SERVICE_URL)",
-                "app_id (CAMERA_APP_ID)",
-                "ip_region_id (IP_REGION_ID)",
-            ],
-            missing_camera_app_fields(config),
-        )
+        assert [
+            "service_url (CLOUD_SERVICE_URL)",
+            "app_id (CAMERA_APP_ID)",
+            "ip_region_id (IP_REGION_ID)",
+        ] == (missing_camera_app_fields(config))
 
     def test_missing_camera_app_fields_returns_empty_for_complete_config(
         self,
@@ -52,8 +48,4 @@ class ConfigValidationStateTests(unittest.TestCase):
             ip_region_id=1,
         )
 
-        self.assertEqual([], missing_camera_app_fields(config))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert [] == missing_camera_app_fields(config)

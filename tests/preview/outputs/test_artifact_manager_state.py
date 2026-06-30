@@ -1,10 +1,9 @@
-﻿import unittest
 from pathlib import Path
 
 from quii_helper.preview.outputs.manager.state import sample_recorder
 
 
-class PreviewArtifactManagerStateTests(unittest.TestCase):
+class PreviewArtifactManagerStateTests:
     def test_sample_recorder_preserves_configuration_and_seen_hash_set(
         self,
     ) -> None:
@@ -17,11 +16,7 @@ class PreviewArtifactManagerStateTests(unittest.TestCase):
             seen_hashes=seen_hashes,
         )
 
-        self.assertEqual(Path("samples.jsonl"), recorder.sample_path)
-        self.assertEqual(3, recorder.limit)
-        self.assertTrue(recorder.enabled)
-        self.assertIs(seen_hashes, recorder.seen_hashes)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert Path("samples.jsonl") == recorder.sample_path
+        assert 3 == recorder.limit
+        assert recorder.enabled
+        assert seen_hashes is recorder.seen_hashes

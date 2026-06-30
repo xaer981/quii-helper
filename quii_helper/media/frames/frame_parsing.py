@@ -1,8 +1,12 @@
+from typing import Any
+
 from quii_helper.media.cpacket import parse_cpacket_header
 from quii_helper.media.cpacket.constants import CPACKET_HEADER_LEN
 
 
-def parse_quii_media_frame_at(payload: bytes, offset: int) -> dict | None:
+def parse_quii_media_frame_at(
+    payload: bytes, offset: int
+) -> dict[str, Any] | None:
     header = parse_cpacket_header(payload, offset)
     if header is None:
         return None

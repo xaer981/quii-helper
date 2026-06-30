@@ -1,5 +1,3 @@
-import unittest
-
 from quii_helper.media.frames.assembler_state import (
     access_unit_from_frame,
     assemble_access_units,
@@ -29,39 +27,30 @@ def _parsed_frame(**overrides):
     return frame
 
 
-class MediaAssemblerStateTests(unittest.TestCase):
+class MediaAssemblerStateTests:
     def test_frame_info_from_parsed_frame_keeps_summary_shape(self) -> None:
         frame = _parsed_frame(cframe_fragments=2)
 
-        self.assertEqual(
-            {
-                "payload_offset": 20,
-                "frame_tag": "0xe1",
-                "frame_type": 1,
-                "frame_len": 1000,
-                "frame_stamp": 123,
-                "codec": 1,
-                "fps": 25.0,
-                "width": 960,
-                "height": 576,
-                "nal_offset": 4,
-                "cframe_fragments": 2,
-            },
-            frame_info_from_parsed_frame(frame),
-        )
+        assert {
+            "payload_offset": 20,
+            "frame_tag": "0xe1",
+            "frame_type": 1,
+            "frame_len": 1000,
+            "frame_stamp": 123,
+            "codec": 1,
+            "fps": 25.0,
+            "width": 960,
+            "height": 576,
+            "nal_offset": 4,
+            "cframe_fragments": 2,
+        } == (frame_info_from_parsed_frame(frame))
 
     def test_access_unit_from_frame_filters_non_video_or_missing_nal(
         self,
     ) -> None:
-        self.assertEqual(b"data", access_unit_from_frame(_parsed_frame()))
-        self.assertEqual(
-            b"",
-            access_unit_from_frame(_parsed_frame(frame_tag=0xE3)),
-        )
-        self.assertEqual(
-            b"",
-            access_unit_from_frame(_parsed_frame(nal_offset=-1)),
-        )
+        assert b"data" == access_unit_from_frame(_parsed_frame())
+        assert b"" == (access_unit_from_frame(_parsed_frame(frame_tag=0xE3)))
+        assert b"" == (access_unit_from_frame(_parsed_frame(nal_offset=-1)))
 
     def test_assemble_access_units_skips_empty_units(self) -> None:
         frames = [
@@ -69,7 +58,7 @@ class MediaAssemblerStateTests(unittest.TestCase):
             _parsed_frame(bitstream=b"1234", nal_offset=4),
         ]
 
-        self.assertEqual([b"data"], assemble_access_units(frames))
+        assert [b"data"] == assemble_access_units(frames)
 
     def test_media_summary_matches_existing_frame_counters(self) -> None:
         frames = [
@@ -96,14 +85,14 @@ class MediaAssemblerStateTests(unittest.TestCase):
             cframe_stats={"completed": 2},
         )
 
-        self.assertEqual(2, summary["video_frames"])
-        self.assertEqual(1, summary["keyframes"])
-        self.assertEqual(1, summary["e3_frames"])
-        self.assertEqual(2, summary["assembled_units"])
-        self.assertEqual({"completed": 2}, summary["cframe_pack"])
-        self.assertEqual(1200, summary["avg_video_frame_len"])
-        self.assertEqual(1400, summary["max_video_frame_len"])
-        self.assertFalse(summary["suspect_black_stream"])
+        assert 2 == summary["video_frames"]
+        assert 1 == summary["keyframes"]
+        assert 1 == summary["e3_frames"]
+        assert 2 == summary["assembled_units"]
+        assert {"completed": 2} == summary["cframe_pack"]
+        assert 1200 == summary["avg_video_frame_len"]
+        assert 1400 == summary["max_video_frame_len"]
+        assert not summary["suspect_black_stream"]
 
     def test_media_summary_marks_small_video_stream_as_suspect(self) -> None:
         summary = build_media_summary(
@@ -112,17 +101,13 @@ class MediaAssemblerStateTests(unittest.TestCase):
             cframe_stats={},
         )
 
-        self.assertTrue(summary["suspect_black_stream"])
+        assert summary["suspect_black_stream"]
 
     def test_frame_type_and_keyframe_helpers(self) -> None:
-        self.assertTrue(is_video_frame_info({"frame_type": "1"}))
-        self.assertFalse(is_video_frame_info({"frame_type": "3"}))
-        self.assertTrue(is_key_frame_info({"frame_tag": "0xe1"}))
-        self.assertFalse(is_key_frame_info({"frame_tag": "0xe0"}))
+        assert is_video_frame_info({"frame_type": "1"})
+        assert not is_video_frame_info({"frame_type": "3"})
+        assert is_key_frame_info({"frame_tag": "0xe1"})
+        assert not is_key_frame_info({"frame_tag": "0xe0"})
 
     def test_media_frame_length_stats_handles_empty_video_list(self) -> None:
-        self.assertEqual((0, 0), media_frame_length_stats([]))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert (0, 0) == media_frame_length_stats([])

@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+from typing import Any
 
-def fragmented_media_lengths(decoded: dict) -> tuple[int, int, int]:
+FragmentedMediaState = dict[str, Any]
+DecodedMediaBlob = dict[str, Any]
+DiagnosticMeta = dict[str, Any]
+
+
+def fragmented_media_lengths(
+    decoded: DecodedMediaBlob,
+) -> tuple[int, int, int]:
     expected_body_len = int(decoded.get("read_size", 0))
     media_payload_offset = int(decoded.get("media_payload_offset", 0))
     expected_media_len = max(0, expected_body_len - media_payload_offset)
@@ -10,8 +18,12 @@ def fragmented_media_lengths(decoded: dict) -> tuple[int, int, int]:
 
 
 def build_fragmented_media_state(
-    decoded: dict, *, source: str, meta: dict, message_index: int
-) -> dict:
+    decoded: DecodedMediaBlob,
+    *,
+    source: str,
+    meta: DiagnosticMeta,
+    message_index: int,
+) -> FragmentedMediaState:
     header = decoded["header"]
     payload = decoded["payload"]
     expected_body_len = int(decoded["read_size"])
@@ -34,7 +46,7 @@ def build_fragmented_media_state(
 
 
 def append_fragmented_media_body(
-    state: dict, blob: bytes
+    state: FragmentedMediaState, blob: bytes
 ) -> tuple[int, bool, int]:
     body = state["body"]
     expected_body_len = int(state["expected_body_len"])
@@ -48,16 +60,16 @@ def append_fragmented_media_body(
 
 
 def fragmented_media_append_summary(
-    state: dict,
+    state: FragmentedMediaState,
     blob: bytes,
     *,
     source: str,
-    meta: dict,
+    meta: DiagnosticMeta,
     message_index: int,
     take: int,
     complete: bool,
     expected_body_len: int,
-) -> dict:
+) -> dict[str, Any]:
     body = state["body"]
     summary = {
         "msg_index": message_index,
@@ -80,15 +92,20 @@ def fragmented_media_append_summary(
     return summary
 
 
-def complete_fragmented_blob(state: dict, expected_body_len: int) -> bytes:
+def complete_fragmented_blob(
+    state: FragmentedMediaState, expected_body_len: int
+) -> bytes:
     return bytes(state["header_raw"]) + bytes(
         state["body"][:expected_body_len]
     )
 
 
 def fragmented_media_decode_meta(
-    state: dict, *, message_index: int, expected_body_len: int
-) -> dict:
+    state: FragmentedMediaState,
+    *,
+    message_index: int,
+    expected_body_len: int,
+) -> dict[str, Any]:
     return {
         "start_msg_index": state.get("start_msg_index"),
         "end_msg_index": message_index,

@@ -1,13 +1,20 @@
+from typing import Any
+
 from quii_helper.diagnostics.wrapped.tail.crypto import (
     decrypt_wrapped_quii_tail_bytes,
     extract_wrapped_quii_tail,
 )
 from quii_helper.diagnostics.wrapped.tail.probe import analyze_decrypted_tail
 
+__all__ = [
+    "analyze_wrapped_quii_tail",
+    "decrypt_wrapped_quii_tail_bytes",
+]
+
 
 def analyze_wrapped_quii_tail(
-    blob: bytes, key: str, decoded: dict
-) -> dict | None:
+    blob: bytes, key: str, decoded: dict[str, Any]
+) -> dict[str, Any] | None:
     header = decoded["header"]
     tail, tail_trimmed, consumed = extract_wrapped_quii_tail(blob, decoded)
     if not tail:

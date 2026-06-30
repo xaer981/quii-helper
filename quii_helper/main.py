@@ -2,12 +2,18 @@ import time
 
 from quii_helper import Camera
 
-try:
-    camera = Camera(stream_quality="high", live_newcn=True)
-    with camera.serve_rtsp(port=8554) as stream:
-        print(f"RTSP URL: {stream.url}")
 
+def main() -> None:
+    """Run a simple RTSP preview server example."""
+
+    camera = Camera(stream_quality="high", live_newcn=True, tls_verify=False)
+    with camera.serve_rtsp(port=8554):
         while True:
             time.sleep(1)
-except KeyboardInterrupt:
-    pass
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

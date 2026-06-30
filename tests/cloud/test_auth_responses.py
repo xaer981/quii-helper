@@ -1,17 +1,19 @@
-﻿import unittest
 import xml.etree.ElementTree as ET
+
+import pytest
 
 from quii_helper.cloud.authentication.responses import (
     parse_device_token_response,
     parse_login_response,
 )
+from quii_helper.support.errors import QuiiConnectionError
 
 
 def _xml(text: str) -> ET.Element:
     return ET.fromstring(text)
 
 
-class CloudAuthResponseTests(unittest.TestCase):
+class CloudAuthResponseTests:
     def test_parse_login_response_reads_header_session_and_content(
         self,
     ) -> None:
@@ -34,11 +36,11 @@ class CloudAuthResponseTests(unittest.TestCase):
             "<raw/>",
         )
 
-        self.assertEqual("session-1", parsed["session_id"])
-        self.assertEqual("account-1", parsed["account_id"])
-        self.assertEqual("token-1", parsed["token"])
-        self.assertEqual("3600", parsed["expire"])
-        self.assertEqual("<raw/>", parsed["raw"])
+        assert "session-1" == parsed["session_id"]
+        assert "account-1" == parsed["account_id"]
+        assert "token-1" == parsed["token"]
+        assert "3600" == parsed["expire"]
+        assert "<raw/>" == parsed["raw"]
 
     def test_parse_login_response_supports_legacy_session_text(self) -> None:
         parsed = parse_login_response(
@@ -53,10 +55,12 @@ class CloudAuthResponseTests(unittest.TestCase):
             "",
         )
 
-        self.assertEqual("legacy", parsed["session_id"])
+        assert "legacy" == parsed["session_id"]
 
     def test_parse_login_response_rejects_error_result(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "cloud login result: 101"):
+        with pytest.raises(
+            QuiiConnectionError, match="cloud login result: 101"
+        ):
             parse_login_response(
                 _xml(
                     """
@@ -89,14 +93,14 @@ class CloudAuthResponseTests(unittest.TestCase):
             "raw-device",
         )
 
-        self.assertEqual("device-1", parsed["device_id"])
-        self.assertEqual("key-1", parsed["data_encode_key"])
-        self.assertEqual("password-1", parsed["dynamic_password"])
-        self.assertEqual("false", parsed["pwd_expired"])
-        self.assertEqual("basedata-1", parsed["transparent_basedata"])
-        self.assertEqual("auth-1", parsed["auth_code"])
-        self.assertEqual("default-1", parsed["default_out_auth_code"])
-        self.assertEqual("raw-device", parsed["raw"])
+        assert "device-1" == parsed["device_id"]
+        assert "key-1" == parsed["data_encode_key"]
+        assert "password-1" == parsed["dynamic_password"]
+        assert "false" == parsed["pwd_expired"]
+        assert "basedata-1" == parsed["transparent_basedata"]
+        assert "auth-1" == parsed["auth_code"]
+        assert "default-1" == parsed["default_out_auth_code"]
+        assert "raw-device" == parsed["raw"]
 
     def test_parse_device_token_response_supports_kebab_case_fields(
         self,
@@ -123,18 +127,18 @@ class CloudAuthResponseTests(unittest.TestCase):
             "",
         )
 
-        self.assertEqual("device-2", parsed["device_id"])
-        self.assertEqual("key-2", parsed["data_encode_key"])
-        self.assertEqual("password-2", parsed["dynamic_password"])
-        self.assertEqual("true", parsed["pwd_expired"])
-        self.assertEqual("basedata-2", parsed["transparent_basedata"])
-        self.assertEqual("auth-2", parsed["auth_code"])
-        self.assertEqual("default-2", parsed["default_out_auth_code"])
+        assert "device-2" == parsed["device_id"]
+        assert "key-2" == parsed["data_encode_key"]
+        assert "password-2" == parsed["dynamic_password"]
+        assert "true" == parsed["pwd_expired"]
+        assert "basedata-2" == parsed["transparent_basedata"]
+        assert "auth-2" == parsed["auth_code"]
+        assert "default-2" == parsed["default_out_auth_code"]
 
     def test_parse_device_token_response_rejects_missing_content(self) -> None:
-        with self.assertRaisesRegex(
-            RuntimeError,
-            "device-token response content not found",
+        with pytest.raises(
+            QuiiConnectionError,
+            match="device-token response content not found",
         ):
             parse_device_token_response(
                 _xml(
@@ -146,7 +150,3 @@ class CloudAuthResponseTests(unittest.TestCase):
                 ),
                 "",
             )
-
-
-if __name__ == "__main__":
-    unittest.main()

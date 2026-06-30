@@ -1,9 +1,11 @@
 ﻿from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 from quii_helper.io.paths import DATA_DIR, resolve_data_dir
 from quii_helper.media.h264.io.writer import write_h264_stream
+from quii_helper.models.capture import MediaArtifactSummary
 from quii_helper.preview.fragments.collectors import FragmentPartialCollector
 from quii_helper.preview.fragments.embedded_h264 import (
     write_embedded_h264_fallback,
@@ -22,10 +24,10 @@ from quii_helper.preview.outputs.writer.state import (
 
 @dataclass
 class CaptureArtifacts:
-    media_result: dict | None
-    embedded_fallback: dict | None
-    container_probe_summary: dict | None
-    cpacket_probe_summary: dict | None
+    media_result: MediaArtifactSummary | None
+    embedded_fallback: MediaArtifactSummary | None
+    container_probe_summary: dict[str, Any] | None
+    cpacket_probe_summary: dict[str, Any] | None
 
 
 @dataclass
@@ -42,7 +44,7 @@ class PreviewOutputWriter:
     def write_capture_outputs(
         self,
         *,
-        decoded_messages: list[dict],
+        decoded_messages: list[dict[str, Any]],
         fragment_partial_collector: FragmentPartialCollector,
         target_duration_seconds: float | None = None,
     ) -> CaptureArtifacts:
@@ -84,7 +86,7 @@ class PreviewOutputWriter:
         self,
         output_base: str,
         fragment_partial_collector: FragmentPartialCollector,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         return self._write_probe_summary(
             output_base,
             fragment_partial_collector.container_probe_candidates,
@@ -95,7 +97,7 @@ class PreviewOutputWriter:
         self,
         output_base: str,
         fragment_partial_collector: FragmentPartialCollector,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         return self._write_probe_summary(
             output_base,
             fragment_partial_collector.cpacket_candidates,
@@ -106,22 +108,22 @@ class PreviewOutputWriter:
         self,
         output_base: str,
         candidates: list[bytes],
-        writer: Callable[[str, list[bytes]], dict],
-    ) -> dict | None:
+        writer: Callable[[str | Path, list[bytes]], dict[Any, Any] | None],
+    ) -> dict[str, Any] | None:
         if not should_write_diagnostic_candidates(
             diagnostics_enabled=self.diagnostics_enabled,
             candidates=candidates,
         ):
             return None
-        return writer(output_base, candidates)
+        return cast(dict[str, Any] | None, writer(output_base, candidates))
 
     def _write_embedded_fallback(
         self,
         output_base: str,
         *,
-        media_result: dict | None,
+        media_result: MediaArtifactSummary | None,
         fragment_partial_collector: FragmentPartialCollector,
-    ) -> dict | None:
+    ) -> MediaArtifactSummary | None:
         if not should_write_embedded_fallback(
             diagnostics_enabled=self.diagnostics_enabled,
             embedded_h264_candidates=(
@@ -136,4 +138,4 @@ class PreviewOutputWriter:
         )
         if media_result is not None:
             media_result["embedded_fallback"] = embedded_fallback
-        return embedded_fallback
+        return cast(MediaArtifactSummary, embedded_fallback)

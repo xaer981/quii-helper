@@ -1,3 +1,4 @@
+from typing import TypedDict
 from urllib.parse import urlparse
 
 from quii_helper.cloud.services.query_xml import build_service_query_xml
@@ -23,7 +24,28 @@ def service_query_request_parts(
     return request_url, xml_body, host
 
 
-def cloud_login_kwargs(config: AutonomousConfig) -> dict:
+class CloudLoginKwargs(TypedDict):
+    auth_url: str
+    ip_region_id: int
+    client_id: str
+    oem: str
+    app_id: int
+    client_type: int
+    debug: bool
+    verify_tls: bool
+
+
+class DeviceTokenKwargs(TypedDict):
+    auth_url: str
+    client_id: str
+    oem: str
+    app_id: int
+    client_type: int
+    debug: bool
+    verify_tls: bool
+
+
+def cloud_login_kwargs(config: AutonomousConfig) -> CloudLoginKwargs:
     return {
         "auth_url": config.auth_url,
         "ip_region_id": config.ip_region_id,
@@ -32,10 +54,11 @@ def cloud_login_kwargs(config: AutonomousConfig) -> dict:
         "app_id": config.app_id,
         "client_type": config.client_type,
         "debug": False,
+        "verify_tls": config.tls_verify,
     }
 
 
-def device_token_kwargs(config: AutonomousConfig) -> dict:
+def device_token_kwargs(config: AutonomousConfig) -> DeviceTokenKwargs:
     return {
         "auth_url": config.auth_url,
         "client_id": config.client_id,
@@ -43,11 +66,12 @@ def device_token_kwargs(config: AutonomousConfig) -> dict:
         "app_id": config.app_id,
         "client_type": config.client_type,
         "debug": False,
+        "verify_tls": config.tls_verify,
     }
 
 
 def runtime_credentials_from_cloud_results(
-    *, login: dict, token: dict
+    *, login: dict[str, str], token: dict[str, str]
 ) -> RuntimeCredentials:
     return RuntimeCredentials(
         session_id=login["session_id"],

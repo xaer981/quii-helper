@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from quii_helper.camera.connection.session import CameraConnector
 from quii_helper.config import AutonomousConfig
+from quii_helper.models.capture import CaptureSummary
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
     PreviewCaptureSettings,
@@ -44,7 +45,7 @@ class CameraPreviewApplication:
             emit=self.emit,
         )
 
-    def run(self) -> dict:
+    def run(self) -> CaptureSummary:
         self.status("Starting camera preview")
         self.status(
             f"Device {self.config.device_id}; "

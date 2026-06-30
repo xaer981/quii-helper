@@ -1,4 +1,3 @@
-import unittest
 from types import SimpleNamespace
 
 from quii_helper.streaming.h264 import H264LiveAssembler
@@ -17,7 +16,7 @@ def _cpacket(bitstream: bytes, *, frame_tag: int = 0xE1) -> bytes:
     return bytes(header) + bitstream
 
 
-class H264LiveAssemblerTests(unittest.TestCase):
+class H264LiveAssemblerTests:
     def test_feed_message_emits_access_units_to_sink(self) -> None:
         emitted = []
         assembler = H264LiveAssembler(sink=emitted.append)
@@ -30,44 +29,37 @@ class H264LiveAssemblerTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual([access_unit], result)
-        self.assertEqual([access_unit], emitted)
-        self.assertEqual(1, assembler.stats["frames"])
-        self.assertEqual(1, assembler.stats["access_units"])
+        assert [access_unit] == result
+        assert [access_unit] == emitted
+        assert 1 == assembler.stats["frames"]
+        assert 1 == assembler.stats["access_units"]
 
     def test_feed_message_keeps_fragmented_cpacket_state(self) -> None:
         assembler = H264LiveAssembler()
         payload = _cpacket(b"\x00\x00\x00\x01\x65idr")
 
-        self.assertEqual(
-            [],
+        assert [] == (
             assembler.feed_message(
                 {
                     "header": SimpleNamespace(packet_type=0xA0),
                     "payload": payload[:10],
                 }
-            ),
+            )
         )
-        self.assertEqual(
-            [b"\x00\x00\x00\x01\x65idr"],
+        assert [b"\x00\x00\x00\x01\x65idr"] == (
             assembler.feed_message(
                 {
                     "header": SimpleNamespace(packet_type=0xA0),
                     "payload": payload[10:],
                 }
-            ),
+            )
         )
 
     def test_feed_message_ignores_non_media_packets(self) -> None:
         assembler = H264LiveAssembler()
 
-        self.assertEqual(
-            [],
+        assert [] == (
             assembler.feed_message(
                 {"header": SimpleNamespace(packet_type=0x01), "payload": b"x"}
-            ),
+            )
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -1,6 +1,8 @@
 import queue
 import time
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
+
+from quii_helper.models.packets import TunnelPacket
 
 
 class TunnelPacketStream:
@@ -13,18 +15,21 @@ class TunnelPacketStream:
         duration: float,
         timeout: float,
         keepalive_credentials: Any | None = None,
-    ) -> Iterator[dict[str, Any]]:
+    ) -> Iterator[TunnelPacket]:
         deadline = time.monotonic() + duration
         while time.monotonic() < deadline:
             self._maybe_send_keepalive(keepalive_credentials)
             try:
-                yield self.tunnel.recv_packet(timeout=min(timeout, 1.0))
+                yield cast(
+                    TunnelPacket,
+                    self.tunnel.recv_packet(timeout=min(timeout, 1.0)),
+                )
             except queue.Empty:
                 continue
 
     def flush_fragment_partials(
         self, *, drain_seconds: float, timeout: float
-    ) -> Iterator[dict[str, Any]]:
+    ) -> Iterator[TunnelPacket]:
         self.tunnel.flush_fragment_partials()
         yield from self._drain_until_timeout(
             drain_seconds=drain_seconds, timeout=timeout
@@ -36,7 +41,7 @@ class TunnelPacketStream:
         drain_seconds: float,
         timeout: float,
         keepalive_credentials: Any | None = None,
-    ) -> Iterator[dict[str, Any]]:
+    ) -> Iterator[TunnelPacket]:
         yield from self._drain_until_timeout(
             drain_seconds=drain_seconds,
             timeout=timeout,
@@ -46,7 +51,7 @@ class TunnelPacketStream:
 
     def close_and_drain(
         self, *, drain_seconds: float, timeout: float
-    ) -> Iterator[dict[str, Any]]:
+    ) -> Iterator[TunnelPacket]:
         self.tunnel.close()
         yield from self._drain_until_timeout(
             drain_seconds=drain_seconds, timeout=timeout
@@ -69,12 +74,14 @@ class TunnelPacketStream:
         timeout: float,
         keepalive_credentials: Any | None = None,
         break_on_empty: bool = True,
-    ) -> Iterator[dict[str, Any]]:
+    ) -> Iterator[TunnelPacket]:
         deadline = time.monotonic() + drain_seconds
         while time.monotonic() < deadline:
             self._maybe_send_keepalive(keepalive_credentials)
             try:
-                yield self.tunnel.recv_packet(timeout=timeout)
+                yield cast(
+                    TunnelPacket, self.tunnel.recv_packet(timeout=timeout)
+                )
             except queue.Empty:
                 if break_on_empty:
                     break

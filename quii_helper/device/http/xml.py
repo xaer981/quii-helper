@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+from typing import cast
 
 
 def build_request_xml(
@@ -24,4 +25,6 @@ def build_request_xml(
     if nc:
         ET.SubElement(header, "nc").text = nc
 
-    return ET.tostring(envelope, encoding="utf-8", xml_declaration=False)
+    return cast(
+        bytes, ET.tostring(envelope, encoding="utf-8", xml_declaration=False)
+    )

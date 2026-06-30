@@ -1,4 +1,6 @@
-﻿from quii_helper.media.h264.core.annexb import (
+from typing import Any
+
+from quii_helper.media.h264.core.annexb import (
     analyze_nal_units,
     emulation_prevention_byte_count,
     find_start_codes,
@@ -9,7 +11,7 @@ def find_annexb_start_codes(buf: bytes) -> list[tuple[int, int]]:
     return find_start_codes(buf)
 
 
-def analyze_annexb_h264(stream: bytes) -> dict:
+def analyze_annexb_h264(stream: bytes) -> dict[str, Any]:
     summary = analyze_nal_units(stream)
     counts = summary["counts"]
     epb_count = emulation_prevention_byte_count(stream)

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 from quii_helper.media.frames.assembler_state import (
     MEDIA_PACKET_TYPES,
@@ -7,13 +8,14 @@ from quii_helper.media.frames.assembler_state import (
     frame_info_from_parsed_frame,
 )
 from quii_helper.media.frames.parsing import QuiiCFramePack
+from quii_helper.models.capture import MediaFrameSummary
 
 
 @dataclass
 class AssembledH264Stream:
     stream_bytes: bytes
-    frames: list[dict]
-    summary: dict
+    frames: list[MediaFrameSummary]
+    summary: dict[str, Any]
 
     @property
     def has_access_units(self) -> bool:
@@ -21,7 +23,7 @@ class AssembledH264Stream:
 
 
 def assemble_h264_stream_from_messages(
-    messages: list[dict],
+    messages: list[dict[str, Any]],
 ) -> AssembledH264Stream:
     parsed_frames, frame_info, cframe_stats = _parse_video_frames(messages)
     access_units = assemble_access_units(parsed_frames)
@@ -37,11 +39,11 @@ def assemble_h264_stream_from_messages(
 
 
 def _parse_video_frames(
-    messages: list[dict],
-) -> tuple[list[dict], list[dict], dict[str, int]]:
+    messages: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[MediaFrameSummary], dict[str, int]]:
     packer = QuiiCFramePack()
-    parsed_frames = []
-    frame_info = []
+    parsed_frames: list[dict[str, Any]] = []
+    frame_info: list[MediaFrameSummary] = []
     for msg in messages:
         header = msg.get("header")
         if header is None or header.packet_type not in MEDIA_PACKET_TYPES:

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from quii_helper.models.packets import DecodedQuiiMessage
 from quii_helper.preview.outputs.manager.artifacts import (
     PreviewArtifactManager,
 )
@@ -64,6 +65,7 @@ class CameraRtspStream:
     )
     _error: BaseException | None = field(default=None, init=False, repr=False)
     _started: bool = field(default=False, init=False)
+    _ready_announced: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.server = RtspH264Server(
@@ -79,7 +81,7 @@ class CameraRtspStream:
         return self.server.url
 
     @property
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, object]:
         """Runtime stream statistics for diagnostics."""
         return {
             "rtsp_clients": self.server.client_count,
@@ -98,7 +100,7 @@ class CameraRtspStream:
         self.status("Starting RTSP server")
         self._error = None
         self.server.start()
-        self.status(f"RTSP stream ready: {self.url}")
+        self._ready_announced = False
         self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._run_preview_loop,
@@ -197,7 +199,7 @@ class CameraRtspStream:
             direct_blob_summary_limit=(
                 self.preview_settings.direct_blob_summary_limit
             ),
-            media_message_sink=self.assembler.feed_message,
+            media_message_sink=self._feed_assembler_message,
             store_media_messages=False,
         )
         self._packet_stream = TunnelPacketStream(session.tunnel)
@@ -210,3 +212,14 @@ class CameraRtspStream:
                 if self._stop_event.is_set():
                     break
                 processor.process_packet(packet, phase="live")
+
+    def _feed_assembler_message(self, decoded: DecodedQuiiMessage) -> None:
+        self.assembler.feed_message(decoded)
+        if self.assembler.access_unit_count > 0:
+            self._announce_ready_once()
+
+    def _announce_ready_once(self) -> None:
+        if self._ready_announced:
+            return
+        self._ready_announced = True
+        self.status(f"RTSP stream ready: {self.url}")

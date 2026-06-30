@@ -1,32 +1,36 @@
 import importlib
-import unittest
 
 import quii_helper
 
 ROOT_PUBLIC_API = [
+    "AssetMissingError",
     "AutonomousConfig",
     "Camera",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "ConfigurationError",
+    "MediaRenderError",
+    "PreviewCaptureSettings",
+    "QuiiConnectionError",
+    "QuiiHelperError",
+    "RuntimeCredentials",
+]
+
+ROOT_INTERNAL_NAMES = [
     "CameraConnector",
     "CameraPreviewApplication",
     "CameraPreviewSession",
-    "DATA_DIR",
     "DirectKcpQuiiTunnel",
     "MqttP2PBootstrap",
     "P2PConnectRequest",
     "P2PConnectResponse",
     "PreviewArtifactManager",
     "PreviewCapturePipeline",
-    "PreviewCaptureSettings",
     "PreviewOutputWriter",
     "PreviewPacketProcessor",
     "PreviewPipelineFactory",
     "QuiiClient",
     "RbUdpQuiiTunnel",
-    "RuntimeCredentials",
-    "STREAM_HIGH_QUALITY",
-    "STREAM_LOW_BANDWIDTH",
     "TcpLiveProbeCapture",
     "TcpProbeRunner",
     "TcpSocketTransport",
@@ -40,9 +44,6 @@ ROOT_PUBLIC_API = [
     "create_session_flag",
     "decode_quii_blob",
     "open_direct_preview",
-    "resolve_data_path",
-    "resolve_stream_quality",
-    "timestamped_output_base",
     "write_h264_stream",
 ]
 
@@ -71,7 +72,7 @@ EXPORT_PACKAGES = (
 )
 
 
-class PublicApiTests(unittest.TestCase):
+class PublicApiTests:
     def test_root_exported_symbols_import(self) -> None:
         failures = []
         for name in quii_helper.__all__:
@@ -80,10 +81,10 @@ class PublicApiTests(unittest.TestCase):
             except Exception as exc:  # pragma: no cover - failure details
                 failures.append((name, type(exc).__name__, str(exc)))
 
-        self.assertEqual([], failures)
+        assert [] == failures
 
     def test_root_all_matches_static_public_api(self) -> None:
-        self.assertEqual(ROOT_PUBLIC_API, quii_helper.__all__)
+        assert ROOT_PUBLIC_API == quii_helper.__all__
 
     def test_export_packages_import_all_symbols(self) -> None:
         failures = []
@@ -97,10 +98,14 @@ class PublicApiTests(unittest.TestCase):
                         (package_name, name, type(exc).__name__, str(exc))
                     )
 
-        self.assertEqual([], failures)
+        assert [] == failures
 
     def test_root_package_uses_static_exports(self) -> None:
-        self.assertFalse(hasattr(quii_helper, "__getattr__"))
+        assert not hasattr(quii_helper, "__getattr__")
+
+    def test_root_package_does_not_export_internal_api(self) -> None:
+        for name in ROOT_INTERNAL_NAMES:
+            assert not hasattr(quii_helper, name)
 
     def test_camera_high_level_methods_exist(self) -> None:
         camera_cls = quii_helper.Camera
@@ -111,8 +116,4 @@ class PublicApiTests(unittest.TestCase):
             "record",
             "serve_rtsp",
         ):
-            self.assertTrue(callable(getattr(camera_cls, method_name, None)))
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert callable(getattr(camera_cls, method_name, None))

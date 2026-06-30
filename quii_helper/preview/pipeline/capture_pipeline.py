@@ -1,7 +1,8 @@
-﻿import time
+import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
+from quii_helper.models.capture import CaptureSummary
 from quii_helper.preview.outputs.writer.output_writer import (
     PreviewOutputWriter,
 )
@@ -38,7 +39,7 @@ class PreviewCapturePipeline:
     pending_quii_drain_packets: int = 0
     pending_quii_drain_elapsed_seconds: float = 0.0
 
-    def capture(self) -> dict:
+    def capture(self) -> CaptureSummary:
         started_at = time.monotonic()
         stream_drained = False
         try:
@@ -109,9 +110,12 @@ class PreviewCapturePipeline:
         ):
             self.processor.process_packet(packet, phase="close")
 
-    def _build_capture_summary(self) -> dict:
+    def _build_capture_summary(self) -> CaptureSummary:
         capture_artifacts = self.output_writer.write_capture_outputs(
-            decoded_messages=self.processor.decoded_messages,
+            decoded_messages=cast(
+                list[dict[str, Any]],
+                self.processor.decoded_messages,
+            ),
             fragment_partial_collector=(
                 self.processor.fragment_partial_collector
             ),

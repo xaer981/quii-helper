@@ -46,6 +46,7 @@ CAMERA_CHANNEL=1
 CAMERA_STREAM=2
 AUTH_CODE=""
 DEVICE_PASSWORD=""
+TLS_VERIFY=true
 LOG_LEVEL=info
 ```
 
@@ -158,6 +159,15 @@ requested duration before writing the MP4.
 Set `LOG_LEVEL=debug` to enable protocol diagnostics, packet summaries, and
 full capture summaries. The default `LOG_LEVEL=info` prints short progress
 messages such as connection, media receiving, and completion status.
+
+`TLS_VERIFY=true` is the default and verifies HTTPS certificates for cloud and
+device requests. Set `TLS_VERIFY=false` only when working with vendor endpoints
+that use non-public or hostname-mismatched certificates.
+
+Debug HTTP dumps redact common credential fields such as passwords, tokens,
+session ids, cookies, and dynamic media keys before logging. Treat debug logs
+as sensitive anyway because they can still contain device ids, IP addresses,
+and private operational metadata.
 
 ## Protocol Notes
 

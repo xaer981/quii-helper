@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from quii_helper.diagnostics.wrapped.tail.candidate_extractors import (
     candidate_cpacket_from_decrypted_tail,
@@ -19,7 +20,7 @@ def dump_partial_tail_artifacts(
     *,
     blob: bytes,
     key: str,
-    decoded: dict,
+    decoded: dict[str, Any],
     dump_dir: Path,
     stem: str,
 ) -> dict[str, str]:

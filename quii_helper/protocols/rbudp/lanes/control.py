@@ -1,3 +1,5 @@
+from typing import Any, Protocol
+
 from quii_helper.protocols.rbudp.control.packets import (
     build_rb_udp_control_packet,
 )
@@ -6,10 +8,24 @@ from quii_helper.protocols.rbudp.lanes.registry import RbUdpLane
 NATIVE_RECEIVE_WINDOW_BYTES = 0x10000
 
 
-class RbUdpLaneControlMixin:
+class RbUdpLaneControlOwner(Protocol):
     _peer_addr: tuple[str, int]
+    _receive_streams: Any
 
-    def _send_lane_control(
+    def _next_lane_nonce(self, lane: RbUdpLane) -> int: ...
+
+    def _dbg(self, message: str, **kwargs: object) -> None: ...
+
+    def _send_udp(self, packet: bytes) -> None: ...
+
+
+class RbUdpLaneControl:
+    """Build and send RBUDP lane control packets."""
+
+    def __init__(self, owner: RbUdpLaneControlOwner) -> None:
+        self._owner = owner
+
+    def send_lane_control(
         self,
         lane: RbUdpLane,
         *,
@@ -22,6 +38,7 @@ class RbUdpLaneControlMixin:
         update_lane: bool = True,
         advertise_window: bool = False,
     ) -> None:
+        owner = self._owner
         current_word4 = int(lane["word4"] if word4 is None else word4)
         current_word8 = int(lane["word8"] if word8 is None else word8)
         current_local_id = int(
@@ -30,13 +47,13 @@ class RbUdpLaneControlMixin:
         current_remote_id = int(
             lane["remote_id"] if remote_id is None else remote_id
         )
-        buffered = self._lane_receive_buffered_bytes(
+        buffered = self.lane_receive_buffered_bytes(
             lane,
             word4=current_word4,
             word8=current_word8,
         )
         if advertise_window:
-            current_status_word = self._native_control_status_word(
+            current_status_word = self.native_control_status_word(
                 lane,
                 status_word,
                 buffered=buffered,
@@ -48,7 +65,7 @@ class RbUdpLaneControlMixin:
             lane["word8"] = current_word8
             lane["local_id"] = current_local_id
             lane["remote_id"] = current_remote_id
-        rand16 = self._next_lane_nonce(lane) & 0xFFFF
+        rand16 = owner._next_lane_nonce(lane) & 0xFFFF
         packet = build_rb_udp_control_packet(
             word4=current_word4,
             word8=current_word8,
@@ -58,9 +75,9 @@ class RbUdpLaneControlMixin:
             nonce=rand16,
         )
         if log_label:
-            self._dbg(
+            owner._dbg(
                 log_label,
-                peer=self._peer_addr,
+                peer=owner._peer_addr,
                 src_id=hex(int(lane["src_id"])),
                 word4=hex(current_word4),
                 word8=hex(current_word8),
@@ -75,9 +92,9 @@ class RbUdpLaneControlMixin:
                 packet_len=28,
                 hex=packet.hex(),
             )
-        self._send_udp(packet)
+        owner._send_udp(packet)
 
-    def _native_control_status_word(
+    def native_control_status_word(
         self,
         lane: RbUdpLane,
         status_word: int,
@@ -88,19 +105,19 @@ class RbUdpLaneControlMixin:
         # min(recv_window - buffered, 0xffff) in the high 16 bits. This is only
         # safe for ACK paths where our buffered byte count models native state.
         if buffered is None:
-            buffered = self._lane_receive_buffered_bytes(lane)
+            buffered = self.lane_receive_buffered_bytes(lane)
         remaining = max(0, NATIVE_RECEIVE_WINDOW_BYTES - buffered)
         advertised_window = min(remaining, 0xFFFF)
         return (advertised_window << 16) | (status_word & 0xFFFF)
 
-    def _lane_receive_buffered_bytes(
+    def lane_receive_buffered_bytes(
         self,
         lane: RbUdpLane,
         *,
         word4: int | None = None,
         word8: int | None = None,
     ) -> int:
-        receive_streams = getattr(self, "_receive_streams", None)
+        receive_streams = getattr(self._owner, "_receive_streams", None)
         streams = getattr(receive_streams, "streams", None)
         if not streams:
             return 0

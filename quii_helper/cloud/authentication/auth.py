@@ -11,6 +11,7 @@ from quii_helper.cloud.config.defaults import (
 )
 from quii_helper.cloud.http.transport import request_userauth
 from quii_helper.cloud.http.xml import build_userauth_xml, userauth_password
+from quii_helper.support.errors import ConfigurationError
 
 
 def login_cloud(
@@ -24,6 +25,7 @@ def login_cloud(
     app_id: int,
     client_type: int,
     debug: bool = False,
+    verify_tls: bool = True,
 ) -> dict[str, str]:
     _validate_userauth_identity(
         client_id=client_id,
@@ -52,7 +54,12 @@ def login_cloud(
         app_id=app_id,
         client_type=client_type,
     )
-    root, raw = request_userauth(xml_body, auth_url=auth_url, debug=debug)
+    root, raw = request_userauth(
+        xml_body,
+        auth_url=auth_url,
+        debug=debug,
+        verify_tls=verify_tls,
+    )
     return parse_login_response(root, raw)
 
 
@@ -67,6 +74,7 @@ def get_device_token(
     client_type: int,
     is_hs_device: object | None = None,
     debug: bool = False,
+    verify_tls: bool = True,
 ) -> dict[str, str]:
     _validate_userauth_identity(
         client_id=client_id,
@@ -91,7 +99,12 @@ def get_device_token(
         app_id=app_id,
         client_type=client_type,
     )
-    root, raw = request_userauth(xml_body, auth_url=auth_url, debug=debug)
+    root, raw = request_userauth(
+        xml_body,
+        auth_url=auth_url,
+        debug=debug,
+        verify_tls=verify_tls,
+    )
     return parse_device_token_response(root, raw)
 
 
@@ -115,7 +128,7 @@ def _validate_userauth_identity(
     if ip_region_id is not None and ip_region_id <= 0:
         missing.append("ip_region_id")
     if missing:
-        raise ValueError(
+        raise ConfigurationError(
             "missing required userauth identity values: "
             f"{', '.join(missing)}"
         )

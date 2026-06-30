@@ -1,4 +1,6 @@
-﻿from quii_helper.diagnostics.wrapped.tail.candidate_state import (
+from typing import Any
+
+from quii_helper.diagnostics.wrapped.tail.candidate_state import (
     partial_payload_container_candidate,
     tail_container_probe_candidate,
     tail_startcode_h264_candidate,
@@ -13,7 +15,9 @@ from quii_helper.media.h264.merge.probe_analysis import analyze_annexb_h264
 from quii_helper.protocols.quii.blob import decode_quii_blob
 
 
-def candidate_embedded_h264(blob: bytes, key: str, decoded: dict) -> bytes:
+def candidate_embedded_h264(
+    blob: bytes, key: str, decoded: dict[str, Any]
+) -> bytes:
     decrypted_tail = decrypt_wrapped_quii_tail_bytes(blob, key, decoded)
     if not decrypted_tail:
         return b""
@@ -28,7 +32,9 @@ def candidate_embedded_h264(blob: bytes, key: str, decoded: dict) -> bytes:
     return candidate
 
 
-def candidate_container_probe(blob: bytes, key: str, decoded: dict) -> bytes:
+def candidate_container_probe(
+    blob: bytes, key: str, decoded: dict[str, Any]
+) -> bytes:
     decrypted_tail = decrypt_wrapped_quii_tail_bytes(blob, key, decoded)
     if not decrypted_tail:
         return b""
@@ -37,7 +43,9 @@ def candidate_container_probe(blob: bytes, key: str, decoded: dict) -> bytes:
     )
 
 
-def candidate_cpacket_stream(blob: bytes, key: str, decoded: dict) -> bytes:
+def candidate_cpacket_stream(
+    blob: bytes, key: str, decoded: dict[str, Any]
+) -> bytes:
     decrypted_tail = decrypt_wrapped_quii_tail_bytes(blob, key, decoded)
     if not decrypted_tail:
         return b""
@@ -63,6 +71,8 @@ def candidate_container_probe_from_partial_payload(
     if candidate:
         return candidate
     payload = decoded.get("payload", b"")
+    if not isinstance(payload, bytes):
+        return b""
     return partial_payload_container_candidate(
         payload, marker=CONTAINER_PROBE_MARKER
     )

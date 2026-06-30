@@ -1,8 +1,10 @@
-﻿from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, cast
 
 from quii_helper.io.paths import data_path
 from quii_helper.media.h264.io.writer import write_h264_stream
+from quii_helper.models.capture import MediaArtifactSummary
 from quii_helper.protocols.tcp import settings
 from quii_helper.protocols.tcp.probes.candidates import (
     QuiiCredentialCandidate,
@@ -32,8 +34,9 @@ class TcpProbeAttemptRunner:
                 num_messages=settings.QUII_NUM_MESSAGES,
                 play_param=1,
             )
+            messages = cast(list[dict[str, Any]], result["messages"])
             extracted = self._extract_stream(
-                combo=combo, credential=credential, messages=result["messages"]
+                combo=combo, credential=credential, messages=messages
             )
             return (
                 tcp_probe_attempt_summary(
@@ -82,7 +85,7 @@ class TcpProbeAttemptRunner:
 
     def _dump_file(
         self, *, combo: QuiiStreamCombo, credential: QuiiCredentialCandidate
-    ):
+    ) -> Path:
         dump_name = (
             f"quii_probe_ch{combo.channel}_st{combo.stream}"
             f"_nc{int(combo.newcn)}_{credential.label}.bin"
@@ -95,7 +98,7 @@ class TcpProbeAttemptRunner:
         combo: QuiiStreamCombo,
         credential: QuiiCredentialCandidate,
         messages: list[dict[str, Any]],
-    ) -> dict[str, Any] | None:
+    ) -> MediaArtifactSummary | None:
         if not settings.QUII_EXTRACT_STREAM:
             return None
         return write_h264_stream(

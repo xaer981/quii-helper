@@ -1,5 +1,4 @@
 import hashlib
-import unittest
 from pathlib import Path
 
 from quii_helper.preview.fragments.embedded_h264_state import (
@@ -10,25 +9,22 @@ from quii_helper.preview.fragments.embedded_h264_state import (
 )
 
 
-class PreviewEmbeddedH264StateTests(unittest.TestCase):
+class PreviewEmbeddedH264StateTests:
     def test_embedded_h264_paths_preserve_filename_shape(self) -> None:
         paths = embedded_h264_paths("sample")
 
-        self.assertEqual("sample_embedded.h264", paths["stream_path"].name)
-        self.assertEqual("sample_embedded.mp4", paths["mp4_path"].name)
-        self.assertEqual("sample_embedded.jpg", paths["snapshot_path"].name)
-        self.assertEqual(
-            "sample_embedded_best.h264",
-            paths["persistent_path"].name,
-        )
+        assert "sample_embedded.h264" == paths["stream_path"].name
+        assert "sample_embedded.mp4" == paths["mp4_path"].name
+        assert "sample_embedded.jpg" == paths["snapshot_path"].name
+        assert "sample_embedded_best.h264" == (paths["persistent_path"].name)
 
     def test_should_write_persistent_embedded_skips_false_positive_sps(
         self,
     ) -> None:
-        self.assertFalse(
-            should_write_persistent_embedded({"false_positive_sps_only": True})
+        assert not should_write_persistent_embedded(
+            {"false_positive_sps_only": True}
         )
-        self.assertTrue(should_write_persistent_embedded({}))
+        assert should_write_persistent_embedded({})
 
     def test_empty_embedded_h264_result_preserves_existing_shape(self) -> None:
         paths = {
@@ -43,19 +39,16 @@ class PreviewEmbeddedH264StateTests(unittest.TestCase):
             persistent_before=b"previous",
         )
 
-        self.assertEqual(0, result["candidate_count"])
-        self.assertEqual("none", result["merge_strategy"])
-        self.assertEqual("none", result["persistent_merge_strategy"])
-        self.assertEqual([], result["candidate_lens"])
-        self.assertEqual(8, result["persistent_previous_len"])
-        self.assertEqual(0, result["selected_len"])
-        self.assertFalse(result["written"])
-        self.assertFalse(result["mp4"])
-        self.assertFalse(result["snapshot"])
-        self.assertEqual(
-            str(paths["stream_path"].resolve()),
-            result["stream_path"],
-        )
+        assert 0 == result["candidate_count"]
+        assert "none" == result["merge_strategy"]
+        assert "none" == result["persistent_merge_strategy"]
+        assert [] == result["candidate_lens"]
+        assert 8 == result["persistent_previous_len"]
+        assert 0 == result["selected_len"]
+        assert not result["written"]
+        assert not result["mp4"]
+        assert not result["snapshot"]
+        assert str(paths["stream_path"].resolve()) == (result["stream_path"])
 
     def test_embedded_h264_result_payload_preserves_shape(self) -> None:
         paths = {
@@ -81,28 +74,18 @@ class PreviewEmbeddedH264StateTests(unittest.TestCase):
             paths=paths,
         )
 
-        self.assertEqual(2, result["candidate_count"])
-        self.assertEqual("longest", result["merge_strategy"])
-        self.assertEqual(
-            "right_extends_left",
-            result["persistent_merge_strategy"],
-        )
-        self.assertEqual([1, 2], result["candidate_lens"])
-        self.assertEqual(1, result["persistent_previous_len"])
-        self.assertEqual(2, result["selected_len"])
-        self.assertEqual(
-            hashlib.sha1(b"bb").hexdigest(),
-            result["selected_sha1"],
-        )
-        self.assertEqual({"has_sps": True}, result["nal_analysis"])
-        self.assertTrue(result["written"])
-        self.assertTrue(result["persistent_written"])
-        self.assertTrue(result["mp4"])
-        self.assertEqual("", result["mp4_error"])
-        self.assertFalse(result["snapshot"])
-        self.assertEqual("snapshot failed", result["snapshot_error"])
-        self.assertEqual("", result["ffmpeg_skipped_reason"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert 2 == result["candidate_count"]
+        assert "longest" == result["merge_strategy"]
+        assert "right_extends_left" == (result["persistent_merge_strategy"])
+        assert [1, 2] == result["candidate_lens"]
+        assert 1 == result["persistent_previous_len"]
+        assert 2 == result["selected_len"]
+        assert hashlib.sha1(b"bb").hexdigest() == (result["selected_sha1"])
+        assert {"has_sps": True} == result["nal_analysis"]
+        assert result["written"]
+        assert result["persistent_written"]
+        assert result["mp4"]
+        assert "" == result["mp4_error"]
+        assert not result["snapshot"]
+        assert "snapshot failed" == result["snapshot_error"]
+        assert "" == result["ffmpeg_skipped_reason"]

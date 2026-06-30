@@ -1,14 +1,16 @@
 import xml.etree.ElementTree as ET
 
+from quii_helper.support.errors import QuiiConnectionError
 
-def parse_login_response(root: ET.Element, raw: str) -> dict:
+
+def parse_login_response(root: ET.Element, raw: str) -> dict[str, str]:
     header = root.find("./header")
     if header is None:
-        raise RuntimeError("login response header not found")
+        raise QuiiConnectionError("login response header not found")
 
     result = (header.findtext("result") or "").strip()
     if result and result != "0":
-        raise RuntimeError(f"cloud login result: {result}")
+        raise QuiiConnectionError(f"cloud login result: {result}")
 
     session_id = (
         header.findtext("./session/id") or header.findtext("session") or ""
@@ -22,18 +24,18 @@ def parse_login_response(root: ET.Element, raw: str) -> dict:
     }
 
 
-def parse_device_token_response(root: ET.Element, raw: str) -> dict:
+def parse_device_token_response(root: ET.Element, raw: str) -> dict[str, str]:
     header = root.find("./header")
     if header is None:
-        raise RuntimeError("device-token response header not found")
+        raise QuiiConnectionError("device-token response header not found")
 
     result = (header.findtext("result") or "").strip()
     if result and result != "0":
-        raise RuntimeError(f"device-token result: {result}")
+        raise QuiiConnectionError(f"device-token result: {result}")
 
     content = root.find("./content")
     if content is None:
-        raise RuntimeError("device-token response content not found")
+        raise QuiiConnectionError("device-token response content not found")
 
     return {
         "device_id": (

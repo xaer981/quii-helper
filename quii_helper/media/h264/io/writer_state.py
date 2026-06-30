@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from quii_helper.io.paths import DATA_DIR, resolve_data_path
+from quii_helper.models.capture import MediaArtifactSummary, MediaFrameSummary
 
 
 def h264_output_paths(
@@ -46,10 +47,10 @@ def empty_h264_stream_result(
     stream_path: Path,
     mp4_path: Path,
     snapshot_path: Path,
-    frames: list[dict],
-    summary: dict,
+    frames: list[MediaFrameSummary],
+    summary: dict[str, Any],
     keep_raw_h264: bool,
-) -> dict:
+) -> MediaArtifactSummary:
     return {
         "stream_path": str(stream_path.resolve()) if keep_raw_h264 else "",
         "mp4_path": str(mp4_path.resolve()),
@@ -67,7 +68,7 @@ def h264_stream_result_payload(
     stream_path: Path,
     mp4_path: Path,
     snapshot_path: Path,
-    frames: list[dict],
+    frames: list[MediaFrameSummary],
     summary: dict[str, Any],
     keep_raw_h264: bool,
     mp4_ok: bool,
@@ -75,7 +76,7 @@ def h264_stream_result_payload(
     snapshot_ok: bool,
     snapshot_error: str,
     ffmpeg_skipped_reason: str,
-) -> dict:
+) -> MediaArtifactSummary:
     return {
         "stream_path": str(stream_path.resolve()) if keep_raw_h264 else "",
         "mp4_path": str(mp4_path.resolve()),

@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.media.cpacket import find_next_cpacket, starts_cpacket
 from quii_helper.media.cpacket.constants import CPACKET_HEADER_LEN
 from quii_helper.media.frames import cframe_pack as _cframe_pack
@@ -7,13 +9,13 @@ QuiiCFramePack = _cframe_pack.QuiiCFramePack
 _parse_quii_media_frame_at = parse_quii_media_frame_at
 
 
-def parse_quii_media_frame(payload: bytes) -> dict | None:
+def parse_quii_media_frame(payload: bytes) -> dict[str, Any] | None:
     frames = iter_quii_media_frames(payload)
     return frames[0] if frames else None
 
 
-def iter_quii_media_frames(payload: bytes) -> list[dict]:
-    frames: list[dict] = []
+def iter_quii_media_frames(payload: bytes) -> list[dict[str, Any]]:
+    frames: list[dict[str, Any]] = []
     offset = 0
     while offset + CPACKET_HEADER_LEN <= len(payload):
         if not starts_cpacket(payload, offset):

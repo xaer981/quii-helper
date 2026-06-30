@@ -21,6 +21,7 @@ from quii_helper.camera.settings.options import (
 from quii_helper.camera.streaming import CameraRtspStream
 from quii_helper.config import AutonomousConfig
 from quii_helper.io.paths import DATA_DIR
+from quii_helper.models.capture import CaptureSummary
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
     PreviewCaptureSettings,
@@ -50,15 +51,16 @@ def _default_status(message: str) -> None:
 class Camera:
     """User-facing camera client.
 
-    `Camera` is the stable entrypoint for application code. It resolves cloud
-    credentials, opens the device preview session, receives media packets, and
-    exposes high-level operations for snapshots, recordings, and RTSP
-    streaming.
+    `Camera` is the stable entrypoint for application code. It resolves
+    runtime credentials, opens the device preview session, receives media
+    packets, and exposes high-level operations for snapshots, recordings, and
+    RTSP streaming.
 
-    Configuration values can be supplied either through an `AutonomousConfig`
-    instance, through keyword overrides, or through the environment-backed
-    defaults loaded by the config layer. Keyword arguments override the passed
-    config object for this `Camera` instance only.
+    Configuration:
+        Values can be supplied through an `AutonomousConfig` instance, through
+        keyword overrides, or through environment-backed defaults loaded by the
+        config layer. Keyword arguments override the passed config object for
+        this `Camera` instance only.
     """
 
     def __init__(
@@ -85,6 +87,7 @@ class Camera:
         live_keepalive_interval: float | None = None,
         play_sync_iterations: int | None = None,
         enable_play_probes: bool | None = None,
+        tls_verify: bool | None = None,
         channel: int | None = None,
         stream: int | None = None,
         stream_quality: str | int | None = None,
@@ -118,6 +121,8 @@ class Camera:
             live_keepalive_interval: Seconds between live keepalive packets.
             play_sync_iterations: Number of extra post-play sync iterations.
             enable_play_probes: Whether to send additional play probe packets.
+            tls_verify: Whether HTTPS certificate verification is enabled for
+                cloud/device requests.
             channel: Camera channel number.
             stream: Numeric stream selector accepted by the device.
             stream_quality: Friendly stream selector, for example `"high"` or
@@ -164,10 +169,9 @@ class Camera:
             duration_seconds: Capture window in seconds. If omitted, the value
                 from `preview_settings.capture_seconds` is used.
             output_path: Optional target path.
-            For a snapshot this should end in `.jpg`;
-                for a video this should end in `.mp4`.
-            When omitted,
-                files are written under `data_dir` with a timestamped name.
+                For a snapshot this should end in `.jpg`; for a video this
+                should end in `.mp4`. When omitted, files are written under
+                `data_dir` with a timestamped name.
             save_diagnostic_artifacts: Overrides diagnostic artifact saving for
                 this capture only.
             stop_when_decodable: Overrides whether capture may stop as soon as
@@ -326,7 +330,7 @@ class Camera:
         output_base: Path | None,
         render_snapshot: bool,
         render_video: bool,
-    ) -> dict:
+    ) -> CaptureSummary:
         return capture_preview_summary(
             connector=self.connector,
             settings=settings,

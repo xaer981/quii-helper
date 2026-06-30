@@ -1,24 +1,29 @@
-﻿from typing import Any
+from typing import Any, cast
 
+from quii_helper.models.packets import (
+    DecodedQuiiMessage,
+    PacketMeta,
+    QuiiPacketSummary,
+)
 from quii_helper.preview.processing.packets.summary_state import (
     media_frame_summary_fields,
 )
 
 
 def build_quii_packet_summary(
-    decoded: dict,
+    decoded: DecodedQuiiMessage,
     *,
     message_index: int,
     source: str,
     blob_len: int,
-    meta: dict[str, Any] | None = None,
-    decode_candidates: list[dict] | None = None,
-    wrapped_tail_analysis: dict | None = None,
-    fragment_partial_analysis: dict | None = None,
-    fragmented_media: dict | None = None,
-) -> dict:
+    meta: PacketMeta | None = None,
+    decode_candidates: list[dict[str, Any]] | None = None,
+    wrapped_tail_analysis: dict[str, Any] | None = None,
+    fragment_partial_analysis: dict[str, Any] | None = None,
+    fragmented_media: dict[str, Any] | None = None,
+) -> QuiiPacketSummary:
     header = decoded["header"]
-    summary = {
+    summary: dict[str, Any] = {
         "msg_index": message_index,
         "source": source,
         "blob_len": blob_len,
@@ -65,10 +70,13 @@ def build_quii_packet_summary(
         summary["fragment_partial_analysis"] = fragment_partial_analysis
     if fragmented_media is not None:
         summary["fragmented_media"] = fragmented_media
-    return summary
+    return cast(QuiiPacketSummary, summary)
 
 
-def attach_media_frame_summary(summary: dict, decoded: dict) -> bool:
+def attach_media_frame_summary(
+    summary: QuiiPacketSummary,
+    decoded: DecodedQuiiMessage,
+) -> bool:
     fields = media_frame_summary_fields(decoded)
     if fields is None:
         return False

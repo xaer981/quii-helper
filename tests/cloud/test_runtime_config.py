@@ -1,10 +1,11 @@
-import unittest
+import pytest
 
 from quii_helper.cloud.config.runtime import (
     resolve_runtime_config,
     validate_runtime_config,
 )
 from quii_helper.config import AutonomousConfig
+from quii_helper.support.errors import ConfigurationError
 
 
 def _resolve(config=None, **overrides):
@@ -20,16 +21,17 @@ def _resolve(config=None, **overrides):
         "app_id": None,
         "client_type": None,
         "ip_region_id": None,
+        "tls_verify": None,
     }
     values.update(overrides)
     return resolve_runtime_config(config, **values)
 
 
-class CloudRuntimeConfigTests(unittest.TestCase):
+class CloudRuntimeConfigTests:
     def test_resolve_runtime_config_accepts_device_id_shorthand(self) -> None:
         resolved = _resolve("device-1")
 
-        self.assertEqual("device-1", resolved.device_id)
+        assert "device-1" == resolved.device_id
 
     def test_resolve_runtime_config_applies_explicit_overrides(self) -> None:
         base = AutonomousConfig(
@@ -52,23 +54,23 @@ class CloudRuntimeConfigTests(unittest.TestCase):
             ip_region_id=44,
         )
 
-        self.assertEqual("device-2", resolved.device_id)
-        self.assertEqual("account-2", resolved.cloud_account)
-        self.assertEqual("password-2", resolved.cloud_password)
-        self.assertEqual("client-2", resolved.client_id)
-        self.assertEqual("https://auth.example", resolved.auth_url)
-        self.assertEqual("https://service.example", resolved.service_url)
-        self.assertEqual("OEM2", resolved.oem)
-        self.assertEqual(22, resolved.app_id)
-        self.assertEqual(33, resolved.client_type)
-        self.assertEqual(44, resolved.ip_region_id)
+        assert "device-2" == resolved.device_id
+        assert "account-2" == resolved.cloud_account
+        assert "password-2" == resolved.cloud_password
+        assert "client-2" == resolved.client_id
+        assert "https://auth.example" == resolved.auth_url
+        assert "https://service.example" == resolved.service_url
+        assert "OEM2" == resolved.oem
+        assert 22 == resolved.app_id
+        assert 33 == resolved.client_type
+        assert 44 == resolved.ip_region_id
 
     def test_resolve_runtime_config_rejects_conflicting_account_aliases(
         self,
     ) -> None:
-        with self.assertRaisesRegex(
-            ValueError,
-            "pass either cloud_username or cloud_account",
+        with pytest.raises(
+            ConfigurationError,
+            match="pass either cloud_username or cloud_account",
         ):
             _resolve(cloud_username="a", cloud_account="b")
 
@@ -79,12 +81,8 @@ class CloudRuntimeConfigTests(unittest.TestCase):
             cloud_password="",
         )
 
-        with self.assertRaisesRegex(
-            ValueError,
-            "device_id, cloud_account, cloud_password",
+        with pytest.raises(
+            ConfigurationError,
+            match="device_id, cloud_account, cloud_password",
         ):
             validate_runtime_config(config)
-
-
-if __name__ == "__main__":
-    unittest.main()

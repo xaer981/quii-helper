@@ -1,10 +1,14 @@
+from typing import Any, cast
+
+from quii_helper.models.capture import MediaFrameSummary
+
 MEDIA_PACKET_TYPES = {0xA0, 0xA1, 0xA2, 0xA3}
 VIDEO_FRAME_TAGS = {0xE0, 0xE1, 0xE9, 0xEA}
 KEY_FRAME_TAGS = {0xE1}
 VIDEO_FRAME_TYPES = {0, 1, 9, 10}
 
 
-def frame_info_from_parsed_frame(frame: dict) -> dict:
+def frame_info_from_parsed_frame(frame: dict[str, Any]) -> MediaFrameSummary:
     return {
         "payload_offset": frame["payload_offset"],
         "frame_tag": hex(frame["frame_tag"]),
@@ -20,13 +24,13 @@ def frame_info_from_parsed_frame(frame: dict) -> dict:
     }
 
 
-def access_unit_from_frame(frame: dict) -> bytes:
+def access_unit_from_frame(frame: dict[str, Any]) -> bytes:
     if frame["frame_tag"] not in VIDEO_FRAME_TAGS or frame["nal_offset"] < 0:
         return b""
-    return frame["bitstream"][frame["nal_offset"] :]
+    return cast(bytes, frame["bitstream"][frame["nal_offset"] :])
 
 
-def assemble_access_units(parsed_frames: list[dict]) -> list[bytes]:
+def assemble_access_units(parsed_frames: list[dict[str, Any]]) -> list[bytes]:
     return [
         access_unit
         for frame in parsed_frames
@@ -34,15 +38,17 @@ def assemble_access_units(parsed_frames: list[dict]) -> list[bytes]:
     ]
 
 
-def is_video_frame_info(frame: dict) -> bool:
+def is_video_frame_info(frame: MediaFrameSummary) -> bool:
     return int(frame["frame_type"]) in VIDEO_FRAME_TYPES
 
 
-def is_key_frame_info(frame: dict) -> bool:
+def is_key_frame_info(frame: MediaFrameSummary) -> bool:
     return int(frame["frame_tag"], 16) in KEY_FRAME_TAGS
 
 
-def media_frame_length_stats(video_frames: list[dict]) -> tuple[int, int]:
+def media_frame_length_stats(
+    video_frames: list[MediaFrameSummary],
+) -> tuple[int, int]:
     avg_video_frame_len = (
         int(
             sum(frame["frame_len"] for frame in video_frames)
@@ -58,11 +64,11 @@ def media_frame_length_stats(video_frames: list[dict]) -> tuple[int, int]:
 
 
 def build_media_summary(
-    frame_info: list[dict],
+    frame_info: list[MediaFrameSummary],
     *,
     assembled_units: int,
     cframe_stats: dict[str, int],
-) -> dict:
+) -> dict[str, Any]:
     video_frames = [
         frame for frame in frame_info if is_video_frame_info(frame)
     ]

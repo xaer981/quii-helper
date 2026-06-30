@@ -3,7 +3,7 @@ PLAY_SYNC_LOG_STAGE_COUNTS = frozenset(
 )
 
 
-def normalize_play_sync_iterations(value: object) -> int:
+def normalize_play_sync_iterations(value: int | str | None) -> int:
     return max(0, int(value or 0))
 
 

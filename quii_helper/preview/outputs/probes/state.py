@@ -1,6 +1,6 @@
 import hashlib
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from quii_helper.io.output_paths import data_base_path
 from quii_helper.media.merge.binary import merge_binary_candidates
@@ -55,10 +55,10 @@ def probe_summary_payload(
     previous: bytes,
     merged_best: bytes,
     persistent_strategy: str,
-    analysis: dict,
+    analysis: dict[str, Any],
     output_path: Path,
     best_path: Path,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "candidate_count": len(unique),
         "candidate_lens": [len(blob) for blob in unique],

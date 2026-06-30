@@ -1,4 +1,5 @@
-﻿from pathlib import Path
+from pathlib import Path
+from typing import Any
 
 from quii_helper.io.paths import DATA_DIR
 from quii_helper.media.frames.assembler import (
@@ -16,18 +17,20 @@ from quii_helper.media.h264.io.writer_state import (
     input_fps_for_target_duration,
     should_remove_raw_h264,
 )
+from quii_helper.models.capture import MediaArtifactSummary
+from quii_helper.support.errors import MediaRenderError
 
 
 def write_h264_stream(
     base_name: str | Path,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     *,
     output_dir: Path = DATA_DIR,
     render_snapshot: bool = True,
     render_video: bool = True,
     keep_raw_h264: bool = False,
     target_duration_seconds: float | None = None,
-) -> dict:
+) -> MediaArtifactSummary:
     stream_path, mp4_path, snapshot_path = h264_output_paths(
         base_name,
         output_dir=output_dir,
@@ -46,7 +49,7 @@ def write_h264_stream(
         )
 
     stream_bytes = assembled_stream.stream_bytes
-    stream_path.write_bytes(stream_bytes)
+    _write_stream_bytes(stream_path, stream_bytes)
     h264_analysis = analyze_h264_annexb_stream(stream_bytes)
     summary["h264_annexb"] = h264_analysis
 
@@ -99,3 +102,12 @@ def write_h264_stream(
         snapshot_error=snapshot_error,
         ffmpeg_skipped_reason=ffmpeg_skipped_reason,
     )
+
+
+def _write_stream_bytes(stream_path: Path, stream_bytes: bytes) -> None:
+    try:
+        stream_path.write_bytes(stream_bytes)
+    except OSError as exc:
+        raise MediaRenderError(
+            f"unable to write raw H.264 stream {stream_path}: {exc}"
+        ) from exc

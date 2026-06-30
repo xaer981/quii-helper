@@ -1,5 +1,4 @@
-﻿import tempfile
-import unittest
+import tempfile
 from pathlib import Path
 
 from quii_helper.media.h264.io.writer_state import (
@@ -11,7 +10,7 @@ from quii_helper.media.h264.io.writer_state import (
 )
 
 
-class MediaWriterStateTests(unittest.TestCase):
+class MediaWriterStateTests:
     def test_h264_output_paths_preserve_suffixes_and_data_resolution(
         self,
     ) -> None:
@@ -21,68 +20,60 @@ class MediaWriterStateTests(unittest.TestCase):
                 output_dir=Path(tmp),
             )
 
-        self.assertEqual("clip.h264", stream_path.name)
-        self.assertEqual("clip.mp4", mp4_path.name)
-        self.assertEqual("clip.jpg", snapshot_path.name)
+        assert "clip.h264" == stream_path.name
+        assert "clip.mp4" == mp4_path.name
+        assert "clip.jpg" == snapshot_path.name
 
     def test_input_fps_for_target_duration_matches_existing_intervals(
         self,
     ) -> None:
-        self.assertIsNone(
+        assert (
             input_fps_for_target_duration(
                 frame_count=0,
                 target_duration_seconds=10,
             )
+            is None
         )
-        self.assertIsNone(
+        assert (
             input_fps_for_target_duration(
                 frame_count=3,
                 target_duration_seconds=0,
             )
+            is None
         )
-        self.assertEqual(
-            1 / 60,
+        assert 1 / 60 == (
             input_fps_for_target_duration(
                 frame_count=1,
                 target_duration_seconds=60,
-            ),
+            )
         )
-        self.assertEqual(
-            0.5,
+        assert 0.5 == (
             input_fps_for_target_duration(
                 frame_count=31,
                 target_duration_seconds=60,
-            ),
+            )
         )
 
     def test_should_remove_raw_h264_matches_cleanup_gate(self) -> None:
-        self.assertFalse(
-            should_remove_raw_h264(
-                mp4_ok=False,
-                snapshot_ok=False,
-                keep_raw_h264=False,
-            )
+        assert not should_remove_raw_h264(
+            mp4_ok=False,
+            snapshot_ok=False,
+            keep_raw_h264=False,
         )
-        self.assertFalse(
-            should_remove_raw_h264(
-                mp4_ok=True,
-                snapshot_ok=False,
-                keep_raw_h264=True,
-            )
+        assert not should_remove_raw_h264(
+            mp4_ok=True,
+            snapshot_ok=False,
+            keep_raw_h264=True,
         )
-        self.assertTrue(
-            should_remove_raw_h264(
-                mp4_ok=True,
-                snapshot_ok=False,
-                keep_raw_h264=False,
-            )
+        assert should_remove_raw_h264(
+            mp4_ok=True,
+            snapshot_ok=False,
+            keep_raw_h264=False,
         )
-        self.assertTrue(
-            should_remove_raw_h264(
-                mp4_ok=False,
-                snapshot_ok=True,
-                keep_raw_h264=False,
-            )
+        assert should_remove_raw_h264(
+            mp4_ok=False,
+            snapshot_ok=True,
+            keep_raw_h264=False,
         )
 
     def test_empty_h264_stream_result_preserves_existing_shape(self) -> None:
@@ -95,17 +86,14 @@ class MediaWriterStateTests(unittest.TestCase):
             keep_raw_h264=False,
         )
 
-        self.assertEqual("", result["stream_path"])
-        self.assertEqual(str(Path("clip.mp4").resolve()), result["mp4_path"])
-        self.assertEqual(
-            str(Path("clip.jpg").resolve()),
-            result["snapshot_path"],
-        )
-        self.assertEqual([], result["frames"])
-        self.assertEqual({"assembled_units": 0}, result["summary"])
-        self.assertFalse(result["written"])
-        self.assertFalse(result["mp4"])
-        self.assertFalse(result["snapshot"])
+        assert "" == result["stream_path"]
+        assert str(Path("clip.mp4").resolve()) == result["mp4_path"]
+        assert str(Path("clip.jpg").resolve()) == (result["snapshot_path"])
+        assert [] == result["frames"]
+        assert {"assembled_units": 0} == result["summary"]
+        assert not result["written"]
+        assert not result["mp4"]
+        assert not result["snapshot"]
 
     def test_h264_stream_result_payload_preserves_existing_shape(self) -> None:
         result = h264_stream_result_payload(
@@ -122,24 +110,14 @@ class MediaWriterStateTests(unittest.TestCase):
             ffmpeg_skipped_reason="",
         )
 
-        self.assertEqual(
-            str(Path("clip.h264").resolve()),
-            result["stream_path"],
-        )
-        self.assertEqual(str(Path("clip.mp4").resolve()), result["mp4_path"])
-        self.assertEqual(
-            str(Path("clip.jpg").resolve()),
-            result["snapshot_path"],
-        )
-        self.assertEqual([{"frame": 1}], result["frames"])
-        self.assertEqual({"assembled_units": 1}, result["summary"])
-        self.assertTrue(result["written"])
-        self.assertTrue(result["mp4"])
-        self.assertEqual("", result["mp4_error"])
-        self.assertFalse(result["snapshot"])
-        self.assertEqual("snapshot failed", result["snapshot_error"])
-        self.assertEqual("", result["ffmpeg_skipped_reason"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert str(Path("clip.h264").resolve()) == (result["stream_path"])
+        assert str(Path("clip.mp4").resolve()) == result["mp4_path"]
+        assert str(Path("clip.jpg").resolve()) == (result["snapshot_path"])
+        assert [{"frame": 1}] == result["frames"]
+        assert {"assembled_units": 1} == result["summary"]
+        assert result["written"]
+        assert result["mp4"]
+        assert "" == result["mp4_error"]
+        assert not result["snapshot"]
+        assert "snapshot failed" == result["snapshot_error"]
+        assert "" == result["ffmpeg_skipped_reason"]

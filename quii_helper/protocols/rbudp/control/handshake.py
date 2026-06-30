@@ -1,16 +1,37 @@
+from typing import Protocol
+
 from quii_helper.protocols.rbudp.core.models import ParsedRbUdpControlPacket
+from quii_helper.protocols.rbudp.lanes.registry import RbUdpLane
 
 
-class RbUdpControlHandshakeMixin:
-    def _handle_syn_ack_control(
+class RbUdpControlHandshakeOwner(Protocol):
+    CONTROL_SYN_ACK_STATUS: int
+
+    def _lane_for_syn_ack(
+        self, control: ParsedRbUdpControlPacket
+    ) -> RbUdpLane | None: ...
+
+    def _dbg(self, message: str, **kwargs: object) -> None: ...
+
+    def _send_pending_established(self) -> None: ...
+
+
+class RbUdpControlHandshake:
+    """Handle RBUDP SYN/ACK control transitions."""
+
+    def __init__(self, owner: RbUdpControlHandshakeOwner) -> None:
+        self._owner = owner
+
+    def handle_syn_ack_control(
         self, control: ParsedRbUdpControlPacket
     ) -> bool:
+        owner = self._owner
         if (
-            control.status_word != self.CONTROL_SYN_ACK_STATUS
+            control.status_word != owner.CONTROL_SYN_ACK_STATUS
             or not control.remote_id
         ):
             return False
-        lane = self._lane_for_syn_ack(control)
+        lane = owner._lane_for_syn_ack(control)
         if lane is None:
             return True
         lane["peer_word4"] = control.word4
@@ -34,7 +55,7 @@ class RbUdpControlHandshakeMixin:
         lane["play_transport_refresh_sent"] = False
         lane["syn_ack_received"] = True
         lane["peer_logic_id"] = 0
-        self._dbg(
+        owner._dbg(
             "syn_ack_transition",
             src_id=hex(int(lane["src_id"])),
             peer_word4=hex(int(lane["peer_word4"])),
@@ -44,5 +65,5 @@ class RbUdpControlHandshakeMixin:
             local_id=int(lane["local_id"]),
             remote_id=int(lane["remote_id"]),
         )
-        self._send_pending_established()
+        owner._send_pending_established()
         return True

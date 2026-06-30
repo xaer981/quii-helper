@@ -1,6 +1,6 @@
-﻿from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable
 
+from quii_helper.models.packets import PacketMeta
 from quii_helper.preview.processing.packets.flow import (
     buffer_chained_packet,
     chained_remainder_meta,
@@ -10,20 +10,16 @@ from quii_helper.preview.processing.packets.flow import (
     prepend_buffered_packet_prefix,
     record_chained_remainder_split,
 )
-from quii_helper.preview.processing.packets.summary import (
-    attach_media_frame_summary,
-)
 
 ProcessPacketBlob = Callable[..., tuple[bool, bytes]]
 MessageIndexProvider = Callable[[], int]
-MediaMessageSink = Callable[[dict], None]
 
 
 def process_chained_packet_blob(
     *,
     blob: bytes,
     source: str,
-    meta: dict[str, Any],
+    meta: PacketMeta,
     phase: str,
     buffers: dict[tuple[object, ...], bytes],
     stats: dict[str, int],
@@ -76,32 +72,6 @@ def process_chained_packet_blob(
         blob = remainder
 
     return False
-
-
-def record_processed_packet(
-    *,
-    decoded_messages: list[dict],
-    media_messages: list[dict],
-    summary_emitter: Any,
-    summary: dict,
-    decoded: dict,
-    source: str,
-    phase: str,
-    media_message_sink: MediaMessageSink | None = None,
-    store_media_messages: bool = True,
-) -> None:
-    if decoded["plausible"]:
-        decoded_messages.append(decoded)
-
-    if phase == "live" and attach_media_frame_summary(summary, decoded):
-        if store_media_messages:
-            media_messages.append(decoded)
-        if media_message_sink is not None:
-            media_message_sink(decoded)
-
-    summary_emitter.emit_packet_summary(
-        summary, source=source, decoded=decoded
-    )
 
 
 def should_build_media_collection_summary(

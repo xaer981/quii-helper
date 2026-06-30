@@ -1,5 +1,3 @@
-import unittest
-
 from quii_helper.media.frames.models import QuiiHeader
 from quii_helper.protocols.quii.blob_flow import (
     decode_candidate_summary,
@@ -21,39 +19,33 @@ def _cpacket(bitstream: bytes, *, frame_tag: int = 0xE1) -> bytes:
     return bytes(header) + bitstream
 
 
-class QuiiBlobFlowTests(unittest.TestCase):
+class QuiiBlobFlowTests:
     def test_safe_text_preview_strips_nuls_and_limits_output(self) -> None:
         payload = b"\x00hello\x00" + b"x" * 100
 
         preview = safe_text_preview(payload)
 
-        self.assertEqual(80, len(preview))
-        self.assertTrue(preview.startswith("hello"))
+        assert 80 == len(preview)
+        assert preview.startswith("hello")
 
     def test_is_plausible_quii_header_rejects_invalid_sizes(self) -> None:
-        self.assertTrue(
-            is_plausible_quii_header(
-                packet_type=0x01,
-                payload_size=10,
-                raw_size=10,
-                body_available=10,
-            )
+        assert is_plausible_quii_header(
+            packet_type=0x01,
+            payload_size=10,
+            raw_size=10,
+            body_available=10,
         )
-        self.assertFalse(
-            is_plausible_quii_header(
-                packet_type=0x99,
-                payload_size=10,
-                raw_size=10,
-                body_available=10,
-            )
+        assert not is_plausible_quii_header(
+            packet_type=0x99,
+            payload_size=10,
+            raw_size=10,
+            body_available=10,
         )
-        self.assertFalse(
-            is_plausible_quii_header(
-                packet_type=0x01,
-                payload_size=11,
-                raw_size=10,
-                body_available=10,
-            )
+        assert not is_plausible_quii_header(
+            packet_type=0x01,
+            payload_size=11,
+            raw_size=10,
+            body_available=10,
         )
 
     def test_score_media_payload_prefers_decodable_h264_cpacket(self) -> None:
@@ -64,8 +56,8 @@ class QuiiBlobFlowTests(unittest.TestCase):
         )
         media_payload = _cpacket(stream)
 
-        self.assertGreater(score_media_payload(media_payload), 0)
-        self.assertEqual(0, score_media_payload(b"not media"))
+        assert score_media_payload(media_payload) > 0
+        assert 0 == score_media_payload(b"not media")
 
     def test_select_media_payload_prefers_higher_scored_candidate(
         self,
@@ -79,9 +71,9 @@ class QuiiBlobFlowTests(unittest.TestCase):
             select_media_payload(b"noise", _cpacket(stream))
         )
 
-        self.assertTrue(used_decrypt)
-        self.assertEqual(_cpacket(stream), selected)
-        self.assertGreater(decrypt_score, raw_score)
+        assert used_decrypt
+        assert _cpacket(stream) == selected
+        assert decrypt_score > raw_score
 
     def test_decode_candidate_summary_keeps_existing_shape(self) -> None:
         header = QuiiHeader(
@@ -107,17 +99,13 @@ class QuiiBlobFlowTests(unittest.TestCase):
             decoded=decoded,
         )
 
-        self.assertEqual(5, summary["offset"])
-        self.assertEqual("0x1", summary["packet_type"])
-        self.assertEqual(3, summary["payload_size"])
-        self.assertEqual(2, summary["raw_size"])
-        self.assertEqual(1, summary["flag15"])
-        self.assertEqual(2, summary["flag16"])
-        self.assertEqual(3, summary["flag17"])
-        self.assertFalse(summary["is_media"])
-        self.assertEqual("616263646566", summary["payload_prefix"])
-        self.assertEqual("abc", summary["text_preview"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert 5 == summary["offset"]
+        assert "0x1" == summary["packet_type"]
+        assert 3 == summary["payload_size"]
+        assert 2 == summary["raw_size"]
+        assert 1 == summary["flag15"]
+        assert 2 == summary["flag16"]
+        assert 3 == summary["flag17"]
+        assert not summary["is_media"]
+        assert "616263646566" == summary["payload_prefix"]
+        assert "abc" == summary["text_preview"]

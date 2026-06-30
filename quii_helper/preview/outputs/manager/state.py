@@ -27,7 +27,7 @@ def direct_blob_sample_payload(
     msg_index: int,
     source: str,
     meta: dict[str, Any],
-    candidates: list[dict],
+    candidates: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "msg_index": msg_index,
@@ -45,7 +45,7 @@ def wrapped_tail_sample_payload(
     msg_index: int,
     source: str,
     meta: dict[str, Any],
-    analysis: dict,
+    analysis: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "msg_index": msg_index,
@@ -62,7 +62,7 @@ def fragment_partial_sample_payload(
     msg_index: int,
     source: str,
     meta: dict[str, Any],
-    analysis: dict,
+    analysis: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "msg_index": msg_index,

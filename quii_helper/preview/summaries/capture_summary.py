@@ -1,5 +1,6 @@
-﻿from typing import Any
+from typing import Any, cast
 
+from quii_helper.models.capture import CaptureSummary
 from quii_helper.preview.outputs.writer.output_writer import CaptureArtifacts
 from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 from quii_helper.preview.summaries.capture_summary_state import (
@@ -15,14 +16,14 @@ def build_capture_summary(
     *,
     preview_settings: PreviewCaptureSettings,
     capture_artifacts: CaptureArtifacts,
-    decoded_messages: list[dict],
-    media_messages: list[dict],
+    decoded_messages: list[dict[str, Any]],
+    media_messages: list[dict[str, Any]],
     elapsed_seconds: float,
     tunnel_config: Any,
-    play_sync: list[dict],
-    rbudp_fragments: dict,
-    fragmented_media: dict,
-    quii_packet_chaining: dict,
+    play_sync: list[dict[str, Any]],
+    rbudp_fragments: dict[str, Any],
+    fragmented_media: dict[str, Any],
+    quii_packet_chaining: dict[str, int],
     implausible_direct_suppressed: int,
     stream_payload_count: int,
     stream_payload_filler_count: int,
@@ -30,7 +31,7 @@ def build_capture_summary(
     stream_payload_early_filler_count: int,
     pending_quii_drain_packets: int,
     pending_quii_drain_elapsed_seconds: float,
-) -> dict:
+) -> CaptureSummary:
     common = common_capture_summary_fields(
         capture_settings=capture_settings_summary(
             preview_settings=preview_settings,
@@ -57,17 +58,23 @@ def build_capture_summary(
     )
 
     if decoded_messages:
-        return {
-            "decoded_messages": len(decoded_messages),
-            "media_messages": len(media_messages),
-            **common,
-            "media_result": capture_artifacts.media_result,
-        }
+        return cast(
+            CaptureSummary,
+            {
+                "decoded_messages": len(decoded_messages),
+                "media_messages": len(media_messages),
+                **common,
+                "media_result": capture_artifacts.media_result,
+            },
+        )
 
-    return {
-        "decoded_messages": 0,
-        **common,
-        "stream_payload_early_count": stream_payload_early_count,
-        "stream_payload_early_filler_count": stream_payload_early_filler_count,
-        "embedded_fallback": capture_artifacts.embedded_fallback,
-    }
+    return cast(
+        CaptureSummary,
+        {
+            "decoded_messages": 0,
+            **common,
+            "stream_payload_early_count": stream_payload_early_count,
+            "stream_payload_early_filler_count": stream_payload_early_filler_count,
+            "embedded_fallback": capture_artifacts.embedded_fallback,
+        },
+    )

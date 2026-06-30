@@ -3,6 +3,8 @@ from typing import Any
 from quii_helper.protocols.tcp import settings
 from quii_helper.protocols.tcp.probes.attempt import TcpProbeAttemptRunner
 from quii_helper.protocols.tcp.probes.candidates import (
+    QuiiCredentialCandidate,
+    QuiiStreamCombo,
     combo_candidates,
     credential_candidates,
     probe_endpoint,
@@ -56,8 +58,8 @@ class QuiiTcpProbeRunner:
         token_result: dict[str, Any],
         probe_host: str,
         probe_port: int,
-        combo_candidates: list,
-        credential_candidates: list,
+        combo_candidates: list[QuiiStreamCombo],
+        credential_candidates: list[QuiiCredentialCandidate],
     ) -> None:
         logger.debug("=== quii_config ===")
         logger.debug(
@@ -77,8 +79,8 @@ class QuiiTcpProbeRunner:
         token_result: dict[str, Any],
         probe_host: str,
         probe_port: int,
-        stream_combos: list,
-        credentials: list,
+        stream_combos: list[QuiiStreamCombo],
+        credentials: list[QuiiCredentialCandidate],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         attempt_runner = TcpProbeAttemptRunner(
             token_result=token_result,

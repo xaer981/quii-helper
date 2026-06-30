@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 
 from quii_helper.config import ServiceEntry, ServiceQueryResponse
+from quii_helper.support.errors import QuiiConnectionError
 
 
 def parse_service_query_response(xml_text: str) -> ServiceQueryResponse:
@@ -8,7 +9,7 @@ def parse_service_query_response(xml_text: str) -> ServiceQueryResponse:
     header = root.find("header")
     content = root.find("content")
     if header is None or content is None:
-        raise RuntimeError(
+        raise QuiiConnectionError(
             f"unexpected query-hlrv2 response: {xml_text[:400]}"
         )
 

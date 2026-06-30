@@ -22,6 +22,7 @@ CAMERA_CONFIG_KWARG_NAMES = (
     "live_keepalive_interval",
     "play_sync_iterations",
     "enable_play_probes",
+    "tls_verify",
     "channel",
     "stream",
     "stream_quality",
