@@ -68,7 +68,7 @@ class SettingsLoader:
             project_root=self.project_root,
             default_assets_dir=assets_dir,
             default_native_lib_dir=native_lib_dir,
-            cloud_account=self.getenv("CLOUD_USERNAME", "CLOUD_ACCOUNT"),
+            cloud_account=self.getenv("CLOUD_ACCOUNT", "CLOUD_USERNAME"),
             cloud_password=self.getenv("CLOUD_PASSWORD"),
             device_id=self.getenv("DEVICE_ID"),
             auth_code=self.getenv("AUTH_CODE"),

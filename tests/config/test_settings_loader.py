@@ -21,7 +21,7 @@ class SettingsLoaderTests:
         settings = SettingsLoader(
             project_root=Path("project"),
             env={
-                "CLOUD_USERNAME": "account",
+                "CLOUD_ACCOUNT": "account",
                 "CLOUD_PASSWORD": "password",
                 "DEVICE_ID": "device",
                 "CLOUD_CLIENT_UUID": "client",
@@ -60,7 +60,7 @@ class SettingsLoaderTests:
         settings = SettingsLoader(
             project_root=Path("project"),
             env={
-                "CLOUD_ACCOUNT": "account",
+                "CLOUD_USERNAME": "account",
                 "CLOUD_OEM": "OEM",
                 "CLOUD_APP_ID": "11",
                 "CLOUD_CLIENT_TYPE": "21",
@@ -76,6 +76,18 @@ class SettingsLoaderTests:
         assert 21 == settings.camera_client_type
         assert 3 == settings.camera_channel
         assert 2 == settings.camera_stream
+
+    def test_prefers_canonical_account_over_legacy_username(self) -> None:
+        settings = SettingsLoader(
+            project_root=Path("project"),
+            env={
+                "CLOUD_ACCOUNT": "account",
+                "CLOUD_USERNAME": "legacy",
+            },
+            load_env_file=False,
+        ).load()
+
+        assert "account" == settings.cloud_account
 
     def test_rejects_invalid_integer_env_value(self) -> None:
         loader = SettingsLoader(
@@ -120,7 +132,7 @@ class SettingsLoaderTests:
         config = load_config(
             project_root=Path("project"),
             env={
-                "CLOUD_USERNAME": "account",
+                "CLOUD_ACCOUNT": "account",
                 "CLOUD_PASSWORD": "password",
                 "DEVICE_ID": "device",
                 "CLOUD_CLIENT_UUID": "client",

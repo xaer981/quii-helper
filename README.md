@@ -41,7 +41,7 @@ because the UST table offsets were matched against the arm64 library.
 Create `.env` from `.env.example`. Required keys for cloud/P2P preview:
 
 ```dotenv
-CLOUD_USERNAME=""
+CLOUD_ACCOUNT=""
 CLOUD_PASSWORD=""
 DEVICE_ID=""
 CLOUD_CLIENT_UUID=""
@@ -65,46 +65,276 @@ TLS_VERIFY=true
 LOG_LEVEL=info
 ```
 
-`CLOUD_AUTH_VERSION` may be empty for older auth protocol versions.
-`AUTH_CODE` and `DEVICE_PASSWORD` are only used by TCP/CGI probe helpers, not
-by the normal cloud/P2P preview flow. `CLOUD_ACCOUNT` is still accepted as a
-legacy alias for `CLOUD_USERNAME`.
+The table below is a quick index. Detailed extraction steps follow in the next
+section.
+
+| Variable | Required for cloud/P2P preview | Where to get it |
+| --- | --- | --- |
+| `CLOUD_ACCOUNT` | yes | Your mobile-app login. |
+| `CLOUD_PASSWORD` | yes | Your mobile-app password or its SHA-256 hex digest. |
+| `DEVICE_ID` | yes | Device UID/UMID from the device label, QR code, mobile-app device details, or cloud device list. |
+| `CLOUD_CLIENT_UUID` | yes | Generate once locally; the app normally derives this from Android ID or stored `uik`. |
+| `CLOUD_AUTH_URL` | yes | Discover from the cloud `userapp` service and append `/auth/user`. |
+| `CLOUD_SERVICE_URL` | yes | `AppConfig.SERVER_ADDRESS` + `AppConfig.SERVER_PORT` in the decompiled APK. |
+| `CAMERA_OEM` | yes | `AppConfig.OEM_ID`, unless the vendor build overrides it through `SpUtil.getServiceId()`. |
+| `CAMERA_APP_ID` | yes | `AppConfig.APP_ID`. |
+| `CAMERA_CLIENT_TYPE` | yes | Second argument of `QvAlarmCore.getInstance().initParams(...)` in `QvOpenSDK.java`. |
+| `IP_REGION_ID` | yes | Cloud discovery `client-regionid`; can change after auth redirect. |
+| `CLOUD_AUTH_VERSION` | conditional | `BuildConfig.AUTH_CODE` mapped through `QvCore.setAuthVersionCode(...)`; empty for auth code `0`. |
+| `CAMERA_CHANNEL` | no | Use `1` for single-camera devices; use the channel list for multi-channel devices. |
+| `CAMERA_STREAM` | no | Native `ids` stream value: `1` high/HD, `2` low/SD default. |
+| `AUTH_CODE` | no | Device model/database `authCode`; only for TCP/CGI probe helpers. |
+| `DEVICE_PASSWORD` | no | Local CGI/admin password; only for TCP/CGI probe helpers. |
+| `TLS_VERIFY` | no | Keep `true` unless the vendor endpoint has certificate issues. |
+| `LOG_LEVEL` | no | `info` for normal use, `debug` for protocol diagnostics. |
 
 ## Extracting Values
 
-Find app-specific values in the decompiled Android app:
+Most values can be found without Frida. For the tested `vHome 2.2` app, the
+required values come from static Java constants plus one cloud service-query
+request. Frida is not required for the normal setup flow.
 
-- `CAMERA_APP_ID`: search Java sources for `AppConfig.APP_ID`, usually in
-  `.../publico/common/AppConfig.java`.
-- `CAMERA_OEM`: use `AppConfig.OEM_ID`. Some builds override it through
-  `SpUtil.getServiceId()` before `QvOpenSDK.setKey(...)`; if an override is
-  present in app storage/logs, use that runtime service id instead.
-- `CLOUD_SERVICE_URL`: use
-  `https://{AppConfig.SERVER_ADDRESS}:{AppConfig.SERVER_PORT}`. This is the
-  base URL used for service discovery (`/mst/query`).
-- `CLOUD_AUTH_URL`: use the user-auth endpoint for the same app/region,
-  normally `https://{auth-host}:{auth-port}/auth/user`. In Java, search for
-  `UserApi`, `DownChannelManager`, `QvLocationManager.getCurrentUrl(0)`, or
-  `/auth/user`; the host is the current auth service selected by the app.
-- `CLOUD_AUTH_VERSION`: search for `AppConfig.AUTH_VERSION_CODE` and
-  `QvCore.setAuthVersionCode(...)`. The current SDK maps code `0` to an empty
-  string, code `1` to `v1.10`, and code `2` to `v1.13`.
-- `CAMERA_CLIENT_TYPE`: search for
-  `QvAlarmCore.getInstance().initParams(...)`; the second argument is the
-  client type used in user-auth headers.
-- `IP_REGION_ID`: runtime region state, not a simple `AppConfig` constant.
-  Search for `QvLocationManager.getCurrentIpRegionId()`,
-  `currentIpRegionId`, `LoginReqContent`, and `redirect-region-id`. Use the
-  IP region id saved by the original app after login/service discovery, or the
-  `redirect-region-id` returned by a successful original-app login.
-- `CLOUD_CLIENT_UUID`: use a stable per-install client id. The original app
-  passes `DataUtils.getUniqueId(application)` into SDK initialization. For
-  this package it can be a generated UUID, but keep it stable between runs.
-- `DEVICE_ID`: camera UID/device id from the original app, QR code, label, or
-  cloud device list.
+Use these source paths relative to the decompiled APK root:
+
+- Java sources: `java_src/`
+- APK assets: `assets/`
+- Native libraries: `lib/`
+
+### Account And Device Values
+
+- `CLOUD_ACCOUNT`: the same login used in the mobile app. This is usually an
+  email address or phone/account string. `CLOUD_USERNAME` is accepted as a
+  legacy alias, but new `.env` files should use `CLOUD_ACCOUNT`.
+- `CLOUD_PASSWORD`: the same password used in the mobile app. You can enter
+  the plain password; quii-helper hashes it with SHA-256 before sending
+  user-auth. If you already have the 64-character SHA-256 hex string, that is
+  accepted too.
+- `DEVICE_ID`: the device UID/UMID, not the camera LAN IP. You can copy it
+  from the QR code, device label, mobile-app device details, or cloud device
+  list. In code this is `QvDevice.getUmid()` and it is sent as
+  `<device-id>` by `UserAuthRequestHelper.getDevDynamicPwd(...)`.
+
+### APK Constants
+
+Open `java_src/com/quvii/qvfun/publico/common/AppConfig.java`:
+
+- `CAMERA_APP_ID`: use `public static final int APP_ID`.
+- `CAMERA_OEM`: use `public static final String OEM_ID`.
+- `CLOUD_SERVICE_URL`: build
+  `https://{SERVER_ADDRESS}:{SERVER_PORT}` from `SERVER_ADDRESS` and
+  `SERVER_PORT`. Do not add `/mst/query`; quii-helper appends that path.
+
+For `Tantos Marilyn Wi-Fi s` / `vHome 2.2`, the extracted values are:
+
+```dotenv
+CAMERA_APP_ID=4083
+CAMERA_OEM="G0083"
+CLOUD_SERVICE_URL="https://tantos.qvcloud.net:443"
+```
+
+Some vendor/debug builds can override `CAMERA_OEM` and `CLOUD_SERVICE_URL`
+through app storage. In `java_src/com/quvii/qvfun/publico/sdk/SdkManager.java`
+the app reads:
+
+- `SpUtil.getServiceId()` before building the SDK key
+  `serviceId&APP_ID&0`.
+- `SpUtil.getAppServiceIp()` before falling back to
+  `AppConfig.SERVER_ADDRESS`.
+
+If those stored values are empty, use the `AppConfig` constants. If your vendor
+build exposes a hidden test/settings screen that changes them, use the runtime
+values from that screen instead.
+
+### Auth Version
+
+Open:
+
+- `java_src/com/quvii/qvfun/publico/common/AppConfig.java`
+- `java_src/com/quvii/qvfun/core/BuildConfig.java`
+- `java_src/com/quvii/core/QvCore.java`
+
+`AppConfig.AUTH_VERSION_CODE` usually delegates to `BuildConfig.AUTH_CODE`.
+`QvCore.setAuthVersionCode(...)` maps it to the XML header version:
+
+| `AUTH_VERSION_CODE` | `CLOUD_AUTH_VERSION` |
+| --- | --- |
+| `0` | empty string |
+| `1` | `v1.10` |
+| `2` | `v1.13` |
+
+For the tested `vHome 2.2` APK, `BuildConfig.AUTH_CODE = 2`, so:
+
+```dotenv
+CLOUD_AUTH_VERSION="v1.13"
+```
+
+### Client Type
+
+Open `java_src/com/quvii/openapi/QvOpenSDK.java` and search for
+`QvAlarmCore.getInstance().initParams(...)`.
+
+The second argument is the client type used in user-auth headers. In the
+tested app the call is:
+
+```java
+QvAlarmCore.getInstance().initParams(
+    SDKVariates.CID,
+    3,
+    DataUtils.getUniqueId(application),
+    QvLanguageUtil.initMsgNotifyLang()
+);
+```
+
+Therefore:
+
+```dotenv
+CAMERA_CLIENT_TYPE=3
+```
+
+### Client UUID
+
+Open `java_src/com/quvii/publico/utils/DataUtils.java` and search for
+`getUniqueId(Context context)`.
+
+The original app uses Android `Settings.Secure.ANDROID_ID`; if it is missing or
+all zeroes, it generates a UUID and stores it under the encrypted preference key
+`uik`.
+
+For quii-helper, this value only needs to be stable between runs. Generate it
+once and keep it in `.env`:
+
+```powershell
+python -c "import uuid; print(uuid.uuid4().hex)"
+```
+
+Then set:
+
+```dotenv
+CLOUD_CLIENT_UUID="generated-value-here"
+```
+
+Do not regenerate it on every run.
+
+### Cloud Region And Auth URL
+
+`IP_REGION_ID` and `CLOUD_AUTH_URL` are runtime service-discovery values, not
+plain `AppConfig` constants.
+
+The original app flow is:
+
+- `QvLocationManager.init()` starts with the stored
+  `SpUtil.getAddressGroupId()` value.
+- `QvLocationManager.startQueryTargetService(...)` asks the native P2P layer
+  for service addresses.
+- `libqv-p2p-v2.so` builds a `query-hlrv2` request and parses
+  `client-regionid` plus service entries.
+- `QvLocationManager` stores `currentIpRegionId` and updates
+  `DownChannelManager.changeService(...)`.
+- `UserApi` sends login to `/auth/user;jus_duplex=up`.
+- `UserLoginResp` can return `redirect-region-id`; if that happens, the app
+  switches region and retries login.
+
+The easiest static-plus-cloud path is the included discovery script. First fill
+these `.env` values:
+
+```dotenv
+CLOUD_SERVICE_URL="https://..."
+CAMERA_OEM="..."
+CLOUD_CLIENT_UUID="..."
+```
+
+Make sure `assets/ca.pem`, `assets/client.pem`, and `assets/client.txt` are in
+place, then run:
+
+```powershell
+python -m examples.discover_env_values
+```
+
+Copy the printed values:
+
+```dotenv
+IP_REGION_ID=<printed client-regionid>
+CLOUD_AUTH_URL=<printed userapp auth URL>
+```
+
+`CLOUD_AUTH_URL` must be the full POST endpoint, usually:
+
+```dotenv
+CLOUD_AUTH_URL="https://<auth-host>:<port>/auth/user"
+```
+
+The original Android app declares the upstream auth route as
+`/auth/user;jus_duplex=up`, but quii-helper sends `CLOUD_AUTH_URL` exactly as
+configured and does not append this suffix automatically. The tested
+Tantos/vHome cloud accepts `/auth/user`; if a different vendor endpoint rejects
+it, try the native route:
+
+```dotenv
+CLOUD_AUTH_URL="https://<auth-host>:<port>/auth/user;jus_duplex=up"
+```
+
+If service discovery fails with `CERTIFICATE_VERIFY_FAILED`, the vendor TLS
+certificate is not trusted by your local Python installation or does not match
+the hostname. For discovery, create the config with TLS verification disabled:
+
+```python
+from quii_helper.config import AutonomousConfig
+
+config = AutonomousConfig(ip_region_id=0, tls_verify=False)
+```
+
+The included `python -m examples.discover_env_values` helper already uses that
+setting for the service-query request. For normal camera usage, the equivalent
+`.env` setting is:
+
+```dotenv
+TLS_VERIFY=false
+```
+
+Use this only for vendor certificate issues; it disables HTTPS certificate
+verification.
+
+If the discovery script does not return `userapp`, use the app logs or the
+original app's runtime state:
+
+- Search Java for `DownChannelManager.getRequestUrl()`.
+- Search logs for `changeService:` or `auth url is null`.
+- In a successful login response, check `redirect-region-id` and use it as
+  `IP_REGION_ID`.
+
+Frida is only needed as a last resort for unusual vendor builds where the app
+hides or rewrites service addresses at runtime. The tested `vHome 2.2` APK does
+not require it.
+
+### Optional Values
+
+- `CAMERA_CHANNEL`: camera channel number. Use `1` for a single-panel/single
+  camera device. Multi-channel/NVR devices expose channel data in the device
+  list/channel list.
+- `CAMERA_STREAM`: stream id passed as `ids` in the native live URL.
+  `1` requests high/HD quality, `2` is the native low/SD default.
+- `AUTH_CODE`: device binding/auth code. It is stored in the app device model
+  as `authCode` and database column `authCode`. It is only used by TCP/CGI
+  probe helpers, not by normal cloud/P2P preview.
+- `DEVICE_PASSWORD`: local CGI/admin password for direct TCP/CGI probe helpers.
+  It is not needed for normal cloud/P2P preview.
+- `TLS_VERIFY`: keep `true` unless the vendor endpoint has non-public or
+  hostname-mismatched certificates.
+- `LOG_LEVEL`: use `info` for normal usage and `debug` for protocol
+  diagnostics.
 
 For cloud/P2P preview, the camera LAN IP and UDP port are discovered from the
 P2P response. A user-provided device IP is not required.
+
+Legacy aliases accepted by the loader:
+
+- `CLOUD_USERNAME` -> `CLOUD_ACCOUNT`
+- `CLOUD_OEM` -> `CAMERA_OEM`
+- `CLOUD_APP_ID` -> `CAMERA_APP_ID`
+- `CLOUD_CLIENT_TYPE` -> `CAMERA_CLIENT_TYPE`
+- `VIDEO_PANEL` or `QUII_CHANNEL` -> `CAMERA_CHANNEL`
+- `QUII_STREAM` -> `CAMERA_STREAM`
+- `CLOUD_TLS_VERIFY` -> `TLS_VERIFY`
 
 Do not commit `.env` or extracted APK assets. They include credentials,
 private keys, and native libraries.
@@ -188,10 +418,6 @@ requested duration before writing the MP4.
 Set `LOG_LEVEL=debug` to enable protocol diagnostics, packet summaries, and
 full capture summaries. The default `LOG_LEVEL=info` prints short progress
 messages such as connection, media receiving, and completion status.
-
-`TLS_VERIFY=true` is the default and verifies HTTPS certificates for cloud and
-device requests. Set `TLS_VERIFY=false` only when working with vendor endpoints
-that use non-public or hostname-mismatched certificates.
 
 Debug HTTP dumps redact common credential fields such as passwords, tokens,
 session ids, cookies, and dynamic media keys before logging. Treat debug logs

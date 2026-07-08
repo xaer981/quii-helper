@@ -17,3 +17,4 @@ being stabilized.
 - Added Gitleaks configuration and CI secret scanning.
 - Pinned development tool versions used by CI.
 - Added compatibility notes, runnable examples, and GitHub issue/PR templates.
+- Expanded `.env` extraction documentation and added cloud discovery helper.
