@@ -19,6 +19,8 @@ def resolve_camera_config(
     cloud_username: str | None,
     cloud_account: str | None,
     cloud_password: str | None,
+    device_host: str | None,
+    auth_code: str | None,
     client_id: str | None,
     service_url: str | None,
     auth_url: str | None,
@@ -52,6 +54,10 @@ def resolve_camera_config(
         values["cloud_account"] = resolved_cloud_account
     if cloud_password is not None:
         values["cloud_password"] = cloud_password
+    if device_host is not None:
+        values["device_host"] = device_host
+    if auth_code is not None:
+        values["auth_code"] = auth_code
     if client_id is not None:
         values["client_id"] = client_id
     if service_url is not None:

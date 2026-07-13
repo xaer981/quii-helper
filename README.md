@@ -57,6 +57,7 @@ Optional keys:
 
 ```dotenv
 CLOUD_AUTH_VERSION=""
+CAMERA_DEVICE_HOST=""
 CAMERA_CHANNEL=1
 CAMERA_STREAM=2
 AUTH_CODE=""
@@ -81,9 +82,10 @@ section.
 | `CAMERA_CLIENT_TYPE` | yes | Second argument of `QvAlarmCore.getInstance().initParams(...)` in `QvOpenSDK.java`. |
 | `IP_REGION_ID` | yes | Cloud discovery `client-regionid`; can change after auth redirect. |
 | `CLOUD_AUTH_VERSION` | conditional | `BuildConfig.AUTH_CODE` mapped through `QvCore.setAuthVersionCode(...)`; empty for auth code `0`. |
+| `CAMERA_DEVICE_HOST` | no | Camera LAN IP address or hostname; required for local read-only `/tdkcgi` helpers. |
 | `CAMERA_CHANNEL` | no | Use `1` for single-camera devices; use the channel list for multi-channel devices. |
 | `CAMERA_STREAM` | no | Native `ids` stream value: `1` high/HD, `2` low/SD default. |
-| `AUTH_CODE` | no | Device model/database `authCode`; required for local read-only `/tdkcgi` helpers. |
+| `AUTH_CODE` | no | Device auth code for local read-only `/tdkcgi` helpers and TCP/CGI probe helpers. |
 | `DEVICE_PASSWORD` | no | Local CGI/admin password; only for TCP/CGI probe helpers. |
 | `TLS_VERIFY` | no | Keep `true` unless the vendor endpoint has certificate issues. |
 | `LOG_LEVEL` | no | `info` for normal use, `debug` for protocol diagnostics. |
@@ -113,6 +115,9 @@ Use these source paths relative to the decompiled APK root:
   from the QR code, device label, mobile-app device details, or cloud device
   list. In code this is `QvDevice.getUmid()` and it is sent as
   `<device-id>` by `UserAuthRequestHelper.getDevDynamicPwd(...)`.
+- `CAMERA_DEVICE_HOST`: the camera LAN IP address or hostname. It is not
+  needed for cloud/P2P preview, snapshots, videos, or RTSP streaming, but it is
+  required for direct local `/tdkcgi` read-only HTTP helpers.
 
 ### APK Constants
 
@@ -314,9 +319,9 @@ not require it.
 - `CAMERA_STREAM`: stream id passed as `ids` in the native live URL.
   `1` requests high/HD quality, `2` is the native low/SD default.
 - `AUTH_CODE`: device binding/auth code. It is stored in the app device model
-  as `authCode` and database column `authCode`. It is used by local read-only
-  `/tdkcgi` methods and TCP/CGI probe helpers, not by normal cloud/P2P
-  preview.
+  as `authCode` and database column `authCode`. High-level local `/tdkcgi`
+  methods use this local config value and do not perform cloud login by
+  themselves. TCP/CGI probe helpers use this value directly.
 - `DEVICE_PASSWORD`: local CGI/admin password for direct TCP/CGI probe helpers.
   It is not needed for normal cloud/P2P preview.
 - `TLS_VERIFY`: keep `true` unless the vendor endpoint has non-public or
@@ -369,6 +374,7 @@ from quii_helper import Camera
 
 camera = Camera(
     device_id="12345qwes6ca",
+    device_host="192.168.1.176",
     cloud_username="account@example.com",
     cloud_password="password-or-sha256",
     client_id="client-uuid",
@@ -396,20 +402,55 @@ print(device_info.channel_count)
 ```
 
 Local read-only device CGI methods use the original app's `/tdkcgi` commands:
-`get.device.status`, `get.hdd.base`, and `get.network.config`. These calls are
-direct HTTP requests to the camera IP, so they require the camera to be
-reachable from your machine and require `AUTH_CODE` in `.env` or an explicit
-`auth_code=...` argument:
+`get.device.status`, `get.hdd.base`, `get.network.config`,
+`get.system.general`, `get.system.ability`, `get.encode`,
+`get.product.info`, `get.product.time`, `get.wifi.list`,
+`get.shape.mirror`, `get.videoswitch.vionoff`, and
+`get.video.timetitle`. These calls are direct HTTP requests to the camera IP,
+so they require the camera to be reachable from your machine. Set
+`CAMERA_DEVICE_HOST` and `AUTH_CODE` in `.env`, or pass them when creating
+`Camera`. These local CGI helpers do not perform cloud login by themselves:
 
 ```python
-device_all = camera.get_device_all_info("192.168.1.176")
-storage = camera.get_storage_info("192.168.1.176")
-network = camera.get_network_info("192.168.1.176")
+camera = Camera(device_host="192.168.1.176", auth_code="device-auth-code")
+
+device_all = camera.get_device_all_info()
+product = camera.get_product_info()
+storage = camera.get_storage_info()
+time_info = camera.get_time_info()
+wifi = camera.get_wifi_list()
+screen = camera.get_screen_flip_info()
+video_switch = camera.get_video_switch_info()
+time_title = camera.get_time_title_info()
+network = camera.get_network_info()
+general = camera.get_system_general_info()
+capabilities = camera.get_system_capabilities()
+video_config = camera.get_video_config()
 
 print(device_all.model, device_all.version)
+print(product.model, product.version)
 print(storage.total_sum, storage.free_sum)
+print(time_info.time_zone, time_info.date_time)
+print([wifi_network.ssid for wifi_network in wifi.networks])
+print(screen.state, screen.angle)
+print(video_switch.is_on)
+print(time_title.overlays)
 print(network.address, network.gateway)
+print(general.host_name, general.time_zone)
+print(capabilities.rtsp, capabilities.snap)
+print([(channel.channel_id, len(channel.streams)) for channel in video_config.channels])
 ```
+
+If you need to override the local auth code for a single read-only call, pass
+`auth_code=...` to that method. The device host itself is intentionally
+configured only on the `Camera` instance.
+
+Some firmware builds expose only a subset of these local CGI commands. A
+returned `error=-1` with empty `<content>` means the camera rejected or does not
+support that specific command in the current mode. For example, the tested
+Tantos Marilyn Wi-Fi s returns useful data for `get.device.status`,
+`get.product.info`, and `get.product.time`, while several advanced
+configuration commands may return `-1`.
 
 The native SDK defaults to HTTP CGI port `80`; pass `port=443, scheme="https"`
 for HTTPS-capable devices.

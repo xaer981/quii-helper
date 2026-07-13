@@ -7,8 +7,17 @@ from quii_helper.camera.connection.session import (
 )
 from quii_helper.camera.device_cgi import (
     CameraDeviceAllInfo,
+    CameraDeviceCapabilitiesInfo,
+    CameraDeviceGeneralInfo,
     CameraDeviceNetworkInfo,
+    CameraDeviceProductInfo,
+    CameraDeviceScreenFlipInfo,
     CameraDeviceStorageInfo,
+    CameraDeviceTimeInfo,
+    CameraDeviceTimeTitleInfo,
+    CameraDeviceVideoConfigInfo,
+    CameraDeviceVideoSwitchInfo,
+    CameraDeviceWifiListInfo,
 )
 from quii_helper.camera.metadata import CameraDeviceInfo
 from quii_helper.camera.outputs.results import (
@@ -23,9 +32,18 @@ __all__ = [
     "CameraCaptureResult",
     "CameraConnector",
     "CameraDeviceAllInfo",
+    "CameraDeviceCapabilitiesInfo",
+    "CameraDeviceGeneralInfo",
     "CameraDeviceInfo",
     "CameraDeviceNetworkInfo",
     "CameraPreviewSession",
+    "CameraDeviceProductInfo",
+    "CameraDeviceScreenFlipInfo",
     "CameraDeviceStorageInfo",
+    "CameraDeviceTimeInfo",
+    "CameraDeviceTimeTitleInfo",
+    "CameraDeviceVideoConfigInfo",
+    "CameraDeviceVideoSwitchInfo",
+    "CameraDeviceWifiListInfo",
     "options",
 ]

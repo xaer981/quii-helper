@@ -24,6 +24,8 @@ class SettingsLoaderTests:
                 "CLOUD_ACCOUNT": "account",
                 "CLOUD_PASSWORD": "password",
                 "DEVICE_ID": "device",
+                "CAMERA_DEVICE_HOST": "192.0.2.10",
+                "AUTH_CODE": "auth-code",
                 "CLOUD_CLIENT_UUID": "client",
                 "LOG_LEVEL": "debug",
                 "CLOUD_AUTH_VERSION": "v1",
@@ -43,6 +45,8 @@ class SettingsLoaderTests:
         assert "account" == settings.cloud_account
         assert "password" == settings.cloud_password
         assert "device" == settings.device_id
+        assert "192.0.2.10" == settings.camera_device_host
+        assert "auth-code" == settings.auth_code
         assert "client" == settings.cloud_client_uuid
         assert "debug" == settings.log_level
         assert "v1" == settings.cloud_auth_version
@@ -135,6 +139,8 @@ class SettingsLoaderTests:
                 "CLOUD_ACCOUNT": "account",
                 "CLOUD_PASSWORD": "password",
                 "DEVICE_ID": "device",
+                "CAMERA_DEVICE_HOST": "192.0.2.10",
+                "AUTH_CODE": "auth-code",
                 "CLOUD_CLIENT_UUID": "client",
                 "CLOUD_AUTH_URL": "https://auth",
                 "CLOUD_SERVICE_URL": "https://service",
@@ -149,6 +155,8 @@ class SettingsLoaderTests:
         assert "account" == config.cloud_account
         assert "password" == config.cloud_password
         assert "device" == config.device_id
+        assert "192.0.2.10" == config.device_host
+        assert "auth-code" == config.auth_code
         assert "client" == config.client_id
         assert "https://auth" == config.auth_url
         assert "https://service" == config.service_url

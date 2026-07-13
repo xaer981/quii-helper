@@ -9,11 +9,30 @@ from quii_helper.camera.connection.session import (
 )
 from quii_helper.camera.device_cgi import (
     CameraDeviceAllInfo,
+    CameraDeviceCapabilitiesInfo,
+    CameraDeviceGeneralInfo,
     CameraDeviceNetworkInfo,
+    CameraDeviceProductInfo,
+    CameraDeviceScreenFlipInfo,
     CameraDeviceStorageInfo,
+    CameraDeviceTimeInfo,
+    CameraDeviceTimeTitleInfo,
+    CameraDeviceVideoConfigInfo,
+    CameraDeviceVideoSwitchInfo,
+    CameraDeviceWifiListInfo,
+    DeviceCgiEndpoint,
     fetch_device_all_info,
     fetch_network_info,
+    fetch_product_info,
+    fetch_screen_flip_info,
     fetch_storage_info,
+    fetch_system_capabilities,
+    fetch_system_general_info,
+    fetch_time_info,
+    fetch_time_title_info,
+    fetch_video_config_info,
+    fetch_video_switch_info,
+    fetch_wifi_list_info,
     resolve_device_cgi_endpoint,
 )
 from quii_helper.camera.metadata import (
@@ -36,7 +55,7 @@ from quii_helper.cloud.devices import (
     fetch_cloud_device_list,
     find_cloud_device,
 )
-from quii_helper.config import AutonomousConfig
+from quii_helper.config import AutonomousConfig, RuntimeCredentials
 from quii_helper.io.paths import DATA_DIR
 from quii_helper.models.capture import CaptureSummary
 from quii_helper.preview.pipeline.config import (
@@ -54,10 +73,19 @@ __all__ = [
     "CameraCaptureResult",
     "CameraConnector",
     "CameraDeviceAllInfo",
+    "CameraDeviceCapabilitiesInfo",
+    "CameraDeviceGeneralInfo",
     "CameraDeviceInfo",
     "CameraDeviceNetworkInfo",
     "CameraPreviewSession",
+    "CameraDeviceProductInfo",
+    "CameraDeviceScreenFlipInfo",
     "CameraDeviceStorageInfo",
+    "CameraDeviceTimeInfo",
+    "CameraDeviceTimeTitleInfo",
+    "CameraDeviceVideoConfigInfo",
+    "CameraDeviceVideoSwitchInfo",
+    "CameraDeviceWifiListInfo",
 ]
 
 
@@ -92,6 +120,8 @@ class Camera:
         cloud_username: str | None = None,
         cloud_account: str | None = None,
         cloud_password: str | None = None,
+        device_host: str | None = None,
+        auth_code: str | None = None,
         client_id: str | None = None,
         service_url: str | None = None,
         auth_url: str | None = None,
@@ -126,6 +156,10 @@ class Camera:
             cloud_username: Alias for `cloud_account`.
             cloud_account: Cloud account/login used for runtime credentials.
             cloud_password: Cloud account password.
+            device_host: Camera LAN IP address or hostname used by local
+                `/tdkcgi` read-only HTTP methods.
+            auth_code: Device auth code used by local `/tdkcgi` read-only HTTP
+                methods.
             client_id: Client UUID sent to cloud, UST, and MQTT services.
             service_url: Cloud service-discovery URL.
             auth_url: Cloud user-auth URL.
@@ -169,6 +203,7 @@ class Camera:
         self.emit = emit or _default_emit
         self.status = status or _default_status
         self.connector = CameraConnector(self.config)
+        self._runtime_credentials: RuntimeCredentials | None = None
 
     def capture(
         self,
@@ -240,7 +275,7 @@ class Camera:
             flags, and transparent vendor metadata when the cloud provides it.
         """
 
-        credentials = self.connector.fetch_credentials()
+        credentials = self._fetch_runtime_credentials()
         cloud_device = None
         try:
             cloud_device = find_cloud_device(
@@ -258,9 +293,32 @@ class Camera:
             cloud_device=cloud_device,
         )
 
+    def _fetch_runtime_credentials(self) -> RuntimeCredentials:
+        if self._runtime_credentials is None:
+            self._runtime_credentials = self.connector.fetch_credentials()
+        return self._runtime_credentials
+
+    def _resolve_local_cgi_endpoint(
+        self,
+        *,
+        port: int,
+        scheme: str,
+        auth_code: str | None,
+        verify_tls: bool | None,
+        debug: bool,
+    ) -> DeviceCgiEndpoint:
+        resolved_auth_code = auth_code
+        return resolve_device_cgi_endpoint(
+            self.config,
+            port=port,
+            scheme=scheme,
+            auth_code=resolved_auth_code,
+            verify_tls=verify_tls,
+            debug=debug,
+        )
+
     def get_device_all_info(
         self,
-        host: str,
         *,
         port: int = 80,
         scheme: str = "http",
@@ -271,15 +329,16 @@ class Camera:
         """Fetch broad read-only device status from `/tdkcgi`.
 
         This mirrors the original app's `get.device.status` request. It is a
-        direct HTTP CGI call to the camera, not a cloud or live-preview call.
+        direct HTTP CGI call to `Camera(..., device_host=...)`, not a cloud or
+        live-preview call.
 
         Args:
-            host: Camera IP address or hostname reachable from this machine.
             port: Camera CGI HTTP(S) port. The original app defaults to `80`
                 for HTTP and `443` for HTTPS-capable devices.
             scheme: URL scheme, usually `"http"` for LAN CGI access.
-            auth_code: Device auth code. When omitted, `AUTH_CODE` from `.env`
-                is used.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
             verify_tls: Override TLS certificate verification for HTTPS CGI.
             debug: Enable debug logging for the raw CGI exchange.
 
@@ -288,9 +347,45 @@ class Camera:
         """
 
         return fetch_device_all_info(
-            resolve_device_cgi_endpoint(
-                self.config,
-                host=host,
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_product_info(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceProductInfo:
+        """Fetch read-only product identity from `/tdkcgi`.
+
+        This mirrors the original app's `get.product.info` request and uses
+        `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceProductInfo` with MAC, firmware version, release date,
+            and model.
+        """
+
+        return fetch_product_info(
+            self._resolve_local_cgi_endpoint(
                 port=port,
                 scheme=scheme,
                 auth_code=auth_code,
@@ -301,7 +396,6 @@ class Camera:
 
     def get_storage_info(
         self,
-        host: str,
         *,
         port: int = 80,
         scheme: str = "http",
@@ -311,14 +405,15 @@ class Camera:
     ) -> CameraDeviceStorageInfo:
         """Fetch read-only storage status from `/tdkcgi`.
 
-        This mirrors the original app's `get.hdd.base` request.
+        This mirrors the original app's `get.hdd.base` request and uses
+        `Camera(..., device_host=...)`.
 
         Args:
-            host: Camera IP address or hostname reachable from this machine.
             port: Camera CGI HTTP(S) port.
             scheme: URL scheme, usually `"http"` for LAN CGI access.
-            auth_code: Device auth code. When omitted, `AUTH_CODE` from `.env`
-                is used.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
             verify_tls: Override TLS certificate verification for HTTPS CGI.
             debug: Enable debug logging for the raw CGI exchange.
 
@@ -327,9 +422,194 @@ class Camera:
         """
 
         return fetch_storage_info(
-            resolve_device_cgi_endpoint(
-                self.config,
-                host=host,
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_time_info(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceTimeInfo:
+        """Fetch read-only device time/timezone from `/tdkcgi`.
+
+        This mirrors the original app's `get.product.time` request and uses
+        `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceTimeInfo` with timezone and device datetime.
+        """
+
+        return fetch_time_info(
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_wifi_list(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceWifiListInfo:
+        """Fetch read-only Wi-Fi scan results from `/tdkcgi`.
+
+        This mirrors the original app's `get.wifi.list` request and uses
+        `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceWifiListInfo` with visible Wi-Fi networks.
+        """
+
+        return fetch_wifi_list_info(
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_screen_flip_info(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceScreenFlipInfo:
+        """Fetch read-only screen flip/rotation state from `/tdkcgi`.
+
+        This mirrors the original app's `get.shape.mirror` request and uses
+        `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceScreenFlipInfo` with native `state`, `angle`, and raw
+            string values.
+        """
+
+        return fetch_screen_flip_info(
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_video_switch_info(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceVideoSwitchInfo:
+        """Fetch read-only video on/off state from `/tdkcgi`.
+
+        This mirrors the original app's `get.videoswitch.vionoff` request and
+        uses `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceVideoSwitchInfo` with native `state` and boolean
+            `is_on`.
+        """
+
+        return fetch_video_switch_info(
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_time_title_info(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceTimeTitleInfo:
+        """Fetch read-only time-title overlay geometry from `/tdkcgi`.
+
+        This mirrors the original app's `get.video.timetitle` request and uses
+        `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceTimeTitleInfo` with stream/video/title geometry.
+        """
+
+        return fetch_time_title_info(
+            self._resolve_local_cgi_endpoint(
                 port=port,
                 scheme=scheme,
                 auth_code=auth_code,
@@ -340,7 +620,6 @@ class Camera:
 
     def get_network_info(
         self,
-        host: str,
         *,
         port: int = 80,
         scheme: str = "http",
@@ -350,14 +629,15 @@ class Camera:
     ) -> CameraDeviceNetworkInfo:
         """Fetch read-only network settings from `/tdkcgi`.
 
-        This mirrors the original app's `get.network.config` request.
+        This mirrors the original app's `get.network.config` request and uses
+        `Camera(..., device_host=...)`.
 
         Args:
-            host: Camera IP address or hostname reachable from this machine.
             port: Camera CGI HTTP(S) port.
             scheme: URL scheme, usually `"http"` for LAN CGI access.
-            auth_code: Device auth code. When omitted, `AUTH_CODE` from `.env`
-                is used.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
             verify_tls: Override TLS certificate verification for HTTPS CGI.
             debug: Enable debug logging for the raw CGI exchange.
 
@@ -367,9 +647,120 @@ class Camera:
         """
 
         return fetch_network_info(
-            resolve_device_cgi_endpoint(
-                self.config,
-                host=host,
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_system_general_info(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceGeneralInfo:
+        """Fetch read-only general system settings from `/tdkcgi`.
+
+        This mirrors the original app's `get.system.general` request and uses
+        `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceGeneralInfo` with stable general settings and raw
+            parsed content for firmware-specific fields.
+        """
+
+        return fetch_system_general_info(
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_system_capabilities(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceCapabilitiesInfo:
+        """Fetch read-only system capabilities from `/tdkcgi`.
+
+        This mirrors the original app's `get.system.ability` request and uses
+        `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceCapabilitiesInfo` with common capability flags and raw
+            parsed content for firmware-specific capability blocks.
+        """
+
+        return fetch_system_capabilities(
+            self._resolve_local_cgi_endpoint(
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            )
+        )
+
+    def get_video_config(
+        self,
+        *,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDeviceVideoConfigInfo:
+        """Fetch read-only video encode configuration from `/tdkcgi`.
+
+        This mirrors the original app's full-channel `get.encode` request and
+        uses `Camera(..., device_host=...)`.
+
+        Args:
+            port: Camera CGI HTTP(S) port.
+            scheme: URL scheme, usually `"http"` for LAN CGI access.
+            auth_code: Optional explicit device auth code. When omitted,
+                `Camera(..., auth_code=...)` or `AUTH_CODE` from `.env` is
+                used. This method never performs cloud login by itself.
+            verify_tls: Override TLS certificate verification for HTTPS CGI.
+            debug: Enable debug logging for the raw CGI exchange.
+
+        Returns:
+            `CameraDeviceVideoConfigInfo` with channel/stream encode settings.
+        """
+
+        return fetch_video_config_info(
+            self._resolve_local_cgi_endpoint(
                 port=port,
                 scheme=scheme,
                 auth_code=auth_code,

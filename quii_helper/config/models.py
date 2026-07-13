@@ -81,6 +81,10 @@ class AutonomousConfig:
         device_id: Camera device id.
         cloud_account: Cloud account/login.
         cloud_password: Cloud account password.
+        device_host: Camera LAN IP address or hostname for local `/tdkcgi`
+            read-only HTTP requests.
+        auth_code: Device auth code for local `/tdkcgi` read-only HTTP
+            requests.
         channel: Camera channel number.
         stream: Numeric stream selector after quality resolution.
         connect_mode: Device live-play connect mode.
@@ -136,6 +140,10 @@ class AutonomousConfig:
     cloud_password: str = field(
         default_factory=lambda: _settings().cloud_password
     )
+    device_host: str = field(
+        default_factory=lambda: _settings().camera_device_host
+    )
+    auth_code: str = field(default_factory=lambda: _settings().auth_code)
     channel: int = field(default_factory=lambda: _settings().camera_channel)
     stream: int = field(default_factory=lambda: _settings().camera_stream)
     connect_mode: int = -1
@@ -197,6 +205,8 @@ class AutonomousConfig:
             "device_id": settings.device_id,
             "cloud_account": settings.cloud_account,
             "cloud_password": settings.cloud_password,
+            "device_host": settings.camera_device_host,
+            "auth_code": settings.auth_code,
             "channel": settings.camera_channel,
             "stream": settings.camera_stream,
             "service_url": settings.cloud_service_url,

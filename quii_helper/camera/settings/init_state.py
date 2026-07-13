@@ -6,6 +6,8 @@ CAMERA_CONFIG_KWARG_NAMES = (
     "cloud_username",
     "cloud_account",
     "cloud_password",
+    "device_host",
+    "auth_code",
     "client_id",
     "service_url",
     "auth_url",

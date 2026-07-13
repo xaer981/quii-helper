@@ -225,6 +225,16 @@ class CameraLocalValidationTests:
 
         assert STREAM_HIGH_QUALITY == camera.config.stream
 
+    def test_init_accepts_device_host(self) -> None:
+        camera = Camera(device_host="192.0.2.10")
+
+        assert "192.0.2.10" == camera.config.device_host
+
+    def test_init_accepts_auth_code(self) -> None:
+        camera = Camera(auth_code="auth-code")
+
+        assert "auth-code" == camera.config.auth_code
+
     def test_capture_uses_normalized_request_without_opening_device(
         self,
     ) -> None:

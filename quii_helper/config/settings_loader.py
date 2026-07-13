@@ -20,6 +20,7 @@ class EnvironmentSettings:
     cloud_account: str
     cloud_password: str
     device_id: str
+    camera_device_host: str
     auth_code: str
     device_password: str
     cloud_client_uuid: str
@@ -71,6 +72,7 @@ class SettingsLoader:
             cloud_account=self.getenv("CLOUD_ACCOUNT", "CLOUD_USERNAME"),
             cloud_password=self.getenv("CLOUD_PASSWORD"),
             device_id=self.getenv("DEVICE_ID"),
+            camera_device_host=self.getenv("CAMERA_DEVICE_HOST"),
             auth_code=self.getenv("AUTH_CODE"),
             device_password=self.getenv("DEVICE_PASSWORD"),
             cloud_client_uuid=self.getenv("CLOUD_CLIENT_UUID"),
