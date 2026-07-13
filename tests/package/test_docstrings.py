@@ -1,6 +1,12 @@
 import inspect
 
-from quii_helper import Camera
+from quii_helper import (
+    Camera,
+    CameraDeviceAllInfo,
+    CameraDeviceInfo,
+    CameraDeviceNetworkInfo,
+    CameraDeviceStorageInfo,
+)
 from quii_helper.camera.outputs.results import CameraCaptureResult
 from quii_helper.camera.streaming import CameraRtspStream
 from quii_helper.config import AutonomousConfig
@@ -10,6 +16,10 @@ DOCUMENTED_OBJECTS = (
     Camera,
     Camera.__init__,
     Camera.capture,
+    Camera.get_device_info,
+    Camera.get_device_all_info,
+    Camera.get_storage_info,
+    Camera.get_network_info,
     Camera.snapshot,
     Camera.save_video,
     Camera.record,
@@ -18,6 +28,10 @@ DOCUMENTED_OBJECTS = (
     CameraCaptureResult.from_summary,
     CameraCaptureResult.require_snapshot,
     CameraCaptureResult.require_video,
+    CameraDeviceAllInfo,
+    CameraDeviceInfo,
+    CameraDeviceNetworkInfo,
+    CameraDeviceStorageInfo,
     CameraRtspStream,
     CameraRtspStream.start,
     CameraRtspStream.wait,

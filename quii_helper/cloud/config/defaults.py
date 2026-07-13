@@ -10,5 +10,8 @@ LOGIN_REQ_CLASS = "com.quvii.qvweb.userauth.bean.request.LoginReqContent"
 DEVICE_TOKEN_REQ_CLASS = (
     "com.quvii.qvweb.userauth.bean.request.DevDynamicPwdGetReqContent"
 )
+DEVICE_LIST_REQ_CLASS = (
+    "com.quvii.qvweb.userauth.bean.request.DevListReqContent"
+)
 
 CLOUD_COOKIE_JAR = http.cookiejar.CookieJar()

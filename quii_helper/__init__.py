@@ -5,7 +5,15 @@ through their direct module paths, but they are intentionally not re-exported
 from the package root.
 """
 
-from quii_helper.camera import Camera, CameraCaptureError, CameraCaptureResult
+from quii_helper.camera import (
+    Camera,
+    CameraCaptureError,
+    CameraCaptureResult,
+    CameraDeviceAllInfo,
+    CameraDeviceInfo,
+    CameraDeviceNetworkInfo,
+    CameraDeviceStorageInfo,
+)
 from quii_helper.config import (
     AutonomousConfig,
     RuntimeCredentials,
@@ -25,6 +33,10 @@ __all__ = [
     "Camera",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "CameraDeviceAllInfo",
+    "CameraDeviceInfo",
+    "CameraDeviceNetworkInfo",
+    "CameraDeviceStorageInfo",
     "ConfigurationError",
     "MediaRenderError",
     "PreviewCaptureSettings",

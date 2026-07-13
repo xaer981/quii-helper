@@ -83,7 +83,7 @@ section.
 | `CLOUD_AUTH_VERSION` | conditional | `BuildConfig.AUTH_CODE` mapped through `QvCore.setAuthVersionCode(...)`; empty for auth code `0`. |
 | `CAMERA_CHANNEL` | no | Use `1` for single-camera devices; use the channel list for multi-channel devices. |
 | `CAMERA_STREAM` | no | Native `ids` stream value: `1` high/HD, `2` low/SD default. |
-| `AUTH_CODE` | no | Device model/database `authCode`; only for TCP/CGI probe helpers. |
+| `AUTH_CODE` | no | Device model/database `authCode`; required for local read-only `/tdkcgi` helpers. |
 | `DEVICE_PASSWORD` | no | Local CGI/admin password; only for TCP/CGI probe helpers. |
 | `TLS_VERIFY` | no | Keep `true` unless the vendor endpoint has certificate issues. |
 | `LOG_LEVEL` | no | `info` for normal use, `debug` for protocol diagnostics. |
@@ -314,8 +314,9 @@ not require it.
 - `CAMERA_STREAM`: stream id passed as `ids` in the native live URL.
   `1` requests high/HD quality, `2` is the native low/SD default.
 - `AUTH_CODE`: device binding/auth code. It is stored in the app device model
-  as `authCode` and database column `authCode`. It is only used by TCP/CGI
-  probe helpers, not by normal cloud/P2P preview.
+  as `authCode` and database column `authCode`. It is used by local read-only
+  `/tdkcgi` methods and TCP/CGI probe helpers, not by normal cloud/P2P
+  preview.
 - `DEVICE_PASSWORD`: local CGI/admin password for direct TCP/CGI probe helpers.
   It is not needed for normal cloud/P2P preview.
 - `TLS_VERIFY`: keep `true` unless the vendor endpoint has non-public or
@@ -352,10 +353,12 @@ camera = Camera()
 snapshot_path = camera.snapshot(timeout_seconds=5)
 video_path = camera.save_video(30)
 capture = camera.capture(duration_seconds=15)
+device_info = camera.get_device_info()
 
 print(snapshot_path)
 print(video_path)
 print(capture.snapshot_path, capture.video_path)
+print(device_info.model, device_info.channel_count)
 ```
 
 For reusable application code, pass credentials and app identity explicitly
@@ -379,6 +382,37 @@ camera = Camera(
 
 snapshot_path = camera.snapshot(timeout_seconds=5)
 ```
+
+Read-only metadata is fetched through cloud login, `get-device-token`, and a
+best-effort `get-device-list` lookup. It does not open a live preview session:
+
+```python
+device_info = camera.get_device_info()
+
+print(device_info.device_id)
+print(device_info.name)
+print(device_info.model)
+print(device_info.channel_count)
+```
+
+Local read-only device CGI methods use the original app's `/tdkcgi` commands:
+`get.device.status`, `get.hdd.base`, and `get.network.config`. These calls are
+direct HTTP requests to the camera IP, so they require the camera to be
+reachable from your machine and require `AUTH_CODE` in `.env` or an explicit
+`auth_code=...` argument:
+
+```python
+device_all = camera.get_device_all_info("192.168.1.176")
+storage = camera.get_storage_info("192.168.1.176")
+network = camera.get_network_info("192.168.1.176")
+
+print(device_all.model, device_all.version)
+print(storage.total_sum, storage.free_sum)
+print(network.address, network.gateway)
+```
+
+The native SDK defaults to HTTP CGI port `80`; pass `port=443, scheme="https"`
+for HTTPS-capable devices.
 
 Stream quality can be selected explicitly. The native app defaults to stream
 `2` (`low`/`sd`), while stream `1` (`high`/`hd`) requests a higher-quality

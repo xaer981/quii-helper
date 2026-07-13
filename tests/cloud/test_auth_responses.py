@@ -116,6 +116,12 @@ class CloudAuthResponseTests:
                     <dynamic-password> password-2 </dynamic-password>
                     <password-expired> true </password-expired>
                     <transparent-basedata> basedata-2 </transparent-basedata>
+                    <channel-num> 4 </channel-num>
+                    <type> doorphone </type>
+                    <model> Marilyn </model>
+                    <is-hs-device> 1 </is-hs-device>
+                    <from-share> 0 </from-share>
+                    <share-mode> owner </share-mode>
                     <out-auth-code> auth-2 </out-auth-code>
                     <default-out-auth-code>
                       default-2
@@ -132,6 +138,12 @@ class CloudAuthResponseTests:
         assert "password-2" == parsed["dynamic_password"]
         assert "true" == parsed["pwd_expired"]
         assert "basedata-2" == parsed["transparent_basedata"]
+        assert "4" == parsed["channel_num"]
+        assert "doorphone" == parsed["device_type"]
+        assert "Marilyn" == parsed["model"]
+        assert "1" == parsed["is_hs_device"]
+        assert "0" == parsed["from_share"]
+        assert "owner" == parsed["share_mode"]
         assert "auth-2" == parsed["auth_code"]
         assert "default-2" == parsed["default_out_auth_code"]
 

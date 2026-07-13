@@ -8,6 +8,10 @@ ROOT_PUBLIC_API = [
     "Camera",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "CameraDeviceAllInfo",
+    "CameraDeviceInfo",
+    "CameraDeviceNetworkInfo",
+    "CameraDeviceStorageInfo",
     "ConfigurationError",
     "MediaRenderError",
     "PreviewCaptureSettings",
@@ -115,5 +119,9 @@ class PublicApiTests:
             "save_video",
             "record",
             "serve_rtsp",
+            "get_device_info",
+            "get_device_all_info",
+            "get_storage_info",
+            "get_network_info",
         ):
             assert callable(getattr(camera_cls, method_name, None))

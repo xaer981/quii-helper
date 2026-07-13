@@ -41,6 +41,30 @@ def parse_device_token_response(root: ET.Element, raw: str) -> dict[str, str]:
         "device_id": (
             content.findtext("deviceid") or content.findtext("device-id") or ""
         ).strip(),
+        "channel_num": (
+            content.findtext("channelNum")
+            or content.findtext("channel-num")
+            or ""
+        ).strip(),
+        "device_type": (
+            content.findtext("type") or content.findtext("device-type") or ""
+        ).strip(),
+        "model": (content.findtext("model") or "").strip(),
+        "is_hs_device": (
+            content.findtext("isHsDevice")
+            or content.findtext("is-hs-device")
+            or ""
+        ).strip(),
+        "from_share": (
+            content.findtext("fromShare")
+            or content.findtext("from-share")
+            or ""
+        ).strip(),
+        "share_mode": (
+            content.findtext("shareMode")
+            or content.findtext("share-mode")
+            or ""
+        ).strip(),
         "data_encode_key": (
             content.findtext("dataEncodeKey")
             or content.findtext("data-encode-key")
