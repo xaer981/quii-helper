@@ -40,8 +40,7 @@ class CloudDeviceListTests:
         assert "" == (root.findtext("./content/owner") or "")
 
     def test_parse_device_list_response_reads_device_metadata(self) -> None:
-        root = ET.fromstring(
-            """
+        root = ET.fromstring("""
             <envelope>
               <header><result>0</result></header>
               <content>
@@ -61,8 +60,7 @@ class CloudDeviceListTests:
                 </device>
               </content>
             </envelope>
-            """
-        )
+            """)
 
         devices, total_count = parse_device_list_response(root)
 
