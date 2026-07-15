@@ -1,22 +1,23 @@
-import xml.etree.ElementTree as ET
 from typing import Any
 
+from quii_helper.device.cgi.client import COMMAND_GET_STREAM_KEY_INFO
+from quii_helper.device.cgi.parser import (
+    parse_cgi_response,
+    parse_stream_key_info,
+)
 from quii_helper.device.http.transport import request_cgi
 
 
 def request_streamkey(**kwargs: Any) -> dict[str, str]:
-    result = request_cgi("get.device.streamkey", **kwargs)
+    result = request_cgi(COMMAND_GET_STREAM_KEY_INFO, **kwargs)
     if result["error"] != "0":
         raise RuntimeError(f"device error: {result['error']}")
 
-    root = ET.fromstring(result["raw"].encode("utf-8"))
-    body = root.find("./body")
-    content = body.find("content") if body is not None else None
-    if content is None:
-        raise RuntimeError("content not found")
-
+    info = parse_stream_key_info(
+        parse_cgi_response(COMMAND_GET_STREAM_KEY_INFO, result["raw"])
+    )
     return {
-        "key": (content.findtext("key") or "").strip(),
-        "tdc": (content.findtext("tdc") or "").strip(),
-        "synctime": (content.findtext("synctime") or "").strip(),
+        "key": info.key,
+        "tdc": info.tdc,
+        "synctime": info.sync_time,
     }

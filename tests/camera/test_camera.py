@@ -31,8 +31,9 @@ from quii_helper.camera.settings.options import (
     resolve_capture_settings,
     validate_output_path,
 )
-from quii_helper.config import STREAM_HIGH_QUALITY
+from quii_helper.config import STREAM_HIGH_QUALITY, RuntimeCredentials
 from quii_helper.models.capture import CaptureSummary
+from quii_helper.network import LanDeviceCandidate
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
 )
@@ -234,6 +235,114 @@ class CameraLocalValidationTests:
         camera = Camera(auth_code="auth-code")
 
         assert "auth-code" == camera.config.auth_code
+
+    def test_discover_lan_devices_delegates_to_network_scanner(
+        self,
+        monkeypatch,
+    ) -> None:
+        camera = Camera()
+        calls = []
+
+        def fake_discover_lan_devices(
+            **kwargs: object,
+        ) -> list[LanDeviceCandidate]:
+            calls.append(kwargs)
+            return [
+                LanDeviceCandidate(
+                    host="192.168.1.20",
+                    server_header="Qualvision -HTTPServer",
+                    stream_port_open=True,
+                )
+            ]
+
+        monkeypatch.setattr(
+            "quii_helper.camera.api.discover_network_lan_devices",
+            fake_discover_lan_devices,
+        )
+
+        devices = camera.discover_lan_devices(
+            hosts=["192.168.1.20"],
+            timeout=0.1,
+            max_workers=1,
+        )
+
+        assert ["192.168.1.20"] == [device.host for device in devices]
+        assert {
+            "local_ips": [],
+            "hosts": ["192.168.1.20"],
+            "subnet_prefix": 24,
+            "http_port": 80,
+            "stream_port": 34567,
+            "timeout": 0.1,
+            "max_workers": 1,
+            "require_qualvision": True,
+        } == calls[0]
+
+    def test_get_device_shadow_info_delegates_with_cached_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        camera = Camera(device_id="device-1")
+        credentials = RuntimeCredentials(
+            session_id="session-id",
+            dynamic_password="dynamic-password",
+            data_encode_key="data-key",
+            auth_code="auth-code",
+            transparent_basedata="basedata",
+            raw={"login": {"token": "access-token"}},
+        )
+        camera._runtime_credentials = credentials
+        calls = []
+
+        def fake_fetch_device_shadow_info(
+            config: object,
+            *,
+            credentials: RuntimeCredentials,
+        ) -> object:
+            calls.append((config, credentials))
+            return object()
+
+        monkeypatch.setattr(
+            "quii_helper.camera.api.fetch_device_shadow_info",
+            fake_fetch_device_shadow_info,
+        )
+
+        result = camera.get_device_shadow_info()
+
+        assert result is not None
+        assert (camera.config, credentials) == calls[0]
+
+    def test_get_iot_command_support_delegates_with_cached_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        camera = Camera(device_id="device-1")
+        credentials = RuntimeCredentials(
+            session_id="session-id",
+            dynamic_password="dynamic-password",
+            data_encode_key="data-key",
+            auth_code="auth-code",
+            transparent_basedata="basedata",
+            raw={"login": {"token": "access-token"}},
+        )
+        camera._runtime_credentials = credentials
+        calls = []
+
+        def fake_fetch_iot_command_support(
+            config: object,
+            *,
+            credentials: RuntimeCredentials,
+        ) -> object:
+            calls.append((config, credentials))
+            return object()
+
+        monkeypatch.setattr(
+            "quii_helper.camera.api.fetch_iot_command_support",
+            fake_fetch_iot_command_support,
+        )
+
+        result = camera.get_iot_command_support()
+
+        assert result is not None
+        assert (camera.config, credentials) == calls[0]
 
     def test_capture_uses_normalized_request_without_opening_device(
         self,

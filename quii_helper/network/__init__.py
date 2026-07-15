@@ -2,6 +2,21 @@ import ipaddress
 import socket
 import urllib.request
 
+from quii_helper.network.lan_discovery import (
+    DEFAULT_DISCOVERY_TIMEOUT,
+    DEFAULT_HTTP_PORT,
+    DEFAULT_SCAN_PREFIX,
+    DEFAULT_STREAM_PORT,
+    HttpProbeResult,
+    LanDeviceCandidate,
+    candidate_hosts,
+    discover_lan_devices,
+    is_qualvision_server_header,
+    parse_http_probe_response,
+    probe_http_server,
+    probe_lan_device,
+    probe_tcp_port,
+)
 from quii_helper.network.state import (
     collect_non_loopback_ipv4s,
     local_ip_result,
@@ -116,3 +131,31 @@ def to_signed_i32(value: int) -> int:
     if value >= 0x80000000:
         return value - 0x100000000
     return value
+
+
+__all__ = [
+    "DEFAULT_DISCOVERY_TIMEOUT",
+    "DEFAULT_HTTP_PORT",
+    "DEFAULT_SCAN_PREFIX",
+    "DEFAULT_STREAM_PORT",
+    "DEFAULT_UDP_RECEIVE_BUFFER_SIZE",
+    "HttpProbeResult",
+    "LanDeviceCandidate",
+    "candidate_hosts",
+    "collect_non_loopback_ipv4s",
+    "discover_lan_devices",
+    "discover_local_ips",
+    "discover_public_ip",
+    "is_private_ipv4",
+    "is_qualvision_server_header",
+    "local_ip_result",
+    "make_dualstack_udp_socket",
+    "non_loopback_ipv4",
+    "parse_http_probe_response",
+    "probe_http_server",
+    "probe_lan_device",
+    "probe_tcp_port",
+    "to_signed_i32",
+    "udp_target_tuple",
+    "valid_public_ip_response",
+]

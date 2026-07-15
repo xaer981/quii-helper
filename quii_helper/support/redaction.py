@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -63,6 +64,31 @@ def redact_xml_text(value: str) -> str:
             flags=re.IGNORECASE | re.DOTALL,
         )
     return redacted
+
+
+def redact_json_text(value: str) -> str:
+    """Redact sensitive JSON object values in a debug string."""
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+    return json.dumps(_redact_json_value(parsed), ensure_ascii=False)
+
+
+def _redact_json_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            key: (
+                REDACTED
+                if _is_sensitive_key(str(key))
+                else _redact_json_value(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_json_value(item) for item in value]
+    return value
 
 
 def _is_sensitive_key(key: str) -> bool:

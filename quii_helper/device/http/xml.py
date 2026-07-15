@@ -9,12 +9,15 @@ def build_request_xml(
     password: str,
     nc: str | None = None,
     passwordencode: str | None = None,
+    content: ET.Element | None = None,
 ) -> bytes:
     envelope = ET.Element("envelope")
 
     body = ET.SubElement(envelope, "body")
     ET.SubElement(body, "command").text = command
-    ET.SubElement(body, "content")
+    content_element = ET.SubElement(body, "content")
+    if content is not None:
+        content_element.append(content)
 
     header = ET.SubElement(envelope, "header")
     ET.SubElement(header, "password").text = password

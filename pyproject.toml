@@ -153,6 +153,7 @@ files = [
     "quii_helper/protocols/ust",
     "quii_helper/streaming",
     "quii_helper/support/__init__.py",
+    "quii_helper/support/error_codes.py",
     "quii_helper/support/errors.py",
     "quii_helper/support/log.py",
     "quii_helper/support/redaction.py",

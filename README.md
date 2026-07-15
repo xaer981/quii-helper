@@ -1,538 +1,154 @@
-# QUII Helper
+# QUII Helper 📹
 
-Python helpers for opening a QUII camera preview, receiving stream packets,
-decoding media payloads, and saving snapshots or MP4 recordings.
+Python package for connecting to QUII / Qualvision-based cameras and video doorbells from code.
 
-Runtime files are written under `data/`. The repository keeps `data/.gitkeep`,
-while generated captures, logs, binaries, and JSONL diagnostics are ignored by
-git.
+It can capture snapshots, save short video clips, expose the camera as an RTSP stream, and read available device metadata without using the original mobile app.
 
-## Compatibility And Discovery
+## What It Does ✨
 
-This package targets QUII/Qualvision-based cameras and video intercoms used by
-the `vHome 2.2` mobile application. Devices in this family may expose a web
-server that responds with the HTTP header `Server: Qualvision -HTTPServer` and
-often have TCP port `34567` open.
+- 📸 Captures JPEG snapshots from the camera preview stream.
+- 🎞 Saves MP4/H.264 video clips for a user-selected duration.
+- 📡 Serves the live preview as an RTSP stream for players such as VLC.
+- 🔎 Reads cloud, LAN, storage, network, product, alarm, video, and capability information where the device supports it.
+- 🧭 Discovers local devices that expose Qualvision-compatible HTTP services.
 
-Known working devices:
+## Compatibility 🔍
+
+This project targets devices that use the QUII / Qualvision protocol family, including devices managed by the **vHome 2.2** mobile app.
+
+Useful discovery hints:
+
+- A direct HTTP request to the device IP may return `Server: Qualvision -HTTPServer`.
+- Many compatible devices expose TCP port `34567`.
+- Local read-only device methods usually require that your machine can reach the camera LAN IP.
+
+Successfully tested devices:
 
 - `Tantos Marilyn Wi-Fi s`
 
-See `COMPATIBILITY.md` for a compatibility checklist and device report
-template.
+If another device works, please open an issue or pull request so the compatibility list can be expanded.
 
-## Setup
+## Quick Start 🚀
 
-Before running the package on a new vendor app, extract the APK with `jadx`,
-`apktool`, or `unzip`. The repository does not include vendor assets, private
-keys, or app identity values.
+Install the package in editable mode:
 
-Required files from the extracted APK:
+```powershell
+git clone https://github.com/xaer981/quii-helper.git
+cd quii-helper
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+```
 
-- Copy `<extracted-apk>/assets/ca.pem` to `assets/ca.pem`.
-- Copy `<extracted-apk>/assets/client.pem` to `assets/client.pem`.
-- Copy `<extracted-apk>/assets/client.txt` to `assets/client.txt`.
-- Copy `<extracted-apk>/lib/arm64-v8a/libqv-p2p-v2.so` to
-  `assets/libqv-p2p-v2.so`.
+Copy the required native assets extracted from the Android app into `assets/`:
 
-`lib/armeabi-v7a/libqv-p2p-v2.so` is not recommended for the current code path
-because the UST table offsets were matched against the arm64 library.
+```text
+assets/
+  ca.pem
+  client.pem
+  client.txt
+  libqv-p2p-v2.so
+```
 
-Create `.env` from `.env.example`. Required keys for cloud/P2P preview:
+Create `.env` from `.env.example` and fill in your account, device, cloud, and app constants:
 
-```dotenv
-CLOUD_ACCOUNT=""
-CLOUD_PASSWORD=""
-DEVICE_ID=""
-CLOUD_CLIENT_UUID=""
-CLOUD_AUTH_URL=""
-CLOUD_SERVICE_URL=""
-CAMERA_OEM=""
+```env
+CLOUD_ACCOUNT=
+CLOUD_PASSWORD=
+DEVICE_ID=
+CLOUD_CLIENT_UUID=
+CLOUD_AUTH_URL=
+CLOUD_SERVICE_URL=
+CAMERA_OEM=
 CAMERA_APP_ID=
 CAMERA_CLIENT_TYPE=
 IP_REGION_ID=
 ```
 
-Optional keys:
+Detailed extraction instructions are in [docs/setup.md](docs/setup.md).
 
-```dotenv
-CLOUD_AUTH_VERSION=""
-CAMERA_DEVICE_HOST=""
-CAMERA_CHANNEL=1
-CAMERA_STREAM=2
-AUTH_CODE=""
-DEVICE_PASSWORD=""
-TLS_VERIFY=true
-LOG_LEVEL=info
-```
-
-The table below is a quick index. Detailed extraction steps follow in the next
-section.
-
-| Variable | Required for cloud/P2P preview | Where to get it |
-| --- | --- | --- |
-| `CLOUD_ACCOUNT` | yes | Your mobile-app login. |
-| `CLOUD_PASSWORD` | yes | Your mobile-app password or its SHA-256 hex digest. |
-| `DEVICE_ID` | yes | Device UID/UMID from the device label, QR code, mobile-app device details, or cloud device list. |
-| `CLOUD_CLIENT_UUID` | yes | Generate once locally; the app normally derives this from Android ID or stored `uik`. |
-| `CLOUD_AUTH_URL` | yes | Discover from the cloud `userapp` service and append `/auth/user`. |
-| `CLOUD_SERVICE_URL` | yes | `AppConfig.SERVER_ADDRESS` + `AppConfig.SERVER_PORT` in the decompiled APK. |
-| `CAMERA_OEM` | yes | `AppConfig.OEM_ID`, unless the vendor build overrides it through `SpUtil.getServiceId()`. |
-| `CAMERA_APP_ID` | yes | `AppConfig.APP_ID`. |
-| `CAMERA_CLIENT_TYPE` | yes | Second argument of `QvAlarmCore.getInstance().initParams(...)` in `QvOpenSDK.java`. |
-| `IP_REGION_ID` | yes | Cloud discovery `client-regionid`; can change after auth redirect. |
-| `CLOUD_AUTH_VERSION` | conditional | `BuildConfig.AUTH_CODE` mapped through `QvCore.setAuthVersionCode(...)`; empty for auth code `0`. |
-| `CAMERA_DEVICE_HOST` | no | Camera LAN IP address or hostname; required for local read-only `/tdkcgi` helpers. |
-| `CAMERA_CHANNEL` | no | Use `1` for single-camera devices; use the channel list for multi-channel devices. |
-| `CAMERA_STREAM` | no | Native `ids` stream value: `1` high/HD, `2` low/SD default. |
-| `AUTH_CODE` | no | Device auth code for local read-only `/tdkcgi` helpers and TCP/CGI probe helpers. |
-| `DEVICE_PASSWORD` | no | Local CGI/admin password; only for TCP/CGI probe helpers. |
-| `TLS_VERIFY` | no | Keep `true` unless the vendor endpoint has certificate issues. |
-| `LOG_LEVEL` | no | `info` for normal use, `debug` for protocol diagnostics. |
-
-## Extracting Values
-
-Most values can be found without Frida. For the tested `vHome 2.2` app, the
-required values come from static Java constants plus one cloud service-query
-request. Frida is not required for the normal setup flow.
-
-Use these source paths relative to the decompiled APK root:
-
-- Java sources: `java_src/`
-- APK assets: `assets/`
-- Native libraries: `lib/`
-
-### Account And Device Values
-
-- `CLOUD_ACCOUNT`: the same login used in the mobile app. This is usually an
-  email address or phone/account string. `CLOUD_USERNAME` is accepted as a
-  legacy alias, but new `.env` files should use `CLOUD_ACCOUNT`.
-- `CLOUD_PASSWORD`: the same password used in the mobile app. You can enter
-  the plain password; quii-helper hashes it with SHA-256 before sending
-  user-auth. If you already have the 64-character SHA-256 hex string, that is
-  accepted too.
-- `DEVICE_ID`: the device UID/UMID, not the camera LAN IP. You can copy it
-  from the QR code, device label, mobile-app device details, or cloud device
-  list. In code this is `QvDevice.getUmid()` and it is sent as
-  `<device-id>` by `UserAuthRequestHelper.getDevDynamicPwd(...)`.
-- `CAMERA_DEVICE_HOST`: the camera LAN IP address or hostname. It is not
-  needed for cloud/P2P preview, snapshots, videos, or RTSP streaming, but it is
-  required for direct local `/tdkcgi` read-only HTTP helpers.
-
-### APK Constants
-
-Open `java_src/com/quvii/qvfun/publico/common/AppConfig.java`:
-
-- `CAMERA_APP_ID`: use `public static final int APP_ID`.
-- `CAMERA_OEM`: use `public static final String OEM_ID`.
-- `CLOUD_SERVICE_URL`: build
-  `https://{SERVER_ADDRESS}:{SERVER_PORT}` from `SERVER_ADDRESS` and
-  `SERVER_PORT`. Do not add `/mst/query`; quii-helper appends that path.
-
-For `Tantos Marilyn Wi-Fi s` / `vHome 2.2`, the extracted values are:
-
-```dotenv
-CAMERA_APP_ID=4083
-CAMERA_OEM="G0083"
-CLOUD_SERVICE_URL="https://tantos.qvcloud.net:443"
-```
-
-Some vendor/debug builds can override `CAMERA_OEM` and `CLOUD_SERVICE_URL`
-through app storage. In `java_src/com/quvii/qvfun/publico/sdk/SdkManager.java`
-the app reads:
-
-- `SpUtil.getServiceId()` before building the SDK key
-  `serviceId&APP_ID&0`.
-- `SpUtil.getAppServiceIp()` before falling back to
-  `AppConfig.SERVER_ADDRESS`.
-
-If those stored values are empty, use the `AppConfig` constants. If your vendor
-build exposes a hidden test/settings screen that changes them, use the runtime
-values from that screen instead.
-
-### Auth Version
-
-Open:
-
-- `java_src/com/quvii/qvfun/publico/common/AppConfig.java`
-- `java_src/com/quvii/qvfun/core/BuildConfig.java`
-- `java_src/com/quvii/core/QvCore.java`
-
-`AppConfig.AUTH_VERSION_CODE` usually delegates to `BuildConfig.AUTH_CODE`.
-`QvCore.setAuthVersionCode(...)` maps it to the XML header version:
-
-| `AUTH_VERSION_CODE` | `CLOUD_AUTH_VERSION` |
-| --- | --- |
-| `0` | empty string |
-| `1` | `v1.10` |
-| `2` | `v1.13` |
-
-For the tested `vHome 2.2` APK, `BuildConfig.AUTH_CODE = 2`, so:
-
-```dotenv
-CLOUD_AUTH_VERSION="v1.13"
-```
-
-### Client Type
-
-Open `java_src/com/quvii/openapi/QvOpenSDK.java` and search for
-`QvAlarmCore.getInstance().initParams(...)`.
-
-The second argument is the client type used in user-auth headers. In the
-tested app the call is:
-
-```java
-QvAlarmCore.getInstance().initParams(
-    SDKVariates.CID,
-    3,
-    DataUtils.getUniqueId(application),
-    QvLanguageUtil.initMsgNotifyLang()
-);
-```
-
-Therefore:
-
-```dotenv
-CAMERA_CLIENT_TYPE=3
-```
-
-### Client UUID
-
-Open `java_src/com/quvii/publico/utils/DataUtils.java` and search for
-`getUniqueId(Context context)`.
-
-The original app uses Android `Settings.Secure.ANDROID_ID`; if it is missing or
-all zeroes, it generates a UUID and stores it under the encrypted preference key
-`uik`.
-
-For quii-helper, this value only needs to be stable between runs. Generate it
-once and keep it in `.env`:
-
-```powershell
-python -c "import uuid; print(uuid.uuid4().hex)"
-```
-
-Then set:
-
-```dotenv
-CLOUD_CLIENT_UUID="generated-value-here"
-```
-
-Do not regenerate it on every run.
-
-### Cloud Region And Auth URL
-
-`IP_REGION_ID` and `CLOUD_AUTH_URL` are runtime service-discovery values, not
-plain `AppConfig` constants.
-
-The original app flow is:
-
-- `QvLocationManager.init()` starts with the stored
-  `SpUtil.getAddressGroupId()` value.
-- `QvLocationManager.startQueryTargetService(...)` asks the native P2P layer
-  for service addresses.
-- `libqv-p2p-v2.so` builds a `query-hlrv2` request and parses
-  `client-regionid` plus service entries.
-- `QvLocationManager` stores `currentIpRegionId` and updates
-  `DownChannelManager.changeService(...)`.
-- `UserApi` sends login to `/auth/user;jus_duplex=up`.
-- `UserLoginResp` can return `redirect-region-id`; if that happens, the app
-  switches region and retries login.
-
-The easiest static-plus-cloud path is the included discovery script. First fill
-these `.env` values:
-
-```dotenv
-CLOUD_SERVICE_URL="https://..."
-CAMERA_OEM="..."
-CLOUD_CLIENT_UUID="..."
-```
-
-Make sure `assets/ca.pem`, `assets/client.pem`, and `assets/client.txt` are in
-place, then run:
-
-```powershell
-python -m examples.discover_env_values
-```
-
-Copy the printed values:
-
-```dotenv
-IP_REGION_ID=<printed client-regionid>
-CLOUD_AUTH_URL=<printed userapp auth URL>
-```
-
-`CLOUD_AUTH_URL` must be the full POST endpoint, usually:
-
-```dotenv
-CLOUD_AUTH_URL="https://<auth-host>:<port>/auth/user"
-```
-
-The original Android app declares the upstream auth route as
-`/auth/user;jus_duplex=up`, but quii-helper sends `CLOUD_AUTH_URL` exactly as
-configured and does not append this suffix automatically. The tested
-Tantos/vHome cloud accepts `/auth/user`; if a different vendor endpoint rejects
-it, try the native route:
-
-```dotenv
-CLOUD_AUTH_URL="https://<auth-host>:<port>/auth/user;jus_duplex=up"
-```
-
-If service discovery fails with `CERTIFICATE_VERIFY_FAILED`, the vendor TLS
-certificate is not trusted by your local Python installation or does not match
-the hostname. For discovery, create the config with TLS verification disabled:
-
-```python
-from quii_helper.config import AutonomousConfig
-
-config = AutonomousConfig(ip_region_id=0, tls_verify=False)
-```
-
-The included `python -m examples.discover_env_values` helper already uses that
-setting for the service-query request. For normal camera usage, the equivalent
-`.env` setting is:
-
-```dotenv
-TLS_VERIFY=false
-```
-
-Use this only for vendor certificate issues; it disables HTTPS certificate
-verification.
-
-If the discovery script does not return `userapp`, use the app logs or the
-original app's runtime state:
-
-- Search Java for `DownChannelManager.getRequestUrl()`.
-- Search logs for `changeService:` or `auth url is null`.
-- In a successful login response, check `redirect-region-id` and use it as
-  `IP_REGION_ID`.
-
-Frida is only needed as a last resort for unusual vendor builds where the app
-hides or rewrites service addresses at runtime. The tested `vHome 2.2` APK does
-not require it.
-
-### Optional Values
-
-- `CAMERA_CHANNEL`: camera channel number. Use `1` for a single-panel/single
-  camera device. Multi-channel/NVR devices expose channel data in the device
-  list/channel list.
-- `CAMERA_STREAM`: stream id passed as `ids` in the native live URL.
-  `1` requests high/HD quality, `2` is the native low/SD default.
-- `AUTH_CODE`: device binding/auth code. It is stored in the app device model
-  as `authCode` and database column `authCode`. High-level local `/tdkcgi`
-  methods use this local config value and do not perform cloud login by
-  themselves. TCP/CGI probe helpers use this value directly.
-- `DEVICE_PASSWORD`: local CGI/admin password for direct TCP/CGI probe helpers.
-  It is not needed for normal cloud/P2P preview.
-- `TLS_VERIFY`: keep `true` unless the vendor endpoint has non-public or
-  hostname-mismatched certificates.
-- `LOG_LEVEL`: use `info` for normal usage and `debug` for protocol
-  diagnostics.
-
-For cloud/P2P preview, the camera LAN IP and UDP port are discovered from the
-P2P response. A user-provided device IP is not required.
-
-Legacy aliases accepted by the loader:
-
-- `CLOUD_USERNAME` -> `CLOUD_ACCOUNT`
-- `CLOUD_OEM` -> `CAMERA_OEM`
-- `CLOUD_APP_ID` -> `CAMERA_APP_ID`
-- `CLOUD_CLIENT_TYPE` -> `CAMERA_CLIENT_TYPE`
-- `VIDEO_PANEL` or `QUII_CHANNEL` -> `CAMERA_CHANNEL`
-- `QUII_STREAM` -> `CAMERA_STREAM`
-- `CLOUD_TLS_VERIFY` -> `TLS_VERIFY`
-
-Do not commit `.env` or extracted APK assets. They include credentials,
-private keys, and native libraries.
-
-## Usage
-
-Use `quii_helper.Camera` as the high-level API. By default it reads settings
-from `.env`.
+## Basic Usage 🧩
 
 ```python
 from quii_helper import Camera
 
 camera = Camera()
 
-snapshot_path = camera.snapshot(timeout_seconds=5)
-video_path = camera.save_video(30)
-capture = camera.capture(duration_seconds=15)
-device_info = camera.get_device_info()
+snapshot = camera.snapshot()
+print(snapshot.path)
 
-print(snapshot_path)
-print(video_path)
-print(capture.snapshot_path, capture.video_path)
-print(device_info.model, device_info.channel_count)
+video = camera.save_video(duration_seconds=15)
+print(video.path)
 ```
 
-For reusable application code, pass credentials and app identity explicitly
-instead of depending on process-level environment:
+Start an RTSP stream:
 
 ```python
 from quii_helper import Camera
 
-camera = Camera(
-    device_id="12345qwes6ca",
-    device_host="192.168.1.176",
-    cloud_username="account@example.com",
-    cloud_password="password-or-sha256",
-    client_id="client-uuid",
-    auth_url="https://auth-host:443/auth/user",
-    service_url="https://service-host:443",
-    oem="G0000",
-    app_id=4000,
-    client_type=3,
-    ip_region_id=1,
-)
+camera = Camera()
 
-snapshot_path = camera.snapshot(timeout_seconds=5)
+with camera.serve_rtsp(port=8554) as session:
+    print(session.url)
+    input("Press Enter to stop streaming...")
 ```
 
-Read-only metadata is fetched through cloud login, `get-device-token`, and a
-best-effort `get-device-list` lookup. It does not open a live preview session:
+Open the stream in VLC:
+
+```text
+rtsp://127.0.0.1:8554/live
+```
+
+Read device information:
 
 ```python
-device_info = camera.get_device_info()
+from quii_helper import Camera
 
-print(device_info.device_id)
-print(device_info.name)
-print(device_info.model)
-print(device_info.channel_count)
+camera = Camera()
+
+print(camera.get_device_info())
+print(camera.get_product_info())
+print(camera.get_storage_info())
+print(camera.get_network_info())
 ```
 
-Local read-only device CGI methods use the original app's `/tdkcgi` commands:
-`get.device.status`, `get.hdd.base`, `get.network.config`,
-`get.system.general`, `get.system.ability`, `get.encode`,
-`get.product.info`, `get.product.time`, `get.wifi.list`,
-`get.shape.mirror`, `get.videoswitch.vionoff`, and
-`get.video.timetitle`. These calls are direct HTTP requests to the camera IP,
-so they require the camera to be reachable from your machine. Set
-`CAMERA_DEVICE_HOST` and `AUTH_CODE` in `.env`, or pass them when creating
-`Camera`. These local CGI helpers do not perform cloud login by themselves:
+For the complete API reference, see [docs/api.md](docs/api.md).
 
-```python
-camera = Camera(device_host="192.168.1.176", auth_code="device-auth-code")
+## Logging 🧾
 
-device_all = camera.get_device_all_info()
-product = camera.get_product_info()
-storage = camera.get_storage_info()
-time_info = camera.get_time_info()
-wifi = camera.get_wifi_list()
-screen = camera.get_screen_flip_info()
-video_switch = camera.get_video_switch_info()
-time_title = camera.get_time_title_info()
-network = camera.get_network_info()
-general = camera.get_system_general_info()
-capabilities = camera.get_system_capabilities()
-video_config = camera.get_video_config()
+Set `LOG_LEVEL=info` for user-friendly progress messages:
 
-print(device_all.model, device_all.version)
-print(product.model, product.version)
-print(storage.total_sum, storage.free_sum)
-print(time_info.time_zone, time_info.date_time)
-print([wifi_network.ssid for wifi_network in wifi.networks])
-print(screen.state, screen.angle)
-print(video_switch.is_on)
-print(time_title.overlays)
-print(network.address, network.gateway)
-print(general.host_name, general.time_zone)
-print(capabilities.rtsp, capabilities.snap)
-print([(channel.channel_id, len(channel.streams)) for channel in video_config.channels])
+```env
+LOG_LEVEL=info
 ```
 
-If you need to override the local auth code for a single read-only call, pass
-`auth_code=...` to that method. The device host itself is intentionally
-configured only on the `Camera` instance.
+Set `LOG_LEVEL=debug` when collecting diagnostics for bug reports:
 
-Some firmware builds expose only a subset of these local CGI commands. A
-returned `error=-1` with empty `<content>` means the camera rejected or does not
-support that specific command in the current mode. For example, the tested
-Tantos Marilyn Wi-Fi s returns useful data for `get.device.status`,
-`get.product.info`, and `get.product.time`, while several advanced
-configuration commands may return `-1`.
-
-The native SDK defaults to HTTP CGI port `80`; pass `port=443, scheme="https"`
-for HTTPS-capable devices.
-
-Stream quality can be selected explicitly. The native app defaults to stream
-`2` (`low`/`sd`), while stream `1` (`high`/`hd`) requests a higher-quality
-preview when the camera supports it:
-
-```python
-camera = Camera(stream_quality="high")  # ids=1
-camera = Camera(stream_quality="low")   # ids=2, native default
-camera = Camera(stream=1)               # direct numeric stream id
+```env
+LOG_LEVEL=debug
 ```
 
-Optional explicit output names are normalized into `data/`:
+Debug logging includes protocol counters, packet statistics, decoding summaries, and connection details.
 
-```python
-camera.snapshot(output_path="front-door.jpg")
-camera.save_video(10, output_path="front-door.mp4")
-```
+## Documentation 📚
 
-RTSP serving keeps running until the context is closed. The default status
-callback logs the RTSP URL after the camera has started producing media:
+- [Setup And APK Extraction](docs/setup.md)
+- [Camera API Reference](docs/api.md)
+- [Protocol Notes](docs/protocol-notes.md)
+- [Compatibility Notes](COMPATIBILITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 
-```python
-with camera.serve_rtsp(port=8554) as rtsp_stream:
-    rtsp_stream.wait()
-```
+## Important Notes ⚠️
 
-Runnable examples are available in `examples/`:
+- Do not commit `.env`, `assets/`, `data/`, logs, screenshots, or recordings.
+- The package depends on native crypto/material extracted from the original Android app version you use.
+- Some local read-only methods return `error=-1` on devices that do not support that command.
+- If cloud TLS fails with `CERTIFICATE_VERIFY_FAILED`, see [Cloud Region And Auth URL](docs/setup.md#cloud-region-and-auth-url).
 
-- `examples/snapshot.py`
-- `examples/save_video.py`
-- `examples/serve_rtsp.py`
+## Status 🛠
 
-`snapshot(timeout_seconds=...)` waits up to that many seconds for a decodable
-frame. `save_video(duration_seconds=...)` reads the live stream for the
-requested duration before writing the MP4.
-
-Set `LOG_LEVEL=debug` to enable protocol diagnostics, packet summaries, and
-full capture summaries. The default `LOG_LEVEL=info` prints short progress
-messages such as connection, media receiving, and completion status.
-
-Debug HTTP dumps redact common credential fields such as passwords, tokens,
-session ids, cookies, and dynamic media keys before logging. Treat debug logs
-as sensitive anyway because they can still contain device ids, IP addresses,
-and private operational metadata.
-
-## Protocol Notes
-
-The default live play request uses `live_play_payload="path"`, matching the
-Java live URL flow used by `QvPlayerCore.startPlay` /
-`QvLtPlayerCore.startPlayCompat` for
-`/mode=real&idc=...&ids=...&ap=...`. `live_play_payload="oem"` is kept as a
-protocol experiment for the SDK custom-id path, but it did not start media on
-the current direct/LAN tunnel.
-
-By default `play_sync_iterations=0`, so synthetic RBUDP play-sync control
-packets are disabled. Use a positive value only as a protocol diagnostic
-experiment; native RBUDP clears its send-list from ACK `remote_id` values, so
-synthetic ACK-like packets can suppress data that was not actually received.
-
-Synthetic play probes are disabled by default with `enable_play_probes=False`.
-The fixed probe payloads were not found in the native player binaries, so this
-option should only be used for diagnostics against older captured behavior.
-
-## Package Layout
-
-- `quii_helper.camera`: public high-level API for snapshots and recordings.
-- `quii_helper.cloud`: cloud login, device token, service discovery.
-- `quii_helper.direct`: direct P2P preview orchestration.
-- `quii_helper.preview`: application-level preview capture pipeline.
-- `quii_helper.media`: media parsing, H.264 assembly, ffmpeg output, probe analysis.
-- `quii_helper.protocols`: protocol implementations and protocol-facing transports.
-- `quii_helper.protocols.mqtt`: MQTT bootstrap/runtime for P2P session setup.
-- `quii_helper.protocols.p2p`: P2P request/response models, UDP probes, transport packets.
-- `quii_helper.protocols.quii`: QUII crypto, blob decode, URL and live packet builders.
-- `quii_helper.protocols.rbudp`: RBUDP/KCP tunnel protocol implementation.
-- `quii_helper.protocols.tcp`: TCP client and probe flow.
-- `quii_helper.protocols.ust`: UST message/credential crypto helpers.
-- `quii_helper.io`: runtime output paths and JSONL writer.
-- `quii_helper.diagnostics`: payload/tail diagnostic helpers.
+The project is usable but still protocol-research-heavy. Public APIs are being stabilized around `Camera`, capture results, RTSP streaming, and read-only device inspection.
 
 <p align=center>
   <a href="url"><img src="https://github.com/xaer981/xaer981/blob/main/main_cat.gif" align="center" height="40" width="128"></a>
