@@ -18,8 +18,7 @@ class CloudAuthResponseTests:
         self,
     ) -> None:
         parsed = parse_login_response(
-            _xml(
-                """
+            _xml("""
                 <response>
                   <header>
                     <result>0</result>
@@ -31,8 +30,7 @@ class CloudAuthResponseTests:
                     <expire> 3600 </expire>
                   </content>
                 </response>
-                """
-            ),
+                """),
             "<raw/>",
         )
 
@@ -44,14 +42,12 @@ class CloudAuthResponseTests:
 
     def test_parse_login_response_supports_legacy_session_text(self) -> None:
         parsed = parse_login_response(
-            _xml(
-                """
+            _xml("""
                 <response>
                   <header><result>0</result><session>legacy</session></header>
                   <content />
                 </response>
-                """
-            ),
+                """),
             "",
         )
 
@@ -62,20 +58,17 @@ class CloudAuthResponseTests:
             QuiiConnectionError, match="cloud login result: 101"
         ):
             parse_login_response(
-                _xml(
-                    """
+                _xml("""
                     <response>
                       <header><result>101</result></header>
                     </response>
-                    """
-                ),
+                    """),
                 "",
             )
 
     def test_parse_device_token_response_reads_camel_case_fields(self) -> None:
         parsed = parse_device_token_response(
-            _xml(
-                """
+            _xml("""
                 <response>
                   <header><result>0</result></header>
                   <content>
@@ -88,8 +81,7 @@ class CloudAuthResponseTests:
                     <defaultOutAuthCode> default-1 </defaultOutAuthCode>
                   </content>
                 </response>
-                """
-            ),
+                """),
             "raw-device",
         )
 
@@ -106,8 +98,7 @@ class CloudAuthResponseTests:
         self,
     ) -> None:
         parsed = parse_device_token_response(
-            _xml(
-                """
+            _xml("""
                 <response>
                   <header><result>0</result></header>
                   <content>
@@ -128,8 +119,7 @@ class CloudAuthResponseTests:
                     </default-out-auth-code>
                   </content>
                 </response>
-                """
-            ),
+                """),
             "",
         )
 
@@ -153,12 +143,10 @@ class CloudAuthResponseTests:
             match="device-token response content not found",
         ):
             parse_device_token_response(
-                _xml(
-                    """
+                _xml("""
                     <response>
                       <header><result>0</result></header>
                     </response>
-                    """
-                ),
+                    """),
                 "",
             )
