@@ -1,7 +1,6 @@
 """Cloud IoT/RRPC read-only helpers."""
 
 from quii_helper.cloud.iot.client import (
-    COMMAND_GET_RPC_COMMAND_LIST,
     IOT_SYNC_CONTROL_PATH,
     build_iot_control_payload,
     request_iot_command_support,
@@ -10,6 +9,7 @@ from quii_helper.cloud.iot.models import CameraIotCommandSupportInfo
 from quii_helper.cloud.iot.parser import (
     COMMAND_GET_ALARM_CONFIG,
     COMMAND_GET_FLOODLIGHT_SWITCH,
+    COMMAND_GET_RPC_COMMAND_LIST,
     COMMAND_OPEN_LOCK,
     COMMAND_SET_ALARM_CONFIG,
     COMMAND_SET_FLOODLIGHT_SWITCH,
