@@ -113,6 +113,14 @@ result = camera.open_door(lock_number=1)
 print(result.accepted, result.error, result.message)
 ```
 
+To print capability 24 and the command result using `.env` settings, explicitly
+run the dedicated example below. It **opens the configured door**; the normal
+`python -m quii_helper.main` entry point only starts RTSP.
+
+```powershell
+python -m examples.open_door
+```
+
 | Parameter | Purpose |
 | --- | --- |
 | `channel=None` | Video-panel channel, sent as `door`. Defaults to `Camera.channel` / `CAMERA_CHANNEL`. |
@@ -284,9 +292,10 @@ Local device calls may return numeric device errors such as `-1` or `-8`.
 
 The package maps known codes to human-readable descriptions where available. Unknown codes are preserved in the raw response so unsupported commands can still be diagnosed.
 
-## Bulk Probe
+## Application Entry Point
 
-For local development, `quii_helper.main` can be temporarily edited or used as a scratch entry point to call multiple read-only methods and inspect which ones your device supports.
+The default entry point starts RTSP on port `8554` until interrupted with
+`Ctrl+C`. It does not send door-opening commands.
 
 ```powershell
 python -m quii_helper.main

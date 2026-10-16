@@ -7,6 +7,14 @@ being stabilized.
 
 ## Unreleased
 
+## 0.1.0-rc.5 - 2026-10-16
+
+- Restored RTSP serving in `python -m quii_helper.main`. Moved the real
+  door-opening check to the explicit `python -m examples.open_door` example.
+- Added regression checks for RTSP context cleanup, absence of door commands
+  from the normal entry point, and explicit execution of the door example.
+- Updated README and API documentation with the separate entry points.
+
 ## 0.1.0-rc.4 - 2026-10-16
 
 - Added explicit LAN `Camera.open_door()` control, `UNLOCK_PASSWORD`
