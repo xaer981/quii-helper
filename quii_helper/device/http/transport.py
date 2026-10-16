@@ -12,6 +12,19 @@ from quii_helper.support import redaction
 from quii_helper.support.log import logger
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: Any,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        return None
+
+
 def request_cgi(
     command: str,
     host: str,
@@ -26,6 +39,7 @@ def request_cgi(
     content: ET.Element | None = None,
     debug: bool = False,
     verify_tls: bool = True,
+    allow_redirects: bool = True,
 ) -> dict[str, str]:
     if encrypted:
         security = "usernametoken"
@@ -50,6 +64,7 @@ def request_cgi(
         scheme=scheme,
         debug=debug,
         verify_tls=verify_tls,
+        allow_redirects=allow_redirects,
     )
     if debug:
         _debug_exchange(xml_body, data)
@@ -126,6 +141,7 @@ def _post_cgi_xml(
     scheme: str,
     debug: bool,
     verify_tls: bool,
+    allow_redirects: bool = True,
 ) -> bytes:
     req = urllib.request.Request(
         f"{scheme}://{host}:{port}/tdkcgi",
@@ -143,7 +159,15 @@ def _post_cgi_xml(
         )
 
     try:
-        with urllib.request.urlopen(req, timeout=10, context=context) as resp:
+        if allow_redirects:
+            response = urllib.request.urlopen(req, timeout=10, context=context)
+        else:
+            opener = urllib.request.build_opener(
+                _NoRedirectHandler(),
+                urllib.request.HTTPSHandler(context=context),
+            )
+            response = opener.open(req, timeout=10)
+        with response as resp:
             return cast(bytes, resp.read())
     except urllib.error.HTTPError as exc:
         data = exc.read()

@@ -4,6 +4,20 @@ import hashlib
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
+def device_supports_sha256_password(transparent_basedata: str) -> bool | None:
+    """Read native `TYPE_ENCRYPY_SHA256` (24), or None if data is unknown."""
+    try:
+        data = base64.b64decode(
+            "".join(transparent_basedata.split()), validate=True
+        )
+    except ValueError:
+        return None
+    # QvDeviceAbility skips two header bytes before reading capability bits.
+    if len(data) < 6:
+        return None
+    return bool(data[5] & 1)
+
+
 def encode_device_password(value: str) -> str:
     if value is None or len(value) < 64:
         return hashlib.sha256((value or "").encode("utf-8")).hexdigest()

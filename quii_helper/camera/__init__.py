@@ -122,12 +122,14 @@ from quii_helper.cloud.shadow import (
     CameraDeviceShadowState,
     CameraDeviceShadowSwitchState,
 )
+from quii_helper.device.control import CameraDoorOpenResult
 from quii_helper.network import LanDeviceCandidate
 
 __all__ = [
     "Camera",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "CameraDoorOpenResult",
     "CameraConnector",
     "CameraDeviceAllInfo",
     "CameraDeviceAlarmChannel",

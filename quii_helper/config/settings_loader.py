@@ -1,6 +1,6 @@
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
 
@@ -39,6 +39,7 @@ class EnvironmentSettings:
     camera_channel: int
     camera_stream: int
     tls_verify: bool
+    unlock_password: str = field(default="", repr=False)
 
 
 class SettingsLoader:
@@ -75,6 +76,7 @@ class SettingsLoader:
             camera_device_host=self.getenv("CAMERA_DEVICE_HOST"),
             auth_code=self.getenv("AUTH_CODE"),
             device_password=self.getenv("DEVICE_PASSWORD"),
+            unlock_password=self.getenv("UNLOCK_PASSWORD"),
             cloud_client_uuid=self.getenv("CLOUD_CLIENT_UUID"),
             log_level=self.getenv("LOG_LEVEL", default="INFO"),
             cloud_auth_version=self.getenv("CLOUD_AUTH_VERSION"),

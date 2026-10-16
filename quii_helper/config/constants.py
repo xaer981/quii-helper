@@ -11,6 +11,7 @@ _SETTING_EXPORTS = {
     "DEVICE_ID": "device_id",
     "AUTH_CODE": "auth_code",
     "DEVICE_PASSWORD": "device_password",
+    "UNLOCK_PASSWORD": "unlock_password",
     "CLOUD_CLIENT_UUID": "cloud_client_uuid",
     "LOG_LEVEL": "log_level",
     "CLOUD_AUTH_VERSION": "cloud_auth_version",

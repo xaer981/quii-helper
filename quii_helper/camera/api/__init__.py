@@ -1,4 +1,4 @@
-"""High-level camera API for snapshots, recordings, and RTSP streaming."""
+"""High-level camera API for media, device inspection, and explicit control."""
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -206,6 +206,12 @@ from quii_helper.cloud.shadow import (
     fetch_device_shadow_info,
 )
 from quii_helper.config import AutonomousConfig, RuntimeCredentials
+from quii_helper.device.control import (
+    CameraDoorOpenResult,
+    UnlockPasswordMode,
+    request_open_door,
+)
+from quii_helper.device.security.auth import device_supports_sha256_password
 from quii_helper.io.paths import DATA_DIR
 from quii_helper.models.capture import CaptureSummary
 from quii_helper.network import (
@@ -219,6 +225,7 @@ from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
     PreviewCaptureSettings,
 )
+from quii_helper.support.errors import ConfigurationError, QuiiHelperError
 from quii_helper.support.log import logger
 
 EmitCallback = Callable[[object], None]
@@ -228,6 +235,7 @@ __all__ = [
     "Camera",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "CameraDoorOpenResult",
     "CameraConnector",
     "CameraDeviceAllInfo",
     "CameraDeviceAlarmChannel",
@@ -353,8 +361,8 @@ class Camera:
 
     `Camera` is the stable entrypoint for application code. It resolves
     runtime credentials, opens the device preview session, receives media
-    packets, and exposes high-level operations for snapshots, recordings, and
-    RTSP streaming.
+    packets, and exposes high-level operations for snapshots, recordings,
+    RTSP streaming, device inspection, and explicit door-opening commands.
 
     Configuration:
         Values can be supplied through an `AutonomousConfig` instance, through
@@ -373,6 +381,7 @@ class Camera:
         cloud_password: str | None = None,
         device_host: str | None = None,
         auth_code: str | None = None,
+        unlock_password: str | None = None,
         client_id: str | None = None,
         service_url: str | None = None,
         auth_url: str | None = None,
@@ -408,9 +417,10 @@ class Camera:
             cloud_account: Cloud account/login used for runtime credentials.
             cloud_password: Cloud account password.
             device_host: Camera LAN IP address or hostname used by local
-                `/tdkcgi` read-only HTTP methods.
-            auth_code: Device auth code used by local `/tdkcgi` read-only HTTP
-                methods.
+                `/tdkcgi` HTTP methods.
+            auth_code: Device auth code used by local `/tdkcgi` HTTP methods.
+            unlock_password: Door-opening password. Defaults to
+                `UNLOCK_PASSWORD` from `.env`, separately from `auth_code`.
             client_id: Client UUID sent to cloud, UST, and MQTT services.
             service_url: Cloud service-discovery URL.
             auth_url: Cloud user-auth URL.
@@ -455,6 +465,7 @@ class Camera:
         self.status = status or _default_status
         self.connector = CameraConnector(self.config)
         self._runtime_credentials: RuntimeCredentials | None = None
+        self._device_info: CameraDeviceInfo | None = None
 
     def capture(
         self,
@@ -538,11 +549,12 @@ class Camera:
             )
         except Exception as exc:
             logger.debug("device-list lookup failed: {}", exc)
-        return camera_device_info_from_credentials(
+        self._device_info = camera_device_info_from_credentials(
             self.config,
             credentials,
             cloud_device=cloud_device,
         )
+        return self._device_info
 
     def get_device_shadow_info(self) -> CameraDeviceShadowInfo:
         """Fetch read-only cloud shadow status for this camera.
@@ -656,6 +668,111 @@ class Camera:
             verify_tls=verify_tls,
             debug=debug,
         )
+
+    def open_door(
+        self,
+        *,
+        channel: int | None = None,
+        lock_number: int = 1,
+        unlock_password: str | None = None,
+        password_mode: UnlockPasswordMode = "auto",
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> CameraDoorOpenResult:
+        """Send one local `set.device.opendoor` command to the device.
+
+        Args:
+            channel: Video-panel channel (`door` in native XML). When omitted,
+                uses this camera's configured channel.
+            lock_number: Positive lock/relay number, starting at one.
+            unlock_password: Door-opening password for this call. Defaults to
+                `Camera(..., unlock_password=...)` or `UNLOCK_PASSWORD`.
+                `plain` sends the exact value; `sha256` applies the vendor's
+                encoding rule, preserving already encoded passwords.
+            password_mode: `"auto"` selects the format using capability 24
+                from cached metadata or a read-only `get_device_info()` call.
+                If unknown, raises without sending. `"plain"` and `"sha256"`
+                force the body format without a cloud lookup.
+            port: Camera CGI HTTP(S) port.
+            scheme: `"http"` or `"https"` for local CGI access.
+            auth_code: Optional CGI auth override, separate from the opening
+                password. Defaults to this camera's `AUTH_CODE` setting.
+            verify_tls: Override certificate verification for HTTPS CGI.
+            debug: Enable the redacted CGI exchange in debug logging.
+
+        Returns:
+            `CameraDoorOpenResult` with the device code, `accepted`, and a
+            human-readable `message`. Acceptance does not confirm physical
+            door movement.
+
+        Raises:
+            ConfigurationError: If credentials or command parameters are
+                missing or invalid, or auto mode cannot determine capability 24.
+            QuiiConnectionError: If the response is missing, malformed, or
+                cannot be received. The physical outcome is then unknown.
+
+        This method requires LAN access and never opens a preview. Auto mode
+        may use cloud login for capability discovery; explicit modes do not.
+        It does not retry the command or follow HTTP redirects.
+        """
+        endpoint = self._resolve_local_cgi_endpoint(
+            port=port,
+            scheme=scheme,
+            auth_code=auth_code,
+            verify_tls=verify_tls,
+            debug=debug,
+        )
+        resolved_password = (
+            self.config.unlock_password
+            if unlock_password is None
+            else unlock_password
+        )
+        if not resolved_password.strip():
+            raise ConfigurationError(
+                "UNLOCK_PASSWORD is required to open a door; set it in .env "
+                "or pass unlock_password=..."
+            )
+        sha256_support = (
+            self._get_unlock_sha256_support()
+            if password_mode == "auto"
+            else None
+        )
+        return request_open_door(
+            host=endpoint.host,
+            auth_code=endpoint.auth_code,
+            unlock_password=resolved_password,
+            password_mode=password_mode,
+            supports_sha256_password=sha256_support,
+            channel=self.config.channel if channel is None else channel,
+            lock_number=lock_number,
+            port=endpoint.port,
+            scheme=endpoint.scheme,
+            verify_tls=endpoint.verify_tls,
+            debug=endpoint.debug,
+        )
+
+    def _get_unlock_sha256_support(self) -> bool | None:
+        support = (
+            self._device_info.supports_sha256_password
+            if self._device_info is not None
+            else None
+        )
+        if support is None and self._runtime_credentials is not None:
+            support = device_supports_sha256_password(
+                self._runtime_credentials.transparent_basedata
+            )
+        if support is not None:
+            return support
+        try:
+            return self.get_device_info().supports_sha256_password
+        except (QuiiHelperError, OSError, ValueError) as exc:
+            logger.debug(
+                "Unlock capability lookup failed ({})", type(exc).__name__
+            )
+            return None
 
     def get_device_all_info(
         self,

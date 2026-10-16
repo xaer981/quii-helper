@@ -17,7 +17,11 @@ def build_request_xml(
     ET.SubElement(body, "command").text = command
     content_element = ET.SubElement(body, "content")
     if content is not None:
-        content_element.append(content)
+        if content.tag == "content":
+            body.remove(content_element)
+            body.append(content)
+        else:
+            content_element.append(content)
 
     header = ET.SubElement(envelope, "header")
     ET.SubElement(header, "password").text = password

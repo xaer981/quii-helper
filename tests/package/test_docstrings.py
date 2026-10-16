@@ -107,6 +107,7 @@ from quii_helper import (
     CameraDeviceVoiceFileInfo,
     CameraDeviceVoiceMessageInfo,
     CameraDeviceWifiListInfo,
+    CameraDoorOpenResult,
     LanDeviceCandidate,
 )
 from quii_helper.camera.outputs.results import CameraCaptureResult
@@ -117,6 +118,11 @@ from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 DOCUMENTED_OBJECTS = (
     Camera,
     Camera.__init__,
+    Camera.open_door,
+    CameraDoorOpenResult,
+    CameraDoorOpenResult.accepted,
+    CameraDoorOpenResult.message,
+    CameraDeviceInfo.supports_sha256_password,
     Camera.capture,
     Camera.discover_lan_devices,
     Camera.get_device_info,

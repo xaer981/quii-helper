@@ -41,6 +41,7 @@ def resolve_camera_config(
     channel: int | None,
     stream: int | None,
     stream_quality: str | int | None,
+    unlock_password: str | None = None,
 ) -> AutonomousConfig:
     validate_stream_selector(stream=stream, stream_quality=stream_quality)
     resolved_cloud_account = resolve_cloud_account_alias(
@@ -58,6 +59,8 @@ def resolve_camera_config(
         values["device_host"] = device_host
     if auth_code is not None:
         values["auth_code"] = auth_code
+    if unlock_password is not None:
+        values["unlock_password"] = unlock_password
     if client_id is not None:
         values["client_id"] = client_id
     if service_url is not None:

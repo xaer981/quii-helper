@@ -13,6 +13,7 @@ from typing import Literal
 ErrorCodeDomain = Literal[
     "auto",
     "device_cgi",
+    "device_unlock",
     "sdk",
     "cloud_storage",
     "http_device",
@@ -91,6 +92,8 @@ def _coerce_code(code: int | str | None) -> int | None:
 def _tables_for_domain(
     domain: ErrorCodeDomain,
 ) -> tuple[dict[int, VendorErrorInfo], ...]:
+    if domain == "device_unlock":
+        return (DEVICE_UNLOCK_ERROR_CODES,)
     if domain == "device_cgi":
         return (
             DEVICE_CGI_ERROR_CODES,
@@ -240,6 +243,34 @@ DEVICE_CGI_ERROR_CODES: dict[int, VendorErrorInfo] = {
         "CgiError",
         sdk_equivalent=-10,
     ),
+}
+
+
+DEVICE_UNLOCK_ERROR_CODES: dict[int, VendorErrorInfo] = {
+    code: _info(
+        code,
+        name,
+        description,
+        "QvOpenComHelper.dealWithUnlockResult",
+        sdk_equivalent=equivalent,
+    )
+    for code, name, description, equivalent in (
+        (-7, "FAIL_DEVICE_LOCK_DISABLE", "device lock is disabled", -10041),
+        (
+            -6,
+            "FAIL_DEVICE_CHANNEL_DISABLE",
+            "device channel is disabled",
+            -10040,
+        ),
+        (-5, "FAIL_DEVICE_WAS_LOCKED", "device was locked", -10039),
+        (-4, "FAIL_DEVICE_BUSY", "device is busy", -10029),
+        (
+            -3,
+            "FAIL_DEVICE_INCORRECT_PASSWORD",
+            "door-opening password is incorrect",
+            -10028,
+        ),
+    )
 }
 
 

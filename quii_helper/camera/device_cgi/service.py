@@ -135,7 +135,7 @@ def resolve_device_cgi_endpoint(
     host = config.device_host.strip()
     if not host:
         raise ConfigurationError(
-            "CAMERA_DEVICE_HOST is required for local /tdkcgi read-only "
+            "CAMERA_DEVICE_HOST is required for local /tdkcgi "
             "requests; set CAMERA_DEVICE_HOST in .env or pass "
             "device_host=... to Camera(...)"
         )
@@ -144,7 +144,7 @@ def resolve_device_cgi_endpoint(
         resolved_auth_code = config.auth_code
     if not resolved_auth_code:
         raise ConfigurationError(
-            "AUTH_CODE is required for local /tdkcgi read-only requests; "
+            "AUTH_CODE is required for local /tdkcgi requests; "
             "set AUTH_CODE in .env, pass auth_code=... to Camera(...), or "
             "pass auth_code=... to this method"
         )

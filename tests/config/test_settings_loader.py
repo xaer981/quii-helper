@@ -17,6 +17,19 @@ class SettingsLoaderTests:
     def teardown_method(self) -> None:
         reset_default_settings_cache()
 
+    def test_loads_unlock_password_from_dotenv(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("UNLOCK_PASSWORD", raising=False)
+        (tmp_path / ".env").write_text(
+            'UNLOCK_PASSWORD="test-door-password"\n', encoding="utf-8"
+        )
+
+        config = load_config(project_root=tmp_path)
+
+        assert config.unlock_password == "test-door-password"
+        assert "test-door-password" not in repr(config)
+
     def test_loads_values_from_supplied_env_without_process_env(self) -> None:
         settings = SettingsLoader(
             project_root=Path("project"),
@@ -26,6 +39,7 @@ class SettingsLoaderTests:
                 "DEVICE_ID": "device",
                 "CAMERA_DEVICE_HOST": "192.0.2.10",
                 "AUTH_CODE": "auth-code",
+                "UNLOCK_PASSWORD": "door-password",
                 "CLOUD_CLIENT_UUID": "client",
                 "LOG_LEVEL": "debug",
                 "CLOUD_AUTH_VERSION": "v1",
@@ -47,6 +61,8 @@ class SettingsLoaderTests:
         assert "device" == settings.device_id
         assert "192.0.2.10" == settings.camera_device_host
         assert "auth-code" == settings.auth_code
+        assert "door-password" == settings.unlock_password
+        assert "door-password" not in repr(settings)
         assert "client" == settings.cloud_client_uuid
         assert "debug" == settings.log_level
         assert "v1" == settings.cloud_auth_version
@@ -141,6 +157,7 @@ class SettingsLoaderTests:
                 "DEVICE_ID": "device",
                 "CAMERA_DEVICE_HOST": "192.0.2.10",
                 "AUTH_CODE": "auth-code",
+                "UNLOCK_PASSWORD": "door-password",
                 "CLOUD_CLIENT_UUID": "client",
                 "CLOUD_AUTH_URL": "https://auth",
                 "CLOUD_SERVICE_URL": "https://service",
@@ -157,6 +174,8 @@ class SettingsLoaderTests:
         assert "device" == config.device_id
         assert "192.0.2.10" == config.device_host
         assert "auth-code" == config.auth_code
+        assert "door-password" == config.unlock_password
+        assert "door-password" not in repr(config)
         assert "client" == config.client_id
         assert "https://auth" == config.auth_url
         assert "https://service" == config.service_url
