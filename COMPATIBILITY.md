@@ -18,7 +18,7 @@ signals for finding compatible firmware families and for search visibility.
 
 | Device | App | Discovery hints | Status | Notes |
 | --- | --- | --- | --- | --- |
-| Tantos Marilyn Wi-Fi s | vHome 2.2 | `Qualvision -HTTPServer`, TCP `34567` | Working | Snapshot, MP4 capture, and RTSP serving tested. |
+| Tantos Marilyn Wi-Fi s | vHome 2.2 | `Qualvision -HTTPServer`, TCP `34567` | Working | Snapshot, MP4 capture, RTSP serving, and door opening with `password_mode="auto"` tested. |
 
 ## Compatibility Checklist
 

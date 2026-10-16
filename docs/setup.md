@@ -54,11 +54,12 @@ Optional values:
 | Variable | Purpose |
 | --- | --- |
 | `CLOUD_AUTH_VERSION` | Auth version mapped from the APK auth code. Empty for auth code `0`. |
-| `CAMERA_DEVICE_HOST` | Camera LAN IP/host. Required for local read-only `/tdkcgi` helpers, not for cloud/P2P preview. |
+| `CAMERA_DEVICE_HOST` | Camera LAN IP/host. Required for local `/tdkcgi` methods, including door control, not for cloud/P2P preview. |
 | `CAMERA_CHANNEL` | Default channel index. |
 | `CAMERA_STREAM` | Default stream index. |
-| `AUTH_CODE` | Device binding/auth code used by local read-only `/tdkcgi` helpers and TCP/CGI probes. |
+| `AUTH_CODE` | Device binding/auth code used by local `/tdkcgi` methods and TCP/CGI probes. |
 | `DEVICE_PASSWORD` | Local CGI/admin password used by direct TCP/CGI probe helpers. |
+| `UNLOCK_PASSWORD` | Door-opening password used only by explicit `Camera.open_door()` calls. Separate from CGI/admin and cloud credentials. The body format follows capability 24, or an explicit `password_mode="plain"` / `"sha256"` argument. |
 | `TLS_VERIFY` | Enables/disables TLS certificate verification. Keep `true` unless a vendor endpoint requires otherwise. |
 | `LOG_LEVEL` | `info` for normal messages, `debug` for protocol diagnostics. |
 

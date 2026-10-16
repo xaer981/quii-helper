@@ -13,13 +13,18 @@ By default, `Camera()` loads settings from `.env` and assets from `assets/`.
 ## Constructor
 
 ```python
-Camera(config=None, connector=None)
+Camera(config=None, device_host=None, auth_code=None, unlock_password=None)
 ```
+
+Selected constructor parameters are shown below; the class docstring documents
+the complete signature. Keyword arguments override the base configuration.
 
 | Parameter | Purpose |
 | --- | --- |
 | `config` | Optional configuration object. If omitted, settings are loaded from `.env`. |
-| `connector` | Optional preview connector. Mainly useful for tests or custom integrations. |
+| `device_host` | Camera LAN IP or hostname for local CGI methods; defaults to `CAMERA_DEVICE_HOST`. |
+| `auth_code` | Local CGI authentication code; defaults to `AUTH_CODE`. |
+| `unlock_password` | Separate door-opening password; defaults to `UNLOCK_PASSWORD`. |
 
 ## Capture Methods
 
@@ -29,21 +34,23 @@ Captures one JPEG image from the live preview.
 
 ```python
 result = camera.snapshot()
-print(result.path)
+print(result)
 ```
 
-The output path is generated under `data/` with a timestamp-based filename.
+Returns a `pathlib.Path`. The default output path is generated under `data/`
+with a timestamp-based filename.
 
-### `save_video(duration_seconds=15)`
+### `save_video(duration_seconds)`
 
 Captures a video clip and writes an MP4 file.
 
 ```python
 result = camera.save_video(duration_seconds=60)
-print(result.path)
+print(result)
 ```
 
-`duration_seconds` is the requested media collection time after the preview session starts receiving packets.
+Returns a `pathlib.Path`. `duration_seconds` is the requested media collection
+time after the preview session starts receiving packets.
 
 ### `capture(...)`
 
@@ -53,7 +60,7 @@ Use it when you need both artifacts or need access to the full capture summary.
 
 ```python
 result = camera.capture(duration_seconds=15)
-print(result.media_result)
+print(result.summary)
 ```
 
 ## RTSP Streaming
@@ -79,6 +86,68 @@ rtsp://127.0.0.1:8554/live
 ```
 
 The context manager closes the preview session and RTSP server automatically.
+
+## Door Control
+
+### `open_door(...)`
+
+Sends one local XML `set.device.opendoor` command through `/tdkcgi`. It does not
+open a preview, retry the command, or follow redirects. The default `auto` mode
+may query read-only cloud metadata to determine the password format; explicit
+modes work without cloud login.
+
+Configure `CAMERA_DEVICE_HOST`, `AUTH_CODE`, and `UNLOCK_PASSWORD` in `.env`.
+`UNLOCK_PASSWORD` is the door-opening password, separate from CGI authentication
+and the cloud account password. The XML body format is selected using capability
+24 (`TYPE_ENCRYPY_SHA256`), matching `QvDeviceApi.deviceUnlock` in vHome: a set
+flag applies `EncodeDevicePassword`, while a clear flag sends the exact password.
+CGI header authentication continues to use encoded `AUTH_CODE` in both modes.
+
+The following example **sends a real opening command** when executed:
+
+```python
+from quii_helper import Camera
+
+camera = Camera()
+result = camera.open_door(lock_number=1)
+print(result.accepted, result.error, result.message)
+```
+
+| Parameter | Purpose |
+| --- | --- |
+| `channel=None` | Video-panel channel, sent as `door`. Defaults to `Camera.channel` / `CAMERA_CHANNEL`. |
+| `lock_number=1` | Positive lock/relay number, sent as `locknumber`. |
+| `unlock_password=None` | Per-call override of `Camera(unlock_password=...)` / `UNLOCK_PASSWORD`. Accepts plain text or the vendor-encoded password. |
+| `password_mode="auto"` | Uses capability 24 from cached metadata or a read-only `get_device_info()` lookup. `"plain"` sends the body password unchanged; `"sha256"` applies the vendor encoding rule. Explicit modes override capability and skip cloud lookup. |
+| `port=80`, `scheme="http"` | Local CGI endpoint. HTTPS is available where the device supports it. |
+| `auth_code=None` | Per-call CGI authentication override. Defaults to `Camera(auth_code=...)` / `AUTH_CODE`. |
+| `verify_tls=None` | HTTPS certificate verification override. Defaults to the camera configuration. |
+| `debug=False` | Enables redacted CGI exchange logging at DEBUG level. |
+
+Returns `CameraDoorOpenResult` with `error`, `channel`, `lock_number`, `accepted`,
+and `message`. `accepted=True` requires an explicit numeric `<error>0</error>`
+response. It confirms the device acknowledgement, not physical door movement.
+Unlock errors have command-specific meanings, including incorrect opening
+password, busy device, disabled channel, and disabled lock.
+
+Missing settings or invalid parameters raise `ConfigurationError` before sending.
+Transport failures and malformed responses raise `QuiiConnectionError`: the
+device may already have acted, so the physical outcome is unknown. The package
+does not automatically repeat the command or try the other password format.
+
+If cloud metadata is unavailable or capability 24 cannot be decoded, `auto`
+raises `ConfigurationError` before sending an opening command. Once the expected
+format is known, select it explicitly:
+
+```python
+# Sends a real command with the body password unchanged; no cloud lookup.
+result = camera.open_door(password_mode="plain")
+# Alternatively, password_mode="sha256" selects the vendor-encoded format.
+```
+
+`camera.get_device_info().supports_sha256_password` exposes the decoded flag as
+`True`, `False`, or `None`. Missing, malformed, or truncated basedata is unknown,
+not an indication that plain passwords are supported.
 
 ## Cloud Read-Only Methods
 

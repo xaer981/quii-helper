@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from quii_helper.device.security.auth import device_supports_sha256_password
+
 
 @dataclass(frozen=True)
 class CameraDeviceInfo:
@@ -18,6 +20,8 @@ class CameraDeviceInfo:
         password_expired: Whether the dynamic device password is expired.
         transparent_basedata: Opaque vendor metadata used by the original app
             to infer protocol capabilities.
+        supports_sha256_password: Capability 24 decoded from basedata; None
+            means the password format could not be determined.
     """
 
     device_id: str
@@ -31,3 +35,8 @@ class CameraDeviceInfo:
     transparent_basedata: str
     name: str = ""
     memo_name: str = ""
+
+    @property
+    def supports_sha256_password(self) -> bool | None:
+        """Capability 24; None for missing, invalid, or truncated basedata."""
+        return device_supports_sha256_password(self.transparent_basedata)

@@ -2,7 +2,7 @@
 
 Python package for connecting to QUII / Qualvision-based cameras and video doorbells from code.
 
-It can capture snapshots, save short video clips, expose the camera as an RTSP stream, and read available device metadata without using the original mobile app.
+It can capture snapshots, save video clips, expose the camera as an RTSP stream, read available device metadata, and explicitly open a connected door without using the original mobile app.
 
 ## What It Does ✨
 
@@ -11,6 +11,7 @@ It can capture snapshots, save short video clips, expose the camera as an RTSP s
 - 📡 Serves the live preview as an RTSP stream for players such as VLC.
 - 🔎 Reads cloud, LAN, storage, network, product, alarm, video, and capability information where the device supports it.
 - 🧭 Discovers local devices that expose Qualvision-compatible HTTP services.
+- Sends explicit local door-opening commands with `Camera.open_door()`; see [Door Control](docs/api.md#door-control) for settings and acknowledgement semantics.
 
 ## Compatibility 🔍
 
@@ -24,7 +25,7 @@ Useful discovery hints:
 
 Successfully tested devices:
 
-- `Tantos Marilyn Wi-Fi s`
+- `Tantos Marilyn Wi-Fi s`: snapshot, MP4 capture, RTSP, and door opening in `auto` mode.
 
 If another device works, please open an issue or pull request so the compatibility list can be expanded.
 
@@ -75,10 +76,10 @@ from quii_helper import Camera
 camera = Camera()
 
 snapshot = camera.snapshot()
-print(snapshot.path)
+print(snapshot)
 
 video = camera.save_video(duration_seconds=15)
-print(video.path)
+print(video)
 ```
 
 Start an RTSP stream:
@@ -145,10 +146,11 @@ Debug logging includes protocol counters, packet statistics, decoding summaries,
 - The package depends on native crypto/material extracted from the original Android app version you use.
 - Some local read-only methods return `error=-1` on devices that do not support that command.
 - If cloud TLS fails with `CERTIFICATE_VERIFY_FAILED`, see [Cloud Region And Auth URL](docs/setup.md#cloud-region-and-auth-url).
+- `python -m quii_helper.main` is currently a manual door-control check. It sends a **real opening command** using `UNLOCK_PASSWORD` and `password_mode="auto"`; do not use it as a read-only smoke test.
 
 ## Status 🛠
 
-The project is usable but still protocol-research-heavy. Public APIs are being stabilized around `Camera`, capture results, RTSP streaming, and read-only device inspection.
+The project is usable but still protocol-research-heavy. Public APIs are being stabilized around `Camera`, capture results, RTSP streaming, read-only device inspection, and explicit local door control.
 
 <p align=center>
   <a href="url"><img src="https://github.com/xaer981/xaer981/blob/main/main_cat.gif" align="center" height="40" width="128"></a>

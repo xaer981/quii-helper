@@ -114,6 +114,7 @@ from quii_helper.camera import (
     CameraDeviceVoiceFileInfo,
     CameraDeviceVoiceMessageInfo,
     CameraDeviceWifiListInfo,
+    CameraDoorOpenResult,
     CameraIotCommandSupportInfo,
 )
 from quii_helper.config import (
@@ -136,6 +137,7 @@ __all__ = [
     "Camera",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "CameraDoorOpenResult",
     "CameraDeviceAllInfo",
     "CameraDeviceAlarmChannel",
     "CameraDeviceAlarmChannelInfo",

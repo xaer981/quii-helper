@@ -82,9 +82,10 @@ class AutonomousConfig:
         cloud_account: Cloud account/login.
         cloud_password: Cloud account password.
         device_host: Camera LAN IP address or hostname for local `/tdkcgi`
-            read-only HTTP requests.
-        auth_code: Device auth code for local `/tdkcgi` read-only HTTP
-            requests.
+            HTTP requests.
+        auth_code: Device auth code for local `/tdkcgi` HTTP requests.
+        unlock_password: Door-opening password from `UNLOCK_PASSWORD`, separate
+            from CGI authentication and cloud account credentials.
         channel: Camera channel number.
         stream: Numeric stream selector after quality resolution.
         connect_mode: Device live-play connect mode.
@@ -194,6 +195,9 @@ class AutonomousConfig:
     log_peer_diagnostics: bool = True
     rbudp_debug: bool = False
     tls_verify: bool = field(default_factory=lambda: _settings().tls_verify)
+    unlock_password: str = field(
+        default_factory=lambda: _settings().unlock_password, repr=False
+    )
 
     @classmethod
     def from_settings(
@@ -207,6 +211,7 @@ class AutonomousConfig:
             "cloud_password": settings.cloud_password,
             "device_host": settings.camera_device_host,
             "auth_code": settings.auth_code,
+            "unlock_password": settings.unlock_password,
             "channel": settings.camera_channel,
             "stream": settings.camera_stream,
             "service_url": settings.cloud_service_url,

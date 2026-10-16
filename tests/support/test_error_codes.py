@@ -5,6 +5,16 @@ from quii_helper.support.error_codes import (
 
 
 class ErrorCodeLookupTests:
+    def test_unlock_errors_are_distinct_from_generic_cgi_errors(self) -> None:
+        info = lookup_error_codes(-4, domain="device_unlock")
+
+        assert len(info) == 1
+        assert info[0].name == "FAIL_DEVICE_BUSY"
+        assert info[0].sdk_equivalent == -10029
+        assert "door-opening password" in describe_error_code(
+            -3, domain="device_unlock"
+        )
+
     def test_known_sdk_error_is_described(self) -> None:
         description = describe_error_code(-10025, domain="sdk")
 
