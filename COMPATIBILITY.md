@@ -14,6 +14,16 @@ Devices in this family may expose:
 These hints are not a guarantee that a device is supported. They are useful
 signals for finding compatible firmware families and for search visibility.
 
+## Python Platforms
+
+CI validates 64-bit Windows with Python 3.10 and 3.11. Other platforms are not
+covered by the current CI matrix.
+
+The package requires `cryptography>=50.0.0`. Since version 49, upstream no
+longer provides wheels for 32-bit Windows or Intel (`x86_64`) macOS. Do not
+assume this release installs on those platforms; see the
+[upstream compatibility changes](https://cryptography.io/en/latest/changelog/#v49-0-0).
+
 ## Known Working Devices
 
 | Device | App | Discovery hints | Status | Notes |

@@ -21,6 +21,9 @@ being stabilized.
   one real door-opening command in `auto` mode.
 - Corrected public API examples and aligned package metadata with the release.
 - Included the dependency-group update merged after `v0.1.0-rc.3`.
+- Included Dependabot PR #2 (`cryptography==50.0.0`) and raised the package's
+  minimum version to `50.0.0` so both installation paths avoid older affected
+  versions. The upstream update drops wheels for 32-bit Windows and Intel macOS.
 
 ## Earlier Pre-Releases
 
