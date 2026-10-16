@@ -100,6 +100,9 @@ Open the stream in VLC:
 rtsp://127.0.0.1:8554/live
 ```
 
+Alternatively, run `python -m quii_helper.main` to serve RTSP on port `8554`
+until `Ctrl+C`. This entry point does not open the door.
+
 Read device information:
 
 ```python
@@ -146,7 +149,7 @@ Debug logging includes protocol counters, packet statistics, decoding summaries,
 - The package depends on native crypto/material extracted from the original Android app version you use.
 - Some local read-only methods return `error=-1` on devices that do not support that command.
 - If cloud TLS fails with `CERTIFICATE_VERIFY_FAILED`, see [Cloud Region And Auth URL](docs/setup.md#cloud-region-and-auth-url).
-- `python -m quii_helper.main` is currently a manual door-control check. It sends a **real opening command** using `UNLOCK_PASSWORD` and `password_mode="auto"`; do not use it as a read-only smoke test.
+- `python -m examples.open_door` is an explicit door-control check. It prints capability 24 and sends a **real opening command** using `UNLOCK_PASSWORD` and `password_mode="auto"`; do not use it as a read-only smoke test.
 
 ## Status 🛠
 
