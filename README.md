@@ -52,15 +52,16 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-For an application that only needs the library, install a built wheel instead:
+For library use, install the published pre-release from
+[PyPI](https://pypi.org/project/quii-helper/0.1.0rc6/):
 
-```text
-python -m pip install /path/to/quii_helper-0.1.0rc6-py3-none-any.whl
+```shell
+python -m pip install "quii-helper==0.1.0rc6"
 ```
 
-`0.1.0rc6` is a prepared candidate, not yet uploaded by this change. After a
-release is published on PyPI, `python -m pip install --pre quii-helper` selects
-an available pre-release. No repository checkout is needed for library use.
+To install the latest available version, including pre-releases, use
+`python -m pip install --upgrade --pre quii-helper`.
+No repository checkout is needed for library use.
 The wheel does **not** include `examples` or `.env.example`; use the
 [installed-package setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-an-installed-package)
 to create your own application directory and configuration.
