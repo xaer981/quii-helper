@@ -8,8 +8,7 @@ Use QUII / Qualvision cameras and video intercoms from Python, without running
 the original mobile app. Capture images and video, serve RTSP, inspect device
 information, and explicitly open a connected door.
 
-**The first final release, `0.1.0`, is available on
-[PyPI](https://pypi.org/project/quii-helper/0.1.0/).**
+**Available on [PyPI](https://pypi.org/project/quii-helper/).**
 
 [Features](https://github.com/xaer981/quii-helper#features-) ·
 [Compatibility](https://github.com/xaer981/quii-helper#compatibility-) ·
