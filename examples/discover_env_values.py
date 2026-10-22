@@ -15,7 +15,8 @@ from __future__ import annotations
 from urllib.parse import urljoin
 
 from quii_helper.cloud.services.discovery import query_service_addresses
-from quii_helper.config import AutonomousConfig
+from quii_helper.config import load_config
+from quii_helper.support.log import configure_logging
 
 USERAUTH_PATH = "/auth/user"
 SERVER_TYPES = ("userapp", "p2papp", "natcheck", "appinfo")
@@ -23,7 +24,8 @@ SERVER_TYPES = ("userapp", "p2papp", "natcheck", "appinfo")
 
 def main() -> None:
     """Print discovered values that can be copied into `.env`."""
-    config = AutonomousConfig(ip_region_id=0, tls_verify=False)
+    configure_logging(replace_existing=True)
+    config = load_config(ip_region_id=0)
     response = query_service_addresses(config, server_types=SERVER_TYPES)
 
     print(f"IP_REGION_ID={response.client_region_id}")

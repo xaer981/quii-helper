@@ -18,7 +18,6 @@ from quii_helper.protocols.rbudp.wrapped.lanes import (
 class _WrappedHandlerOwner(Protocol):
     _last_wrapped: ParsedRbUdpWrappedPacket | None
     _peer_addr: tuple[str, int]
-    _wrapped_debug_seen: set[str]
 
     def _dbg(self, message: str, **kwargs: object) -> None: ...
 
@@ -61,10 +60,10 @@ class RbUdpWrappedHandler:
             return
 
         for frame in frames:
-            frame_hex = frame.raw.hex()
-            should_debug_inner = frame_hex not in owner._wrapped_debug_seen
-            if should_debug_inner:
-                owner._wrapped_debug_seen.add(frame_hex)
+            should_debug_inner = self._frame_handler.should_debug_frame(
+                frame.raw
+            )
+            frame_hex = frame.raw.hex() if should_debug_inner else ""
             try:
                 parsed = parse_kcp_packet_frame(frame)
             except Exception as exc:

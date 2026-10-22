@@ -6,6 +6,8 @@ ROOT_PUBLIC_API = [
     "AssetMissingError",
     "AutonomousConfig",
     "Camera",
+    "CameraCallEvent",
+    "CameraCallEventPage",
     "CameraCaptureError",
     "CameraCaptureResult",
     "CameraDoorOpenResult",
@@ -122,6 +124,7 @@ ROOT_PUBLIC_API = [
     "QuiiConnectionError",
     "QuiiHelperError",
     "RuntimeCredentials",
+    "load_config",
 ]
 
 ROOT_INTERNAL_NAMES = [
@@ -157,6 +160,7 @@ ROOT_INTERNAL_NAMES = [
 
 EXPORT_PACKAGES = (
     "quii_helper",
+    "quii_helper.cloud.alarms",
     "quii_helper.cloud",
     "quii_helper.device",
     "quii_helper.device.json_cgi",
@@ -227,6 +231,7 @@ class PublicApiTests:
             "serve_rtsp",
             "discover_lan_devices",
             "get_device_info",
+            "get_call_events",
             "get_device_shadow_info",
             "get_iot_command_support",
             "get_alarm_channel_info",

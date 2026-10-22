@@ -1,3 +1,6 @@
+import math
+
+
 def capture_settings_overrides(
     *,
     duration_seconds: float | None,
@@ -17,6 +20,9 @@ def capture_settings_overrides(
 
 
 def normalized_duration_seconds(duration_seconds: float) -> float:
-    if duration_seconds <= 0:
-        raise ValueError("duration_seconds must be greater than zero")
-    return float(duration_seconds)
+    duration = float(duration_seconds)
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError(
+            "duration_seconds must be greater than zero and finite"
+        )
+    return duration

@@ -42,6 +42,8 @@ def resolve_camera_config(
     stream: int | None,
     stream_quality: str | int | None,
     unlock_password: str | None = None,
+    assets_dir: str | Path | None = None,
+    auth_version: str | None = None,
 ) -> AutonomousConfig:
     validate_stream_selector(stream=stream, stream_quality=stream_quality)
     resolved_cloud_account = resolve_cloud_account_alias(
@@ -49,6 +51,16 @@ def resolve_camera_config(
         cloud_account=cloud_account,
     )
     values: dict[str, object] = {}
+    if assets_dir is not None:
+        root = Path(assets_dir).expanduser().resolve()
+        values.update(
+            assets_dir=root,
+            ca_path=root / "ca.pem",
+            cert_path=root / "client.pem",
+            key_path=root / "client.txt",
+        )
+    if auth_version is not None:
+        values["auth_version"] = auth_version
     if device_id is not None:
         values["device_id"] = device_id
     if resolved_cloud_account is not None:
@@ -107,4 +119,4 @@ def resolve_camera_config(
         values["stream"] = resolve_stream_quality(stream)
     if stream_quality is not None:
         values["stream"] = resolve_stream_quality(stream_quality)
-    return replace(config, **cast(Any, values)) if values else config
+    return replace(config, **cast(Any, values))

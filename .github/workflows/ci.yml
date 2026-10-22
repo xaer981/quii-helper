@@ -3,6 +3,14 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   secret-scan:
@@ -13,6 +21,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -24,16 +33,24 @@ jobs:
           go run github.com/zricethezav/gitleaks/v8@v8.30.1
           git --config .gitleaks.toml --redact --verbose .
 
+      - name: Validate GitHub Actions workflows
+        run: >
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          -shellcheck= .github/workflows/ci.yml .github/workflows/publish.yml
+
   test:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [windows-latest, ubuntu-latest]
         python-version: ["3.10", "3.11"]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -68,3 +85,117 @@ jobs:
         run: |
           python -m coverage run -m pytest
           python -m coverage report
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build wheel from sdist and check metadata
+        run: |
+          python -m pip install build twine
+          python -m build --outdir data/dist
+          python -m twine check --strict data/dist/*
+          python .github/scripts/check_distribution.py data/dist
+
+      - name: Save checked distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-distributions
+          path: data/dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  install:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python-version: ["3.10", "3.11"]
+    steps:
+      - name: Check out installation checks
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download checked distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: python-distributions
+          path: data/dist
+
+      - name: Install and test wheel and sdist outside the checkout
+        run: python .github/scripts/check_install.py data/dist
+
+  rtsp-soak:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out synthetic RTSP check
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download checked distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: python-distributions
+          path: data/dist
+
+      - name: Install the checked wheel
+        run: python -m pip install data/dist/*.whl
+
+      - name: Exercise slow clients and repeated shutdown for 2 minutes
+        run: |
+          sha256sum data/dist/*
+          python -I -B .github/scripts/check_rtsp_soak.py --seconds 120 > data/rtsp-soak.json
+          cat data/rtsp-soak.json
+
+      - name: Save synthetic soak report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rtsp-soak-report
+          path: data/rtsp-soak.json
+          if-no-files-found: error
+
+  release-gate:
+    if: always()
+    needs: [secret-scan, test, build, install, rtsp-soak]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every automated check to succeed
+        env:
+          CHECK_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          results = json.loads(os.environ["CHECK_RESULTS"])
+          failed = {name: value["result"] for name, value in results.items()
+                    if value["result"] != "success"}
+          if failed:
+              raise SystemExit(f"Release gate failed: {failed}")
+          print("Automated gate passed for this commit and its checked archives.")
+          print("Manual camera validation remains a separate owner check.")
+          PY

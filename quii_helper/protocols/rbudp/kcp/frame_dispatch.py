@@ -1,4 +1,5 @@
 import struct
+from collections.abc import Iterator
 
 from quii_helper.protocols.rbudp.core.models import (
     ParsedPacketDispatch,
@@ -29,6 +30,10 @@ def iter_kcp_packet_frames(buffer: bytes) -> list[ParsedPacketFrame]:
         packet_len = struct.unpack_from("<I", buffer, offset + 0x04)[0]
         if packet_len == 0:
             raise ValueError(f"zero packet length at offset {offset:#x}")
+        if packet_len < 0x18:
+            raise ValueError(
+                f"packet too short for command at offset {offset:#x}"
+            )
         if packet_len > 20 * 1024 * 1024:
             raise ValueError(
                 f"unreasonable packet length {packet_len} "
@@ -48,16 +53,15 @@ def iter_kcp_packet_frames(buffer: bytes) -> list[ParsedPacketFrame]:
 
 def pop_complete_kcp_packet_frames(
     buffer: bytearray,
-) -> list[ParsedPacketFrame]:
+) -> Iterator[ParsedPacketFrame]:
     """
     Incremental variant of KcpLinkClient::DoRecvData().
 
     Native keeps incomplete packet bytes in Buffer and returns until more RBUDP
     data arrives. This function mirrors that behavior by popping only complete
-    frames and leaving a trailing partial frame in ``buffer``.
+    frames and leaving a trailing partial frame in ``buffer``. Each complete
+    frame is yielded before validating the next header, like DoSinglePacketData.
     """
-    frames: list[ParsedPacketFrame] = []
-
     while len(buffer) >= 0x10:
         if struct.unpack_from("<I", buffer, 0)[0] != 0xFFFFFFFF:
             raise ValueError("invalid packet marker at stream head")
@@ -65,17 +69,17 @@ def pop_complete_kcp_packet_frames(
         packet_len = struct.unpack_from("<I", buffer, 0x04)[0]
         if packet_len == 0:
             raise ValueError("zero packet length at stream head")
+        if packet_len < 0x18:
+            raise ValueError("packet too short for command at stream head")
         if packet_len > 20 * 1024 * 1024:
             raise ValueError(f"unreasonable packet length {packet_len}")
         if len(buffer) < packet_len:
             break
 
         raw = bytes(buffer[:packet_len])
-        del buffer[:packet_len]
         command = struct.unpack_from("<I", raw, 0x14)[0]
-        frames.append(ParsedPacketFrame(command=command, raw=raw))
-
-    return frames
+        del buffer[:packet_len]
+        yield ParsedPacketFrame(command=command, raw=raw)
 
 
 def parse_kcp_packet_frame(

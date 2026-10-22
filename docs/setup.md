@@ -2,14 +2,114 @@
 
 QUII Helper needs two groups of user-specific inputs:
 
-- Runtime configuration in `.env`.
-- Native assets extracted from the Android app in `assets/`.
+- Runtime configuration supplied from code, process environment, or an explicit `.env` file.
+- Native assets extracted from the Android app for operations that need them.
 
 These values are intentionally not bundled with the project because they can differ by app version, country, cloud region, OEM, and device model.
 
+## Using An Installed Package
+
+Use Python 3.10 or newer and a virtual environment. Install the wheel supplied
+for your release with `python -m pip install /path/to/quii_helper.whl`, or an
+exact version from PyPI **after that version has been published**. The prepared
+`0.1.0rc6` candidate has not been published by these changes.
+
+The wheel installs `quii_helper`, not the repository's `examples/`, `docs/`, or
+`.env.example`. Create a separate application directory, download the
+[environment template](https://github.com/xaer981/quii-helper/blob/main/.env.example)
+matching your release, and save a filled-in copy there as `.env`. Put extracted
+assets in that directory's `assets/`. Do not modify `site-packages`.
+
+For example, save this in your application's `app.py`:
+
+```python
+from pathlib import Path
+
+from quii_helper import Camera, load_config
+
+application_dir = Path(__file__).resolve().parent
+camera = Camera(config=load_config(project_root=application_dir))
+print(camera.get_device_info())
+```
+
+This example performs a read-only cloud query when run; importing the library
+alone performs no cloud/device I/O. You can instead construct `AutonomousConfig`
+with explicit values, avoiding `.env` entirely. See
+[Library Configuration](api.md#library-configuration).
+
+Commands starting with `python -m examples.` require a repository checkout or
+the extracted source distribution, run from its root. They are not installed
+as modules by the wheel. Extraction helpers are development tools, not an
+implicit part of library installation.
+
+## Media Prerequisites
+
+`Camera.snapshot()` and MP4 output from `Camera.save_video()` / `capture()`
+invoke the external `ffmpeg` executable. Install a suitable build using the
+[official FFmpeg download page](https://ffmpeg.org/download.html), add its
+executable directory to `PATH`, and restart the terminal/service if necessary.
+On Windows this is the directory containing `ffmpeg.exe`, not the archive itself.
+On Linux, your distribution's FFmpeg package is another option.
+
+Verify from the same terminal or service environment that runs your application:
+
+```text
+ffmpeg -version
+```
+
+Neither pip nor QUII Helper installs this executable. RTSP forwarding, raw
+H.264 output, metadata queries, and door control do not require it. If rendering
+fails, the capture result/error reports the failure and retained raw H.264 path;
+it does not silently treat a missing JPEG/MP4 as success.
+
+## Installing On Linux ARM64
+
+The Python package is platform-independent. Its cryptography dependencies
+contain native code, so use compatible Linux ARM64 wheels rather than copying
+Windows/x86 packages or compiling them on the target device. For example,
+`python -m pip install --only-binary=:all: /path/to/quii_helper.whl` fails
+explicitly if the interpreter/platform has no compatible dependency wheels.
+The supported check targets Debian-based Python 3.11 on ARM64, not ARMv7.
+
+The external PyPI `kcp` package is not required: the RBUDP implementation lives
+inside `quii_helper.protocols`. `cffi`, if needed by `cryptography`, is resolved
+transitively rather than imposed as an independent application dependency.
+
+Embedding applications should install a built wheel or an exact published
+version, not copy the source tree into their handlers. Local CGI door control
+with an explicit password mode requires neither native APK assets nor FFmpeg.
+The `entrance-bot` integration uses a local wheel until a release containing
+these library changes is available; deployment is a separate operation.
+
+On 2026-10-20, installation and `pip check` passed in both entrance-bot ARM64
+images using Python 3.11.17 under QEMU. Each image also passed 11 mocked
+integration tests with networking disabled. The library's 754-test suite
+passed separately on Windows in an environment without the external `kcp`
+package.
+
+The local wheel was subsequently deployed as an entrance-bot dependency on a
+physical Raspberry Pi ARM64. On 2026-10-21, its integration suite passed 140
+tests in an isolated container on that device with networking disabled and
+fake door openers. This verifies that integration on physical ARM64, not live
+preview, FFmpeg rendering, or RTSP capture there. No real door command was
+sent by the validation tests. A new published version is still required before
+replacing entrance-bot's local wheel dependency.
+
+On 2026-10-21, wheel and sdist installation checks also passed in fresh Windows
+Python 3.11 and Linux x86_64 Python 3.10 environments outside the source tree.
+These checks exercised import/configuration/path/logging isolation and a mocked
+local door adapter; they did not connect to a camera or log into the cloud.
+The sdist includes documentation, examples, tests, and the empty `.env.example`.
+Neither artifact includes extracted assets or runtime data. Local validation
+artifacts from that initial check used `0.1.0rc5`; do not publish them as a
+replacement for the already released version. The next prepared candidate is
+`0.1.0rc6` (future Git tag `v0.1.0-rc.6`), not yet published by this preparation.
+See [Release Checklist](../RELEASE_CHECKLIST.md) for CI and PyPI setup.
+
 ## Required Assets
 
-Place these files in the repository `assets/` directory:
+For the standalone examples, place these files in `assets/` under the working
+directory (normally the repository root):
 
 ```text
 assets/
@@ -21,10 +121,26 @@ assets/
 
 Expected sources after APK extraction:
 
-- `libqv-p2p-v2.so`: usually under `lib/<abi>/libqv-p2p-v2.so`.
+- `libqv-p2p-v2.so`: use `lib/arm64-v8a/libqv-p2p-v2.so` from the verified vHome 2.2 build, not an arbitrary `lib/<abi>` file.
 - `ca.pem`, `client.pem`, `client.txt`: usually under `assets/`, `res/raw/`, or app resource folders depending on the APK build.
 
-The package loads these files automatically from `assets/`; no explicit asset path is required.
+The `.so` is read as data, never loaded or executed. Its ABI therefore stays
+`arm64-v8a` even on Windows or Linux x86_64. The loader validates ELF64,
+little-endian AArch64, and SHA-256 fingerprints of all three 4096-byte tables
+at the verified offsets. A truncated file, another ABI, or different tables
+raises `AssetMissingError` rather than deriving an incorrect key. The fallback
+layout `assets/lib/arm64-v8a/libqv-p2p-v2.so` is also accepted.
+
+Other app builds are **not** automatically supported: native inspection must
+confirm table layout/content before adding another profile. See
+[Native Crypto Asset Validation](protocol-notes.md#native-crypto-asset-validation).
+The fingerprints check compatibility, not the provenance or trustworthiness
+of a downloaded APK.
+
+Embedding applications can use their own asset directory with
+`Camera(assets_dir=...)` or `load_config(assets_dir=...)`. Nothing needs to be
+copied into `site-packages`. Local door control with a verified explicit
+password mode does not read these assets; preview/cloud discovery may need them.
 
 ## `.env`
 
@@ -65,6 +181,14 @@ Optional values:
 
 Do not commit `.env`.
 
+The entry point and examples explicitly load this file. Library code should
+use `Camera(config=load_config(project_root=...))` to opt in, or pass a plain
+`AutonomousConfig` without file loading. `Camera()` alone uses process
+environment values. `load_config()` uses python-dotenv's non-mutating
+`dotenv_values()` reader; unlike `load_dotenv()`, it does not populate
+`os.environ`. Applications that already call `load_dotenv()` themselves can
+continue doing so before constructing `Camera()`.
+
 Generate `CLOUD_CLIENT_UUID` once:
 
 ```powershell
@@ -75,7 +199,7 @@ Do not regenerate it on every run.
 
 ## Discovering Cloud Values
 
-Run the helper:
+From a repository checkout or extracted source distribution, run the helper:
 
 ```powershell
 python -m examples.discover_env_values
@@ -103,12 +227,13 @@ Some app traffic or decompiled constants may show auth URLs with a suffix like:
 
 QUII Helper does not require this suffix in `.env`; use the clean auth URL unless your specific app build fails without it. The discovery helper omits the suffix for the recommended `.env` value.
 
-If authentication fails with `CERTIFICATE_VERIFY_FAILED`, pass `tls_verify=False` through the config object:
+If authentication fails with `CERTIFICATE_VERIFY_FAILED`, load your application
+settings explicitly and override verification for the camera:
 
 ```python
-from quii_helper import AnonymousConfig, Camera
+from quii_helper import Camera, load_config
 
-camera = Camera(config=AnonymousConfig(tls_verify=False))
+camera = Camera(config=load_config(), tls_verify=False)
 ```
 
 Use this only when required by your environment or extracted certificates. Keeping TLS verification enabled is safer.

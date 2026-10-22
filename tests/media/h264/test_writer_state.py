@@ -20,9 +20,9 @@ class MediaWriterStateTests:
                 output_dir=Path(tmp),
             )
 
-        assert "clip.h264" == stream_path.name
-        assert "clip.mp4" == mp4_path.name
-        assert "clip.jpg" == snapshot_path.name
+        assert "clip.raw.h264" == stream_path.name
+        assert "clip.raw.mp4" == mp4_path.name
+        assert "clip.raw.jpg" == snapshot_path.name
 
     def test_input_fps_for_target_duration_matches_existing_intervals(
         self,
@@ -69,8 +69,15 @@ class MediaWriterStateTests:
             mp4_ok=True,
             snapshot_ok=False,
             keep_raw_h264=False,
+            render_snapshot=False,
         )
         assert should_remove_raw_h264(
+            mp4_ok=False,
+            snapshot_ok=True,
+            keep_raw_h264=False,
+            render_video=False,
+        )
+        assert not should_remove_raw_h264(
             mp4_ok=False,
             snapshot_ok=True,
             keep_raw_h264=False,

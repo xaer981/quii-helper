@@ -17,6 +17,18 @@ def _cpacket(bitstream: bytes, *, frame_tag: int = 0xE1) -> bytes:
 
 
 class H264LiveAssemblerTests:
+    def test_frame_history_is_bounded_but_total_count_is_not(self) -> None:
+        assembler = H264LiveAssembler()
+        decoded = {
+            "header": SimpleNamespace(packet_type=0xA0),
+            "payload": _cpacket(b"\x00\x00\x00\x01\x65idr"),
+        }
+        for _ in range(2000):
+            assert len(assembler.feed_message(decoded)) == 1
+        assert len(assembler.frame_info) == 128
+        assert assembler.stats["frames"] == 2000
+        assert assembler.stats["access_units"] == 2000
+
     def test_feed_message_emits_access_units_to_sink(self) -> None:
         emitted = []
         assembler = H264LiveAssembler(sink=emitted.append)

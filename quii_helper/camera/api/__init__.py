@@ -191,6 +191,7 @@ from quii_helper.camera.settings.options import (
     validate_output_path,
 )
 from quii_helper.camera.streaming import CameraRtspStream
+from quii_helper.cloud.alarms import CameraCallEventPage, fetch_call_events
 from quii_helper.cloud.devices import (
     fetch_cloud_device_list,
     find_cloud_device,
@@ -205,7 +206,11 @@ from quii_helper.cloud.shadow import (
     CameraDeviceShadowSwitchState,
     fetch_device_shadow_info,
 )
-from quii_helper.config import AutonomousConfig, RuntimeCredentials
+from quii_helper.config import (
+    AutonomousConfig,
+    RuntimeCredentials,
+    load_config,
+)
 from quii_helper.device.control import (
     CameraDoorOpenResult,
     UnlockPasswordMode,
@@ -366,9 +371,9 @@ class Camera:
 
     Configuration:
         Values can be supplied through an `AutonomousConfig` instance, through
-        keyword overrides, or through environment-backed defaults loaded by the
-        config layer. Keyword arguments override the passed config object for
-        this `Camera` instance only.
+        keyword overrides, or through process environment defaults. Loading a
+        `.env` file is explicit: pass `config=load_config(...)`. Keyword
+        arguments override the passed config for this instance only.
     """
 
     def __init__(
@@ -391,6 +396,8 @@ class Camera:
         ca_path: str | Path | None = None,
         cert_path: str | Path | None = None,
         key_path: str | Path | None = None,
+        assets_dir: str | Path | None = None,
+        auth_version: str | None = None,
         ip_region_id: int | None = None,
         live_play_payload: str | None = None,
         live_inner: bool | None = None,
@@ -403,7 +410,7 @@ class Camera:
         stream: int | None = None,
         stream_quality: str | int | None = None,
         preview_settings: PreviewCaptureSettings | None = None,
-        data_dir: str | Path = DATA_DIR,
+        data_dir: str | Path | None = None,
         emit: EmitCallback | None = None,
         status: StatusCallback | None = None,
     ) -> None:
@@ -411,7 +418,7 @@ class Camera:
 
         Args:
             config: Optional base configuration. If omitted, defaults are read
-                from the config layer, including `.env` values.
+                from the process environment, without reading `.env`.
             device_id: Device identifier used by the cloud and P2P services.
             cloud_username: Alias for `cloud_account`.
             cloud_account: Cloud account/login used for runtime credentials.
@@ -420,7 +427,7 @@ class Camera:
                 `/tdkcgi` HTTP methods.
             auth_code: Device auth code used by local `/tdkcgi` HTTP methods.
             unlock_password: Door-opening password. Defaults to
-                `UNLOCK_PASSWORD` from `.env`, separately from `auth_code`.
+                configured `UNLOCK_PASSWORD`, separately from `auth_code`.
             client_id: Client UUID sent to cloud, UST, and MQTT services.
             service_url: Cloud service-discovery URL.
             auth_url: Cloud user-auth URL.
@@ -430,6 +437,9 @@ class Camera:
             ca_path: TLS CA certificate path for cloud service discovery.
             cert_path: TLS client certificate path for cloud service discovery.
             key_path: TLS client private key path for cloud service discovery.
+            assets_dir: Native asset directory, defaulting to `./assets`.
+                Sets default TLS paths unless individual paths are supplied.
+            auth_version: Cloud XML protocol version from the original app.
             ip_region_id: Cloud login IP region id.
             live_play_payload: QUII live-play payload mode, usually `"path"`.
             live_inner: Whether to use the inner live-play packet variant.
@@ -446,6 +456,7 @@ class Camera:
             preview_settings: Low-level capture settings. Most users should
                 keep the default.
             data_dir: Directory for generated media and optional diagnostics.
+                Defaults to `./data`; relative paths are anchored at construction.
             emit: Callback for structured debug summaries.
             status: Callback for user-facing status messages.
 
@@ -454,13 +465,17 @@ class Camera:
                 an invalid non-negative option is provided.
         """
         self.config = resolve_camera_config(
-            config or AutonomousConfig(),
+            config if config is not None else load_config(load_env_file=False),
             **camera_config_kwargs(locals()),
         )
         self.preview_settings = (
             preview_settings or DEFAULT_PREVIEW_CAPTURE_SETTINGS
         )
-        self.data_dir = Path(data_dir)
+        self.data_dir = (
+            (Path(data_dir) if data_dir is not None else DATA_DIR)
+            .expanduser()
+            .resolve()
+        )
         self.emit = emit or _default_emit
         self.status = status or _default_status
         self.connector = CameraConnector(self.config)
@@ -544,6 +559,7 @@ class Camera:
                 fetch_cloud_device_list(
                     self.config,
                     session_id=credentials.session_id,
+                    cookie_jar=self.connector.cookie_jar,
                 ),
                 self.config.device_id,
             )
@@ -572,6 +588,53 @@ class Camera:
         return fetch_device_shadow_info(
             self.config,
             credentials=self._fetch_runtime_credentials(),
+        )
+
+    def get_call_events(
+        self,
+        *,
+        page: int = 0,
+        page_size: int = 15,
+        max_id: str = "0",
+        start_time: str = "",
+        end_time: str = "",
+    ) -> CameraCallEventPage:
+        """Read one page of incoming calls from the cloud UserAlarm journal.
+
+        Args:
+            page: Zero-based page number. Start with zero for a fresh query.
+            page_size: Positive number of records requested per page.
+            max_id: Native pagination value. Use "0" for a fresh query, then
+                pass the returned max_id together with the next page number.
+                This is not a since-id cursor for new calls.
+            start_time: Optional lower vendor-local time bound, formatted as
+                YYYY-MM-DD HH:MM:SS. No timezone conversion is performed.
+            end_time: Optional upper time bound, in the same format.
+
+        Returns:
+            CameraCallEventPage with event-type-19 calls for this device.
+            Event type 20 (call received/handled) is not a new incoming call.
+
+        Raises:
+            ConfigurationError: Invalid query parameters or missing settings.
+            QuiiConnectionError: Discovery, authentication, transport, or
+                journal access failed. A failure is never an empty page.
+
+        Each query performs cloud login and a separate alarm client-login with
+        an isolated reader id and cookie jar. The latter may create a client
+        record/session on the server, but contains no push token. It never
+        logs out the Android client, changes notification settings, marks
+        records read, opens a preview, answers a call, or opens the door.
+        Tokenless login acceptance and history delivery without the Android
+        app require server/device testing.
+        """
+        return fetch_call_events(
+            self.config,
+            page=page,
+            page_size=page_size,
+            max_id=max_id,
+            start_time=start_time,
+            end_time=end_time,
         )
 
     def get_iot_command_support(self) -> CameraIotCommandSupportInfo:
@@ -3318,7 +3381,7 @@ class Camera:
     def serve_rtsp(
         self,
         *,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int = 8554,
         path: str = "/live",
     ) -> CameraRtspStream:
@@ -3336,7 +3399,7 @@ class Camera:
             ```
 
         Args:
-            host: Interface to bind. Use `"0.0.0.0"` to listen on all
+            host: Interface to bind; defaults to loopback. Use `"0.0.0.0"` to listen on all
                 interfaces.
             port: TCP port for the RTSP server.
             path: RTSP path, for example `"/live"`.

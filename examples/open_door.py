@@ -1,11 +1,13 @@
 """Print capability 24 and send one real door-opening command in auto mode."""
 
-from quii_helper import Camera
+from quii_helper import Camera, load_config
+from quii_helper.support.log import configure_logging
 
 
 def main() -> None:
     """Open the configured door once using environment-backed settings."""
-    camera = Camera()
+    configure_logging(replace_existing=True)
+    camera = Camera(config=load_config())
     info = camera.get_device_info()
     print(
         f"Capability 24 (TYPE_ENCRYPY_SHA256): {info.supports_sha256_password}",

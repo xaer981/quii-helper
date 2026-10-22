@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from dotenv import dotenv_values
 
 from quii_helper.config import AutonomousConfig, load_config
 from quii_helper.config.settings_loader import (
@@ -16,6 +17,23 @@ class SettingsLoaderTests:
 
     def teardown_method(self) -> None:
         reset_default_settings_cache()
+
+    def test_env_template_leaves_door_control_unconfigured(self) -> None:
+        template = Path(__file__).resolve().parents[2] / ".env.example"
+        values = dotenv_values(template, interpolate=False)
+        assert values["UNLOCK_PASSWORD"] == ""
+
+    def test_loaded_settings_repr_hides_authentication_values(self) -> None:
+        values = {
+            "CLOUD_PASSWORD": "test-cloud-secret",
+            "AUTH_CODE": "test-auth-secret",
+            "DEVICE_PASSWORD": "test-device-secret",
+            "UNLOCK_PASSWORD": "test-unlock-secret",
+        }
+        settings = SettingsLoader(env=values).load()
+        assert all(value not in repr(settings) for value in values.values())
+        assert settings.cloud_password == values["CLOUD_PASSWORD"]
+        assert settings.auth_code == values["AUTH_CODE"]
 
     def test_loads_unlock_password_from_dotenv(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -139,14 +157,85 @@ class SettingsLoaderTests:
         assert AutonomousConfig is _config_type
         assert not has_default_settings_cache()
 
-    def test_autonomous_config_instance_keeps_convenient_env_defaults(
+    def test_autonomous_config_is_independent_of_process_defaults(
         self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         assert not has_default_settings_cache()
 
-        AutonomousConfig()
+        monkeypatch.setenv("CAMERA_APP_ID", "not-an-integer")
+        monkeypatch.setenv("CLOUD_ACCOUNT", "unrelated-account")
+        config = AutonomousConfig()
+        assert config.cloud_account == ""
+        assert config.app_id == 0
+        assert not has_default_settings_cache()
 
-        assert has_default_settings_cache()
+    def test_dotenv_loading_is_isolated_and_does_not_mutate_process_env(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import os
+
+        monkeypatch.delenv("UNLOCK_PASSWORD", raising=False)
+        for name in ("first", "second"):
+            root = tmp_path / name
+            root.mkdir()
+            (root / ".env").write_text(
+                f"UNLOCK_PASSWORD={name}\n", encoding="utf-8"
+            )
+        first = load_config(project_root=tmp_path / "first")
+        second = load_config(project_root=tmp_path / "second")
+        assert first.unlock_password == "first"
+        assert second.unlock_password == "second"
+        assert "UNLOCK_PASSWORD" not in os.environ
+        assert not has_default_settings_cache()
+
+    def test_process_env_overrides_dotenv_without_changing_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("UNLOCK_PASSWORD", "process-value")
+        path = tmp_path / ".env"
+        path.write_text("UNLOCK_PASSWORD=file-value\n", encoding="utf-8")
+        assert (
+            load_config(project_root=tmp_path).unlock_password
+            == "process-value"
+        )
+        assert (
+            path.read_text(encoding="utf-8") == "UNLOCK_PASSWORD=file-value\n"
+        )
+
+    def test_explicit_env_ignores_dotenv_and_process_values(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("CAMERA_APP_ID", "bad-process-value")
+        (tmp_path / ".env").write_text(
+            "CAMERA_APP_ID=bad-file-value\n", encoding="utf-8"
+        )
+        config = load_config(
+            project_root=tmp_path, env={"CAMERA_APP_ID": "17"}
+        )
+        assert config.app_id == 17
+
+    def test_assets_directory_and_auth_version_belong_to_config(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        config = load_config(
+            project_root=tmp_path,
+            assets_dir="private-assets",
+            env={"CLOUD_AUTH_VERSION": "v-test"},
+        )
+        assert config.assets_dir == tmp_path / "private-assets"
+        assert config.ca_path == config.assets_dir / "ca.pem"
+        assert config.cert_path == config.assets_dir / "client.pem"
+        assert config.key_path == config.assets_dir / "client.txt"
+        assert config.auth_version == "v-test"
+        assert not config.assets_dir.exists()
 
     def test_load_config_uses_supplied_env_without_default_cache(self) -> None:
         config = load_config(

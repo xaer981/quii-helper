@@ -7,6 +7,8 @@ from the package root.
 
 from quii_helper.camera import (
     Camera,
+    CameraCallEvent,
+    CameraCallEventPage,
     CameraCaptureError,
     CameraCaptureResult,
     CameraDeviceAlarmChannel,
@@ -120,6 +122,7 @@ from quii_helper.camera import (
 from quii_helper.config import (
     AutonomousConfig,
     RuntimeCredentials,
+    load_config,
 )
 from quii_helper.network import LanDeviceCandidate
 from quii_helper.preview.pipeline.config import PreviewCaptureSettings
@@ -135,6 +138,8 @@ __all__ = [
     "AssetMissingError",
     "AutonomousConfig",
     "Camera",
+    "CameraCallEvent",
+    "CameraCallEventPage",
     "CameraCaptureError",
     "CameraCaptureResult",
     "CameraDoorOpenResult",
@@ -251,4 +256,5 @@ __all__ = [
     "QuiiConnectionError",
     "QuiiHelperError",
     "RuntimeCredentials",
+    "load_config",
 ]

@@ -68,7 +68,7 @@ class PreviewFragmentFlowStateTests:
         assert {
             "msg_index": 3,
             "source": "wrapped_quii_fragmented_remainder",
-            "fragmented_media": "drop_short_remainder",
+            "fragmented_media": "buffer_short_remainder",
             "blob_len": 12,
         } == (
             short_fragment_remainder_summary(
@@ -208,7 +208,7 @@ class PreviewFragmentFlowStateTests:
             store_media_messages=False,
         )
 
-        assert [decoded] == decoded_messages
+        assert [] == decoded_messages
         assert [] == media_messages
         assert [decoded] == streamed
 

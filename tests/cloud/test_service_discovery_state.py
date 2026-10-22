@@ -36,6 +36,7 @@ class CloudServiceDiscoveryStateTests:
     def test_cloud_request_kwargs_preserve_existing_fields(self) -> None:
         config = AutonomousConfig(
             auth_url="https://auth.example",
+            auth_version="v-test",
             client_id="client-1",
             oem="OEM",
             app_id=12,
@@ -45,6 +46,7 @@ class CloudServiceDiscoveryStateTests:
 
         assert {
             "auth_url": "https://auth.example",
+            "auth_version": "v-test",
             "ip_region_id": 56,
             "client_id": "client-1",
             "oem": "OEM",
@@ -55,6 +57,7 @@ class CloudServiceDiscoveryStateTests:
         } == (cloud_login_kwargs(config))
         assert {
             "auth_url": "https://auth.example",
+            "auth_version": "v-test",
             "client_id": "client-1",
             "oem": "OEM",
             "app_id": 12,

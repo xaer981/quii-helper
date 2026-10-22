@@ -1,0 +1,10 @@
+include CHANGELOG.md COMPATIBILITY.md CONTRIBUTING.md RELEASE_CHECKLIST.md SECURITY.md
+graft docs
+graft examples
+graft tests
+recursive-include .github/scripts *.py
+recursive-include .github/workflows *.yml
+prune assets
+prune data
+global-exclude .env .env.* *.pem *.key *.so *.py[cod]
+include .env.example

@@ -3,8 +3,6 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from typing import cast
 
-from quii_helper.cloud.config.defaults import CLOUD_AUTH_VERSION
-
 ContentBuilder = Callable[[ET.Element], None]
 
 
@@ -25,6 +23,7 @@ def build_userauth_xml(
     content_class: str | None = None,
     session_id: str | None = None,
     seq: int = 0,
+    auth_version: str = "",
 ) -> bytes:
     envelope = ET.Element("envelope")
 
@@ -44,7 +43,7 @@ def build_userauth_xml(
     if session_id:
         ET.SubElement(header, "session").text = session_id
     ET.SubElement(header, "user-data")
-    ET.SubElement(header, "version").text = CLOUD_AUTH_VERSION
+    ET.SubElement(header, "version").text = auth_version
 
     xml = cast(
         bytes, ET.tostring(envelope, encoding="utf-8", xml_declaration=False)

@@ -37,8 +37,8 @@ class RbUdpReceiveStreamStateTests:
         summary = receive_stream_summary(
             {"initialized": 2, "acked": 3},
             {
-                (pending.word4, pending.word8): pending,
-                (completed.word4, completed.word8): completed,
+                1: pending,
+                2: completed,
             },
         )
 
@@ -64,9 +64,20 @@ class RbUdpReceiveStreamStateTests:
         )
         cached = RbUdpReceiveStreamState(word4=5, word8=6, cache={1: b"x"})
 
-        assert not has_pending_receive_streams({(1, 2): empty})
-        assert has_pending_receive_streams({(3, 4): buffered})
-        assert has_pending_receive_streams({(5, 6): cached})
+        assert not has_pending_receive_streams({1: empty})
+        assert has_pending_receive_streams({2: buffered})
+        assert has_pending_receive_streams({3: cached})
+
+    def test_kcp_partial_is_pending_but_does_not_occupy_transport_buffer(self):
+        state = RbUdpReceiveStreamState(
+            word4=1, word8=2, kcp_buffer=bytearray(b"partial")
+        )
+        assert has_pending_receive_streams({1: state})
+        assert (
+            receive_stream_summary({}, {1: state})["streams"][0]["buffered"]
+            == 7
+        )
+        assert receive_ack_status_word(len(state.buffer)) == 0xFFFF0900
 
     def test_append_receive_stream_payload_updates_buffer_and_sequence(
         self,
@@ -103,6 +114,7 @@ class RbUdpReceiveStreamStateTests:
         assert b"abcd" == bytes(state.buffer)
         assert 13 == state.next_local_id
         assert {20: b"z"} == state.cache
+        assert state.cached_bytes == 1
         assert [10, 12] == [event.local_id for event in events]
         assert [2, 1] == [event.payload_len for event in events]
         assert all(event.from_cache for event in events)

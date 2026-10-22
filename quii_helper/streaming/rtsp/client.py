@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
+from collections import deque
+from contextlib import ExitStack
 from typing import TYPE_CHECKING
 
 from quii_helper.streaming.rtsp.constants import PUBLIC_METHODS, RTSP_VERSION
-from quii_helper.streaming.rtsp.request import RtspRequest, parse_request
+from quii_helper.streaming.rtsp.request import (
+    RtspRequest,
+    RtspRequestBuffer,
+    parse_request,
+)
 from quii_helper.streaming.rtsp.sdp import build_h264_sdp
 from quii_helper.streaming.rtsp.transport import (
     client_ports,
@@ -14,6 +21,11 @@ from quii_helper.streaming.rtsp.transport import (
 
 if TYPE_CHECKING:
     from quii_helper.streaming.rtsp.server import RtspH264Server
+
+REQUEST_TIMEOUT_SECONDS = 10.0
+MAX_QUEUED_ACCESS_UNITS = 32
+MAX_QUEUED_RTP_BYTES = 4 * 1024 * 1024
+MAX_CLIENT_LAG_SECONDS = 2.0
 
 
 class RtspClient:
@@ -33,6 +45,14 @@ class RtspClient:
         self.udp_rtp_sock: socket.socket | None = None
         self.udp_rtcp_sock: socket.socket | None = None
         self._send_lock = threading.RLock()
+        self._outgoing_condition = threading.Condition()
+        self._outgoing: deque[tuple[list[bytes], int, float]] = deque()
+        self._outgoing_bytes = 0
+        self._sender_thread = threading.Thread(
+            target=self._send_loop,
+            name=f"quii-rtsp-send-{address[0]}:{address[1]}",
+            daemon=True,
+        )
         self._thread = threading.Thread(
             target=self._run,
             name=f"quii-rtsp-client-{address[0]}:{address[1]}",
@@ -42,14 +62,68 @@ class RtspClient:
 
     def start(self) -> None:
         self.sock.settimeout(0.5)
-        self._thread.start()
+        try:
+            self._thread.start()
+            self._sender_thread.start()
+        except BaseException:
+            self.close()
+            raise
 
-    def send_rtp_packets(self, packets: list[bytes]) -> bool:
-        if self.transport == "udp":
-            return self._send_udp_rtp_packets(packets)
+    def enqueue_rtp_packets(self, packets: list[bytes]) -> bool:
+        """Queue a complete access unit without blocking the camera producer."""
+        size = sum(len(packet) for packet in packets)
+        with self._outgoing_condition:
+            if self._closed:
+                return False
+            if not self.playing:
+                return True
+            if (
+                len(self._outgoing) >= MAX_QUEUED_ACCESS_UNITS
+                or self._outgoing_bytes + size > MAX_QUEUED_RTP_BYTES
+            ):
+                return False
+            self._outgoing.append((packets, size, time.monotonic()))
+            self._outgoing_bytes += size
+            self._outgoing_condition.notify()
+            return True
+
+    def _send_loop(self) -> None:
+        try:
+            while True:
+                with self._outgoing_condition:
+                    self._outgoing_condition.wait_for(
+                        lambda: self._closed or bool(self._outgoing)
+                    )
+                    if self._closed:
+                        return
+                    packets, size, enqueued_at = self._outgoing.popleft()
+                with self._send_lock:
+                    if self.playing and not self.send_rtp_packets(
+                        packets, deadline=enqueued_at + MAX_CLIENT_LAG_SECONDS
+                    ):
+                        return
+                with self._outgoing_condition:
+                    if not self._closed:
+                        self._outgoing_bytes -= size
+        finally:
+            self.server.remove_client(self)
+
+    def send_rtp_packets(
+        self, packets: list[bytes], *, deadline: float | None = None
+    ) -> bool:
         try:
             with self._send_lock:
+                if self._closed:
+                    return False
+                if self.transport == "udp":
+                    return self._send_udp_rtp_packets(
+                        packets, deadline=deadline
+                    )
                 for packet in packets:
+                    if self._closed or (
+                        deadline is not None and time.monotonic() >= deadline
+                    ):
+                        return False
                     frame = (
                         b"$"
                         + bytes([self.interleaved_rtp_channel & 0xFF])
@@ -62,18 +136,15 @@ class RtspClient:
             return False
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self.playing = False
-        for udp_sock in (self.udp_rtp_sock, self.udp_rtcp_sock):
-            if udp_sock is not None:
-                try:
-                    udp_sock.close()
-                except OSError:
-                    pass
-        self.udp_rtp_sock = None
-        self.udp_rtcp_sock = None
+        with self._outgoing_condition:
+            if self._closed:
+                return
+            self._closed = True
+            self.playing = False
+            self._outgoing.clear()
+            self._outgoing_bytes = 0
+            self._outgoing_condition.notify_all()
+        # Interrupt a blocked send before waiting for any sender-owned lock.
         try:
             self.sock.shutdown(socket.SHUT_RDWR)
         except OSError:
@@ -82,21 +153,49 @@ class RtspClient:
             self.sock.close()
         except OSError:
             pass
+        self._close_udp_transport()
 
-    def _send_udp_rtp_packets(self, packets: list[bytes]) -> bool:
-        if self.udp_rtp_sock is None or self.udp_rtp_target is None:
+    def _close_udp_transport(self) -> None:
+        with self._outgoing_condition:
+            sockets = self.udp_rtp_sock, self.udp_rtcp_sock
+            self.udp_rtp_sock = None
+            self.udp_rtcp_sock = None
+            self.udp_rtp_target = None
+        for udp_sock in sockets:
+            if udp_sock is not None:
+                try:
+                    udp_sock.close()
+                except OSError:
+                    pass
+
+    def _send_udp_rtp_packets(
+        self, packets: list[bytes], *, deadline: float | None = None
+    ) -> bool:
+        sock, target = self.udp_rtp_sock, self.udp_rtp_target
+        if sock is None or target is None:
             return False
         try:
             for packet in packets:
-                self.udp_rtp_sock.sendto(packet, self.udp_rtp_target)
+                if self._closed or (
+                    deadline is not None and time.monotonic() >= deadline
+                ):
+                    return False
+                sock.sendto(packet, target)
             return True
         except OSError:
             return False
 
     def _run(self) -> None:
-        buffer = b""
+        buffer = RtspRequestBuffer()
+        pending_since: float | None = None
         try:
             while not self._closed and not self.server.stop_event.is_set():
+                if (
+                    pending_since is not None
+                    and time.monotonic() - pending_since
+                    >= REQUEST_TIMEOUT_SECONDS
+                ):
+                    break
                 try:
                     chunk = self.sock.recv(4096)
                 except socket.timeout:
@@ -105,13 +204,22 @@ class RtspClient:
                     break
                 if not chunk:
                     break
-                buffer += chunk
-                while b"\r\n\r\n" in buffer:
-                    raw_request, buffer = buffer.split(b"\r\n\r\n", 1)
-                    try:
-                        self._handle_request(raw_request.decode("latin1"))
-                    except OSError:
-                        return
+                try:
+                    requests = buffer.feed(chunk)
+                    for request in requests:
+                        if self._closed:
+                            break
+                        self._handle_request(request)
+                except ValueError:
+                    self._send_response(400, "Bad Request", cseq="0")
+                    return
+                pending_since = (
+                    (pending_since or time.monotonic())
+                    if buffer.pending
+                    else None
+                )
+        except OSError:
+            return
         finally:
             self.server.remove_client(self)
 
@@ -147,29 +255,36 @@ class RtspClient:
             self._handle_setup(request)
             return
         if method == "PLAY":
-            self.playing = True
-            self._send_response(
-                200,
-                "OK",
-                cseq=request.cseq,
-                headers={
-                    "Session": self.server.session_id,
-                    "RTP-Info": (
-                        f"url={self.server.url}/trackID=0;"
-                        f"seq={self.server.sequence_number & 0xFFFF};"
-                        f"rtptime={self.server.rtp_timestamp()}"
-                    ),
-                },
-            )
+            with self._send_lock:
+                self.playing = True
+                self._send_response(
+                    200,
+                    "OK",
+                    cseq=request.cseq,
+                    headers={
+                        "Session": self.server.session_id,
+                        "RTP-Info": (
+                            f"url={self.server.url}/trackID=0;"
+                            f"seq={self.server.sequence_number & 0xFFFF};"
+                            f"rtptime={self.server.rtp_timestamp()}"
+                        ),
+                    },
+                )
             return
         if method == "PAUSE":
-            self.playing = False
-            self._send_response(
-                200,
-                "OK",
-                cseq=request.cseq,
-                headers={"Session": self.server.session_id},
-            )
+            with self._send_lock:
+                self.playing = False
+                with self._outgoing_condition:
+                    self._outgoing_bytes -= sum(
+                        size for _, size, _ in self._outgoing
+                    )
+                    self._outgoing.clear()
+                self._send_response(
+                    200,
+                    "OK",
+                    cseq=request.cseq,
+                    headers={"Session": self.server.session_id},
+                )
             return
         if method == "TEARDOWN":
             self._send_response(
@@ -184,26 +299,36 @@ class RtspClient:
         self._send_response(405, "Method Not Allowed", cseq=request.cseq)
 
     def _handle_setup(self, request: RtspRequest) -> None:
-        transport = request.headers.get("transport", "")
-        transport_upper = transport.upper()
-        if "RTP/AVP/TCP" in transport_upper:
-            self._setup_tcp_transport(request, transport)
-            return
-        if "RTP/AVP" in transport_upper:
-            self._setup_udp_transport(request, transport)
-            return
+        with self._send_lock:
+            if self._closed:
+                return
+            transport = request.headers.get("transport", "")
+            transport_upper = transport.upper()
+            if "RTP/AVP/TCP" in transport_upper:
+                self._setup_tcp_transport(request, transport)
+                return
+            if "RTP/AVP" in transport_upper:
+                self._setup_udp_transport(request, transport)
+                return
 
-        self._send_response(
-            461,
-            "Unsupported Transport",
-            cseq=request.cseq,
-        )
+            self._send_response(
+                461,
+                "Unsupported Transport",
+                cseq=request.cseq,
+            )
 
     def _setup_tcp_transport(
         self, request: RtspRequest, transport: str
     ) -> None:
+        channel = interleaved_channel(transport)
+        if channel is None:
+            self._send_response(
+                461, "Unsupported Transport", cseq=request.cseq
+            )
+            return
+        self._close_udp_transport()
         self.transport = "tcp"
-        self.interleaved_rtp_channel = interleaved_channel(transport)
+        self.interleaved_rtp_channel = channel
         self._send_response(
             200,
             "OK",
@@ -230,14 +355,27 @@ class RtspClient:
             )
             return
 
+        self._close_udp_transport()
         self.transport = "udp"
-        self.udp_rtp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udp_rtcp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udp_rtp_sock.bind((self.server.host, 0))
-        self.udp_rtcp_sock.bind((self.server.host, 0))
-        server_rtp_port = self.udp_rtp_sock.getsockname()[1]
-        server_rtcp_port = self.udp_rtcp_sock.getsockname()[1]
-        self.udp_rtp_target = (self.address[0], ports[0])
+        with ExitStack() as stack:
+            rtp = stack.enter_context(
+                socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            )
+            rtcp = stack.enter_context(
+                socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            )
+            rtp.settimeout(0.5)
+            rtcp.settimeout(0.5)
+            rtp.bind((self.server.host, 0))
+            rtcp.bind((self.server.host, 0))
+            server_rtp_port = rtp.getsockname()[1]
+            server_rtcp_port = rtcp.getsockname()[1]
+            with self._outgoing_condition:
+                if self._closed:
+                    return
+                self.udp_rtp_sock, self.udp_rtcp_sock = rtp, rtcp
+                self.udp_rtp_target = (self.address[0], ports[0])
+                stack.pop_all()
         self._send_response(
             200,
             "OK",

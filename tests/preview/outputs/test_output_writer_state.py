@@ -36,14 +36,13 @@ class PreviewOutputWriterStateTests:
             assert resolve_data_dir(tmp) == base.parent
             assert not base.suffix
 
-    def test_resolve_preview_output_base_strips_suffix_and_keeps_data_dir(
+    def test_resolve_preview_output_base_preserves_literal_base_name(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = resolve_preview_output_base("clip.mp4", tmp)
 
-            assert Path("clip") == Path(base.name)
-            assert not base.suffix
+            assert Path("clip.mp4") == Path(base.name)
 
     def test_resolve_preview_output_base_normalizes_nested_relative_path(
         self,
@@ -51,7 +50,7 @@ class PreviewOutputWriterStateTests:
         with tempfile.TemporaryDirectory() as tmp:
             base = resolve_preview_output_base("nested/clip.jpg", tmp)
 
-            assert "clip" == base.name
+            assert "clip.jpg" == base.name
             assert "nested" == base.parent.name
 
     def test_should_write_diagnostic_candidates_requires_flag_and_candidates(

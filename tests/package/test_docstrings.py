@@ -2,6 +2,8 @@ import inspect
 
 from quii_helper import (
     Camera,
+    CameraCallEvent,
+    CameraCallEventPage,
     CameraDeviceAlarmChannel,
     CameraDeviceAlarmChannelInfo,
     CameraDeviceAlarmDetailChannelInfo,
@@ -117,6 +119,9 @@ from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 
 DOCUMENTED_OBJECTS = (
     Camera,
+    CameraCallEvent,
+    CameraCallEventPage,
+    Camera.get_call_events,
     Camera.__init__,
     Camera.open_door,
     CameraDoorOpenResult,

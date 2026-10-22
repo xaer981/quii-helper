@@ -15,8 +15,11 @@ def decrypt_ust_ciphertext(
     srcid: str,
     sver: str = "1.0.0",
     so_path: str | Path | None = None,
+    assets_dir: str | Path | None = None,
 ) -> bytes:
-    key = derive_ust_aes_key(srcid, sver=sver, so_path=so_path)
+    key = derive_ust_aes_key(
+        srcid, sver=sver, so_path=so_path, assets_dir=assets_dir
+    )
     ciphertext = base64.b64decode(ciphertext_b64)
     if len(ciphertext) % 16 != 0:
         raise ValueError("UST ciphertext is not aligned to AES-CBC block size")
@@ -30,6 +33,7 @@ def decode_ust_mqtt_credentials(
     *,
     srcid: str,
     so_path: str | Path | None = None,
+    assets_dir: str | Path | None = None,
 ) -> tuple[str | None, str | None]:
     username = parsed.mqtt_username
     password = parsed.mqtt_password
@@ -40,21 +44,38 @@ def decode_ust_mqtt_credentials(
 
     if username:
         decoded_user = _decode_ust_text(
-            username, srcid=srcid, sver=sver, so_path=so_path
+            username,
+            srcid=srcid,
+            sver=sver,
+            so_path=so_path,
+            assets_dir=assets_dir,
         )
     if password:
         decoded_pass = _decode_ust_text(
-            password, srcid=srcid, sver=sver, so_path=so_path
+            password,
+            srcid=srcid,
+            sver=sver,
+            so_path=so_path,
+            assets_dir=assets_dir,
         )
     return decoded_user, decoded_pass
 
 
 def _decode_ust_text(
-    ciphertext_b64: str, *, srcid: str, sver: str, so_path: str | Path | None
+    ciphertext_b64: str,
+    *,
+    srcid: str,
+    sver: str,
+    so_path: str | Path | None,
+    assets_dir: str | Path | None = None,
 ) -> str:
     return (
         decrypt_ust_ciphertext(
-            ciphertext_b64, srcid=srcid, sver=sver, so_path=so_path
+            ciphertext_b64,
+            srcid=srcid,
+            sver=sver,
+            so_path=so_path,
+            assets_dir=assets_dir,
         )
         .rstrip(b"\x00")
         .decode(

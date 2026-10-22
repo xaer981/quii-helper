@@ -14,10 +14,12 @@ from quii_helper.streaming.rtp.h264 import (
 )
 from quii_helper.streaming.rtsp.client import RtspClient
 
+MAX_RTSP_CLIENTS = 32
+
 
 @dataclass
 class RtspH264Server:
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8554
     path: str = "/live"
     advertised_host: str | None = None
@@ -51,10 +53,15 @@ class RtspH264Server:
         self.path = _normalize_path(self.path)
         self._stop_event.clear()
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._sock.bind((self.host, self.port))
-        self._sock.listen()
-        self._sock.settimeout(0.25)
+        try:
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._sock.bind((self.host, self.port))
+            self._sock.listen()
+            self._sock.settimeout(0.25)
+        except BaseException:
+            self._sock.close()
+            self._sock = None
+            raise
         self.port = int(self._sock.getsockname()[1])
         self._started_at = time.monotonic()
         self._running = True
@@ -63,7 +70,12 @@ class RtspH264Server:
             name="quii-rtsp-accept",
             daemon=True,
         )
-        self._accept_thread.start()
+        try:
+            self._accept_thread.start()
+        except BaseException:
+            self._accept_thread = None
+            self.close()
+            raise
         return self
 
     @property
@@ -109,26 +121,24 @@ class RtspH264Server:
             return
 
         for client in self._playing_clients():
-            if not client.send_rtp_packets(result.packets):
+            if not client.enqueue_rtp_packets(result.packets):
                 self.remove_client(client)
 
     def close(self) -> None:
-        self._stop_event.set()
-        self._running = False
-        if self._sock is not None:
-            try:
-                self._sock.close()
-            except OSError:
-                pass
-            self._sock = None
-
-        if self._accept_thread is not None:
-            self._accept_thread.join(timeout=1.0)
-            self._accept_thread = None
-
         with self._clients_lock:
+            self._stop_event.set()
+            self._running = False
+            sock, self._sock = self._sock, None
+            thread, self._accept_thread = self._accept_thread, None
             clients = list(self._clients)
             self._clients.clear()
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
         for client in clients:
             client.close()
 
@@ -161,8 +171,18 @@ class RtspH264Server:
                 break
             client = RtspClient(self, client_sock, address)
             with self._clients_lock:
+                if (
+                    self._stop_event.is_set()
+                    or len(self._clients) >= MAX_RTSP_CLIENTS
+                ):
+                    client.close()
+                    continue
                 self._clients.append(client)
-            client.start()
+                try:
+                    client.start()
+                except RuntimeError:
+                    self._clients.remove(client)
+                    client.close()
 
     def _playing_clients(self) -> list[RtspClient]:
         with self._clients_lock:

@@ -6,10 +6,10 @@ def validate_output_path(
 ) -> Path | None:
     if output_path is None:
         return None
-    path = Path(output_path)
+    path = Path(output_path).expanduser()
     if path.suffix and path.suffix.lower() != expected_suffix:
         raise ValueError(f"output_path must use {expected_suffix} suffix")
-    return path
+    return path.resolve()
 
 
 def output_base_from_path(output_path: str | Path | None) -> Path | None:

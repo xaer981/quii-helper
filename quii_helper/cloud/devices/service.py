@@ -1,3 +1,5 @@
+from http.cookiejar import CookieJar
+
 from quii_helper.cloud.devices.models import CloudDeviceListEntry
 from quii_helper.cloud.devices.requests import build_device_list_xml
 from quii_helper.cloud.devices.responses import parse_device_list_response
@@ -11,10 +13,13 @@ def fetch_cloud_device_list(
     session_id: str,
     page_size: int = 50,
     max_pages: int = 10,
+    cookie_jar: CookieJar | None = None,
 ) -> list[CloudDeviceListEntry]:
     """Fetch cloud device-list entries for the logged-in account."""
 
     devices: list[CloudDeviceListEntry] = []
+    if cookie_jar is None:
+        cookie_jar = CookieJar()
     for page in range(max_pages):
         root, _raw = request_userauth(
             build_device_list_xml(
@@ -25,6 +30,7 @@ def fetch_cloud_device_list(
             ),
             auth_url=config.auth_url,
             verify_tls=config.tls_verify,
+            cookie_jar=cookie_jar,
         )
         page_devices, total_count = parse_device_list_response(root)
         devices.extend(page_devices)

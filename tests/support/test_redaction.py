@@ -1,3 +1,4 @@
+from quii_helper.config import RuntimeCredentials
 from quii_helper.support.redaction import (
     REDACTED,
     redact_mapping,
@@ -6,6 +7,32 @@ from quii_helper.support.redaction import (
 
 
 class RedactionTests:
+    def test_runtime_credentials_repr_hides_keys_and_raw_response(
+        self,
+    ) -> None:
+        credentials = RuntimeCredentials(
+            session_id="test-session-secret",
+            dynamic_password="test-dynamic-secret",
+            data_encode_key="test-media-secret",
+            auth_code="test-auth-secret",
+            transparent_basedata="test-opaque-secret",
+            raw={"token": "test-raw-secret"},
+        )
+        assert "secret" not in repr(credentials)
+        assert credentials.session_id == "test-session-secret"
+        assert credentials.raw["token"] == "test-raw-secret"
+
+    def test_redacts_alarm_sessions_and_private_resource_urls(self) -> None:
+        redacted = redact_xml_text(
+            "<header><session>private-session</session></header>"
+            "<content><recordresurl>private-video</recordresurl>"
+            "<recordsubresurl>private-image</recordsubresurl></content>"
+        )
+        assert "private-session" not in redacted
+        assert "private-video" not in redacted
+        assert "private-image" not in redacted
+        assert redacted.count(REDACTED) == 3
+
     def test_redact_mapping_masks_sensitive_keys(self) -> None:
         assert redact_mapping(
             {

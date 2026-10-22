@@ -5,6 +5,11 @@ from quii_helper.support.error_codes import (
 
 
 class ErrorCodeLookupTests:
+    def test_alarm_session_error_uses_native_name(self) -> None:
+        description = describe_error_code(1012, domain="sdk")
+        assert "ALARM_RESULT_SESSION_ERROR" in description
+        assert "session is missing or invalid" in description
+
     def test_unlock_errors_are_distinct_from_generic_cgi_errors(self) -> None:
         info = lookup_error_codes(-4, domain="device_unlock")
 

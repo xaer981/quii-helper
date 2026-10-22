@@ -1,4 +1,5 @@
 ﻿import xml.etree.ElementTree as ET
+from http.cookiejar import CookieJar
 
 from quii_helper.cloud.authentication.responses import (
     parse_device_token_response,
@@ -26,6 +27,8 @@ def login_cloud(
     client_type: int,
     debug: bool = False,
     verify_tls: bool = True,
+    auth_version: str = "",
+    cookie_jar: CookieJar | None = None,
 ) -> dict[str, str]:
     _validate_userauth_identity(
         client_id=client_id,
@@ -49,6 +52,7 @@ def login_cloud(
         content_class=LOGIN_REQ_CLASS,
         session_id=None,
         seq=CLOUD_LOGIN_SEQ,
+        auth_version=auth_version,
         client_id=client_id,
         oem=oem,
         app_id=app_id,
@@ -59,6 +63,7 @@ def login_cloud(
         auth_url=auth_url,
         debug=debug,
         verify_tls=verify_tls,
+        cookie_jar=cookie_jar,
     )
     return parse_login_response(root, raw)
 
@@ -75,6 +80,8 @@ def get_device_token(
     is_hs_device: object | None = None,
     debug: bool = False,
     verify_tls: bool = True,
+    auth_version: str = "",
+    cookie_jar: CookieJar | None = None,
 ) -> dict[str, str]:
     _validate_userauth_identity(
         client_id=client_id,
@@ -94,6 +101,7 @@ def get_device_token(
         content_class=DEVICE_TOKEN_REQ_CLASS,
         session_id=session_id,
         seq=0,
+        auth_version=auth_version,
         client_id=client_id,
         oem=oem,
         app_id=app_id,
@@ -104,6 +112,7 @@ def get_device_token(
         auth_url=auth_url,
         debug=debug,
         verify_tls=verify_tls,
+        cookie_jar=cookie_jar,
     )
     return parse_device_token_response(root, raw)
 

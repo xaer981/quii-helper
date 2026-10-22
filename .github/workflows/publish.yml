@@ -1,0 +1,52 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
+
+jobs:
+  release-ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a release tag from main
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: test "$REF_TYPE" = tag
+
+      - name: Check out release history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the tagged commit to belong to main
+        run: git merge-base --is-ancestor HEAD origin/main
+
+  checks:
+    needs: release-ref
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: checks
+    if: github.repository == 'xaer981/quii-helper' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/quii-helper
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions from this run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Publish checked distributions with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

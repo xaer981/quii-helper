@@ -1,12 +1,25 @@
+from typing import Any
+
 from quii_helper.config import constants
 
 HOST = ""
-CLOUD_ACCOUNT = constants.CLOUD_ACCOUNT
-CLOUD_PASSWORD = constants.CLOUD_PASSWORD
-DEVICE_ID = constants.DEVICE_ID
-AUTH_CODE = constants.AUTH_CODE
-DEVICE_PASSWORD = constants.DEVICE_PASSWORD
-TLS_VERIFY = constants.TLS_VERIFY
+_ENV_NAMES = {
+    "CLOUD_ACCOUNT",
+    "CLOUD_PASSWORD",
+    "DEVICE_ID",
+    "AUTH_CODE",
+    "DEVICE_PASSWORD",
+    "TLS_VERIFY",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Read legacy probe settings only when the probe actually requests them."""
+    if name in _ENV_NAMES:
+        return getattr(constants, name)
+    raise AttributeError(name)
+
+
 NC = "0123456789abcdef0123456789abcdef"
 
 IS_HS_DEVICE = None

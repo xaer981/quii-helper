@@ -181,12 +181,18 @@ class CameraLocalValidationTests:
 
     def test_output_path_suffix_validation(self) -> None:
         assert validate_output_path(None, ".jpg") is None
-        assert Path("frame") == (validate_output_path("frame", ".jpg"))
-        assert Path("frame.jpg") == (validate_output_path("frame.jpg", ".jpg"))
+        assert Path("frame").resolve() == (
+            validate_output_path("frame", ".jpg")
+        )
+        assert Path("frame.jpg").resolve() == (
+            validate_output_path("frame.jpg", ".jpg")
+        )
         with pytest.raises(ValueError):
             validate_output_path("frame.mp4", ".jpg")
 
-        assert Path("frame.jpg") == (validate_output_path("frame.jpg", ".jpg"))
+        assert Path("frame.jpg").resolve() == (
+            validate_output_path("frame.jpg", ".jpg")
+        )
 
     def test_output_base_strips_suffix(self) -> None:
         assert Path("clip") == (output_base_from_path("clip.mp4"))

@@ -6,8 +6,11 @@ from quii_helper.preview.fragments.fragment_summary_state import (
     active_fragmented_media_summary,
     fragmented_media_summary,
 )
+from quii_helper.support.errors import QuiiConnectionError
 
 QUII_HEADER_SIZE = 0x20
+MAX_PENDING_QUII_STREAMS = 32
+MAX_PENDING_QUII_BYTES = 32 * 1024 * 1024
 
 __all__ = [
     "QUII_HEADER_SIZE",
@@ -65,6 +68,26 @@ def fragment_key(
     if from_msg_index is not None:
         return ("remainder", from_msg_index)
     return ("global", source)
+
+
+def check_pending_quii_limits(
+    buffers: Mapping[tuple[object, ...], bytes],
+    fragments: Mapping[tuple[object, ...], Mapping[str, Any]],
+    key: tuple[object, ...],
+    blob: bytes,
+) -> None:
+    """Check both assemblers before copying or retaining another input chunk."""
+    streams = buffers.keys() | fragments.keys() | {key}
+    pending_bytes = sum(len(value) for value in buffers.values())
+    pending_bytes += sum(
+        len(state.get("header_raw", b"")) + len(state["body"])
+        for state in fragments.values()
+    )
+    if (
+        len(streams) > MAX_PENDING_QUII_STREAMS
+        or pending_bytes + len(blob) > MAX_PENDING_QUII_BYTES
+    ):
+        raise QuiiConnectionError("QUII pending buffer limit exceeded")
 
 
 def decoded_needs_more_data(decoded: Mapping[str, object]) -> bool:

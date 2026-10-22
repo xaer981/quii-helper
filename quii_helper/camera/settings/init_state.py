@@ -29,6 +29,8 @@ CAMERA_CONFIG_KWARG_NAMES = (
     "channel",
     "stream",
     "stream_quality",
+    "assets_dir",
+    "auth_version",
 )
 
 

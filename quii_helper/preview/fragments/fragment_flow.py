@@ -99,8 +99,6 @@ class PreviewFragmentFlow:
                 dict(decoded_fragment.get("fragmented_media", {})),
             ),
         )
-        if phase == "live" and owner.should_stop_media_collection():
-            return None
         if not remainder:
             return None
 
@@ -119,7 +117,6 @@ class PreviewFragmentFlow:
                 )
             )
             self.inc_fragmented_media_stat("short_remainders")
-            return None
         return remainder, source, meta
 
     def start_fragmented_media(

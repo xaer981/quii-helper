@@ -23,6 +23,7 @@ from quii_helper.protocols.rbudp.transport.frame_handler import (
 from quii_helper.protocols.rbudp.wrapped.packets import (
     parse_rb_udp_wrapped_packet,
 )
+from quii_helper.support.errors import QuiiConnectionError
 
 
 class _StopEventLike(Protocol):
@@ -64,7 +65,9 @@ class RbUdpReceiveLoop:
             except TimeoutError:
                 continue
             except OSError:
-                break
+                if owner._stop.is_set():
+                    return
+                raise
             if len(data) < 4:
                 continue
             marker = int.from_bytes(data[:4], "little")
@@ -102,6 +105,8 @@ class RbUdpReceiveLoop:
                         wrapped = parse_rb_udp_wrapped_packet(data)
                         owner._handle_wrapped(wrapped)
                         continue
+                except QuiiConnectionError:
+                    raise
                 except Exception as exc:
                     owner._dbg(
                         "marker_parse_fail",
@@ -120,6 +125,8 @@ class RbUdpReceiveLoop:
                 else:
                     wrapped = parse_rb_udp_wrapped_packet(data)
                     owner._handle_wrapped(wrapped)
+            except QuiiConnectionError:
+                raise
             except Exception as exc:
                 owner._dbg(
                     "marker_retry_parse_fail",

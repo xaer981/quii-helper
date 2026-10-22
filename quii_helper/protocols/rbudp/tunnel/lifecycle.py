@@ -82,14 +82,18 @@ class RbUdpTunnelLifecycle:
     def close(self) -> None:
         owner = self._owner
         owner._stop.set()
-        owner._wrapped_fragments.emit_active()
-        self.join_background_threads()
-        if owner._udp_sock is not None:
+        try:
+            owner._wrapped_fragments.emit_active()
+        finally:
             try:
-                owner._udp_sock.close()
-            except Exception:
-                pass
-            owner._udp_sock = None
+                self.join_background_threads()
+            finally:
+                sock, owner._udp_sock = owner._udp_sock, None
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except OSError:
+                        pass
 
     def join_background_threads(self) -> None:
         self._owner._threads.join_all(timeout=0.75)

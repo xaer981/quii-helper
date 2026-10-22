@@ -6,11 +6,29 @@ from quii_helper.cloud.authentication.responses import (
     parse_device_token_response,
     parse_login_response,
 )
+from quii_helper.cloud.http.xml import build_userauth_xml
 from quii_helper.support.errors import QuiiConnectionError
 
 
 def _xml(text: str) -> ET.Element:
     return ET.fromstring(text)
+
+
+def test_userauth_xml_version_is_explicit_and_not_frozen_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLOUD_AUTH_VERSION", "unrelated-value")
+    for version in ("first-version", "second-version"):
+        body = build_userauth_xml(
+            "test",
+            lambda content: None,
+            client_id="client",
+            oem="OEM",
+            app_id=1,
+            client_type=2,
+            auth_version=version,
+        )
+        assert ET.fromstring(body).findtext("header/version") == version
 
 
 class CloudAuthResponseTests:

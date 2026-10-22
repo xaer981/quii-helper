@@ -15,9 +15,9 @@ def h264_output_paths(
         base_path = output_dir / base_path
     base_path = resolve_data_path(base_path)
     return (
-        base_path.with_suffix(".h264"),
-        base_path.with_suffix(".mp4"),
-        base_path.with_suffix(".jpg"),
+        base_path.with_name(base_path.name + ".h264"),
+        base_path.with_name(base_path.name + ".mp4"),
+        base_path.with_name(base_path.name + ".jpg"),
     )
 
 
@@ -37,9 +37,19 @@ def input_fps_for_target_duration(
 
 
 def should_remove_raw_h264(
-    *, mp4_ok: bool, snapshot_ok: bool, keep_raw_h264: bool
+    *,
+    mp4_ok: bool,
+    snapshot_ok: bool,
+    keep_raw_h264: bool,
+    render_video: bool = True,
+    render_snapshot: bool = True,
 ) -> bool:
-    return bool((mp4_ok or snapshot_ok) and not keep_raw_h264)
+    return (
+        not keep_raw_h264
+        and (render_video or render_snapshot)
+        and (not render_video or mp4_ok)
+        and (not render_snapshot or snapshot_ok)
+    )
 
 
 def empty_h264_stream_result(
