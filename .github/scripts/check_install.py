@@ -42,8 +42,8 @@ def smoke() -> None:
         assert (package / "py.typed").is_file()
         camera = Camera(AutonomousConfig(app_id=17))
         assert camera.config.app_id == 17
-        assert camera.data_dir == Path.cwd() / "data"
-        assert camera.config.assets_dir == Path.cwd() / "assets"
+        assert camera.data_dir == (Path.cwd() / "data").resolve()
+        assert camera.config.assets_dir == (Path.cwd() / "assets").resolve()
     logger.info("host sink survived")
     logger.remove(sink)
     assert len(messages) == 1 and "host sink survived" in messages[0]

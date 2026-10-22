@@ -160,6 +160,31 @@ def test_installed_checks_use_both_archives_and_isolated_imports(
     ) < commands.index(tests[0])
 
 
+def test_installed_smoke_accepts_noncanonical_working_directory(
+    tmp_path, monkeypatch
+):
+    import quii_helper
+
+    check = load_script("check_install")
+    root = tmp_path.resolve()
+    monkeypatch.chdir(root)
+    (root / "alias").mkdir()
+    alias = root / "alias" / ".."
+    assert alias != root and alias.resolve() == root
+    monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: alias))
+    # The suite also exercises this check against an installed package.
+    monkeypatch.setattr(
+        check.sys,
+        "prefix",
+        str(Path(quii_helper.__file__).resolve().parents[1]),
+    )
+
+    check.smoke()
+
+    assert not (root / "data").exists()
+    assert not (root / "assets").exists()
+
+
 def test_synthetic_soak_runs_without_camera_or_assets():
     soak = load_script("check_rtsp_soak")
     report = soak.run_soak(3)

@@ -9,6 +9,9 @@ being stabilized.
 
 ## 0.1.0-rc.6 - Unreleased
 
+- Normalize expected paths in installed-package smoke checks, so Windows
+  short-path aliases do not cause false installation failures. Runtime path
+  handling is unchanged; a noncanonical-working-directory regression covers it.
 - Keep RTSP `wait()` responsive to `Ctrl+C` on Windows, with or without a
   timeout, so context-manager cleanup can run without losing a live producer.
 - Accept short (1-31 byte) continuations of active QUII media before applying
