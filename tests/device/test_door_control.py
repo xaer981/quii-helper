@@ -312,10 +312,12 @@ def test_debug_logs_redact_both_passwords(
     sink = logger.add(
         lambda message: messages.append(str(message)), level="DEBUG"
     )
+    logger.enable("quii_helper")
     try:
         _request(debug=True, password_mode=mode)
     finally:
         logger.remove(sink)
+        logger.disable("quii_helper")
 
     output = "".join(messages)
     assert "set.device.opendoor" in output

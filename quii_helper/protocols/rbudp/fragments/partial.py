@@ -20,7 +20,9 @@ class RbUdpFragmentPartialEmitter:
     ) -> None:
         if not streams:
             return
-        for stream in list(streams.values()):
+        active = list(streams.values())
+        streams.clear()
+        for stream in active:
             payload = bytes(stream.payload)
             self.debug(
                 "emit_wrapped_fragment_partial",
@@ -44,4 +46,3 @@ class RbUdpFragmentPartialEmitter:
                 need=stream.inner_total_length,
                 missing=stream.missing,
             )
-        streams.clear()

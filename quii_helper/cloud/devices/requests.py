@@ -31,4 +31,5 @@ def build_device_list_xml(
         oem=config.oem,
         app_id=config.app_id,
         client_type=config.client_type,
+        auth_version=config.auth_version,
     )

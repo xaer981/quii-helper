@@ -14,9 +14,14 @@ def append_zero_to_32(text: str) -> bytes:
 
 
 def generate_ust_seed_and_sbox(
-    srcid: str, *, so_path: str | Path | None = None
+    srcid: str,
+    *,
+    so_path: str | Path | None = None,
+    assets_dir: str | Path | None = None,
 ) -> tuple[bytes, bytes]:
-    data1, data2, data3 = load_p2p_crypto_tables(so_path)
+    data1, data2, data3 = load_p2p_crypto_tables(
+        so_path, assets_dir=assets_dir
+    )
 
     seed = bytearray(32)
     seed[0] = data2[data1[1]]
@@ -38,12 +43,18 @@ def generate_ust_seed_and_sbox(
 
 
 def derive_ust_aes_key(
-    srcid: str, *, sver: str = "1.0.0", so_path: str | Path | None = None
+    srcid: str,
+    *,
+    sver: str = "1.0.0",
+    so_path: str | Path | None = None,
+    assets_dir: str | Path | None = None,
 ) -> bytes:
     if sver != "1.0.0":
         raise ValueError(
             f"unsupported sVer for UST AES key derivation: {sver!r}"
         )
 
-    seed, sbox = generate_ust_seed_and_sbox(srcid, so_path=so_path)
+    seed, sbox = generate_ust_seed_and_sbox(
+        srcid, so_path=so_path, assets_dir=assets_dir
+    )
     return expand_ust_aes_key(seed, sbox)

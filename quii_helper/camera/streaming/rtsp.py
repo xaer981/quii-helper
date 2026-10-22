@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,8 @@ from quii_helper.streaming.rtsp import RtspH264Server
 
 STREAM_PACKET_BATCH_SECONDS = 1.0
 STREAM_PACKET_TIMEOUT_SECONDS = 1.0
+PRODUCER_JOIN_TIMEOUT_SECONDS = 2.0
+PRODUCER_WAIT_INTERVAL_SECONDS = 0.1
 LIVE_PREVIEW_SETUP_SEQ = 0
 LIVE_PREVIEW_PLAY_SEQ = 1
 LIVE_PREVIEW_SETUP_TIMEOUT_SECONDS = 3.0
@@ -51,7 +54,7 @@ class CameraRtspStream:
     data_dir: Path
     emit: EmitCallback
     status: StatusCallback
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8554
     path: str = "/live"
     server: RtspH264Server = field(init=False)
@@ -66,6 +69,10 @@ class CameraRtspStream:
     _error: BaseException | None = field(default=None, init=False, repr=False)
     _started: bool = field(default=False, init=False)
     _ready_announced: bool = field(default=False, init=False)
+    _lifecycle_lock: threading.RLock = field(
+        default_factory=threading.RLock, init=False, repr=False
+    )
+    _closing: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.server = RtspH264Server(
@@ -95,20 +102,34 @@ class CameraRtspStream:
             This stream handle, allowing `Camera.serve_rtsp()` to return a
             started object directly.
         """
-        if self._started:
-            return self
-        self.status("Starting RTSP server")
-        self._error = None
-        self.server.start()
-        self._ready_announced = False
-        self._stop_event.clear()
-        self._thread = threading.Thread(
-            target=self._run_preview_loop,
-            name="quii-camera-rtsp-producer",
-            daemon=True,
-        )
-        self._thread.start()
-        self._started = True
+        with self._lifecycle_lock:
+            if self._closing or (
+                self._stop_event.is_set()
+                and self._thread is not None
+                and self._thread.is_alive()
+            ):
+                raise RuntimeError("RTSP producer is still stopping")
+            if self._started:
+                return self
+            self.status("Starting RTSP server")
+            self._error = None
+            self.server.start()
+            self.assembler = H264LiveAssembler(sink=self.server.publish)
+            self._ready_announced = False
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._run_preview_loop,
+                name="quii-camera-rtsp-producer",
+                daemon=True,
+            )
+            self._started = True
+            try:
+                self._thread.start()
+            except BaseException:
+                self._started = False
+                self._thread = None
+                self.server.close()
+                raise
         return self
 
     def wait(self, timeout: float | None = None) -> None:
@@ -117,26 +138,56 @@ class CameraRtspStream:
         Args:
             timeout: Maximum seconds to wait. `None` waits indefinitely.
 
+        Waiting remains interruptible with `Ctrl+C`, including on Windows.
+        A timeout does not close the stream; use the context manager or `close`.
+
         Raises:
             BaseException: Re-raises the background producer error, if any.
         """
-        if self._thread is not None:
-            self._thread.join(timeout=timeout)
+        with self._lifecycle_lock:
+            thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            deadline = (
+                None if timeout is None else time.monotonic() + max(0, timeout)
+            )
+            # An indefinite join can defer SIGINT on Windows; poll without it.
+            while thread.is_alive():
+                interval = PRODUCER_WAIT_INTERVAL_SECONDS
+                if deadline is not None:
+                    interval = min(interval, deadline - time.monotonic())
+                    if interval <= 0:
+                        break
+                time.sleep(interval)
         if self._error is not None:
             raise self._error
 
     def close(self) -> None:
         """
-        Stop the producer, close the packet stream, and stop RTSP serving.
+        Stop serving and request producer cancellation.
+
+        An in-flight connection may finish at its own network timeout. Restart
+        is rejected until that worker exits; no later playback stage is started.
         """
-        self._stop_event.set()
-        if self._packet_stream is not None:
-            self._packet_stream.close()
-        self.server.close()
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
-            self._thread = None
-        self._started = False
+        with self._lifecycle_lock:
+            if self._closing:
+                return
+            self._closing = True
+            self._stop_event.set()
+            self._started = False
+            packet_stream, thread = self._packet_stream, self._thread
+        try:
+            try:
+                if packet_stream is not None:
+                    packet_stream.close()
+            finally:
+                self.server.close()
+        finally:
+            if thread is not None and thread is not threading.current_thread():
+                thread.join(timeout=PRODUCER_JOIN_TIMEOUT_SECONDS)
+            with self._lifecycle_lock:
+                if thread is None or not thread.is_alive():
+                    self._thread = None
+                self._closing = False
 
     def __enter__(self) -> "CameraRtspStream":
         """Start and return this stream when used as a context manager."""
@@ -148,12 +199,24 @@ class CameraRtspStream:
 
     def _run_preview_loop(self) -> None:
         try:
+            if self._stop_event.is_set():
+                return
             self.status("Fetching runtime credentials")
+            if self._stop_event.is_set():
+                return
             credentials = self.connector.fetch_credentials()
+            if self._stop_event.is_set():
+                return
             self.status("Opening preview session")
+            if self._stop_event.is_set():
+                return
             with self.connector.open_preview(
                 credentials=credentials
             ) as session:
+                with self._lifecycle_lock:
+                    if self._stop_event.is_set():
+                        return
+                    self._packet_stream = TunnelPacketStream(session.tunnel)
                 self.status("Connected")
                 self.emit(session.connection_summary())
                 self.status("Starting live preview")
@@ -161,7 +224,10 @@ class CameraRtspStream:
                     setup_seq=LIVE_PREVIEW_SETUP_SEQ,
                     play_seq=LIVE_PREVIEW_PLAY_SEQ,
                     setup_timeout=LIVE_PREVIEW_SETUP_TIMEOUT_SECONDS,
+                    stop_event=self._stop_event,
                 )
+                if self._stop_event.is_set():
+                    return
                 self.emit({"quii_setup_acked": setup_acked})
                 self.status("Receiving media packets")
                 self._consume_session_packets(session, credentials)
@@ -170,6 +236,10 @@ class CameraRtspStream:
                 return
             self._error = exc
             self.status(f"RTSP producer stopped: {exc}")
+        finally:
+            self.server.close()
+            with self._lifecycle_lock:
+                self._packet_stream = None
 
     def _consume_session_packets(self, session: Any, credentials: Any) -> None:
         artifacts = PreviewArtifactManager(
@@ -202,9 +272,11 @@ class CameraRtspStream:
             media_message_sink=self._feed_assembler_message,
             store_media_messages=False,
         )
-        self._packet_stream = TunnelPacketStream(session.tunnel)
+        packet_stream = self._packet_stream
+        if packet_stream is None:
+            return
         while not self._stop_event.is_set():
-            for packet in self._packet_stream.live_packets(
+            for packet in packet_stream.live_packets(
                 duration=STREAM_PACKET_BATCH_SECONDS,
                 timeout=STREAM_PACKET_TIMEOUT_SECONDS,
                 keepalive_credentials=credentials,
@@ -214,6 +286,8 @@ class CameraRtspStream:
                 processor.process_packet(packet, phase="live")
 
     def _feed_assembler_message(self, decoded: DecodedQuiiMessage) -> None:
+        if self._stop_event.is_set():
+            return
         self.assembler.feed_message(decoded)
         if self.assembler.access_unit_count > 0:
             self._announce_ready_once()

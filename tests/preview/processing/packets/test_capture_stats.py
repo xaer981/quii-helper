@@ -86,9 +86,37 @@ class CaptureStatsTests:
             phase="live",
         )
 
-        assert [decoded] == stats.decoded_messages
+        assert [] == stats.decoded_messages
         assert [] == stats.media_messages
         assert [decoded] == streamed
+
+    def test_streaming_does_not_retain_payloads(self) -> None:
+        received = 0
+
+        def sink(decoded):
+            nonlocal received
+            received += 1
+
+        stats = CaptureStats(
+            media_message_sink=sink, store_media_messages=False
+        )
+        for _ in range(2000):
+            stats.record_processed_packet(
+                summary={},
+                decoded=_decoded(
+                    media_frame={
+                        "frame_tag": 0xE1,
+                        "frame_len": 42,
+                        "frame_stamp": 0,
+                        "width": 960,
+                        "height": 576,
+                    }
+                ),
+                phase="live",
+            )
+        assert received == 2000
+        assert not stats.decoded_messages
+        assert not stats.media_messages
 
     def test_record_processed_packet_does_not_append_flush_media(self) -> None:
         stats = CaptureStats()

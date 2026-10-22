@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from http.cookiejar import CookieJar
+from threading import Event
 from typing import Any
 
 from quii_helper.cloud.services.discovery import fetch_runtime_credentials
@@ -60,11 +62,19 @@ class CameraPreviewSession:
         setup_seq: int = 0,
         play_seq: int = 1,
         setup_timeout: float = 3.0,
+        stop_event: Event | None = None,
     ) -> bool:
+        """Start playback unless cancellation was requested between setup stages."""
+        if stop_event is not None and stop_event.is_set():
+            return False
         setup_acked = self.wait_setup_ack(timeout=setup_timeout)
+        if stop_event is not None and stop_event.is_set():
+            return False
         if not setup_acked:
             self.send_setup(seq=setup_seq)
             setup_acked = self.wait_setup_ack(timeout=setup_timeout)
+        if stop_event is not None and stop_event.is_set():
+            return False
         self.send_play(seq=play_seq)
         return setup_acked
 
@@ -81,9 +91,12 @@ class CameraPreviewSession:
 class CameraConnector:
     def __init__(self, config: AutonomousConfig) -> None:
         self.config = config
+        self.cookie_jar = CookieJar()
 
     def fetch_credentials(self) -> RuntimeCredentials:
-        return fetch_runtime_credentials(self.config)
+        return fetch_runtime_credentials(
+            self.config, cookie_jar=self.cookie_jar
+        )
 
     def open_preview(
         self, *, credentials: RuntimeCredentials | None = None

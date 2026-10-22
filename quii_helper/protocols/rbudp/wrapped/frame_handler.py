@@ -1,3 +1,5 @@
+from collections import deque
+from hashlib import sha256
 from typing import Any, Protocol, cast
 
 from quii_helper.protocols.rbudp.core.models import (
@@ -7,6 +9,9 @@ from quii_helper.protocols.rbudp.core.models import (
     ParsedRbUdpWrappedPacket,
 )
 from quii_helper.protocols.rbudp.lanes.registry import RbUdpLane
+from quii_helper.support.errors import QuiiConnectionError
+
+MAX_WRAPPED_DEBUG_SAMPLES = 128
 
 
 class _EventLike(Protocol):
@@ -16,7 +21,6 @@ class _EventLike(Protocol):
 class RbUdpWrappedFrameHandlerOwner(Protocol):
     _connected: _EventLike
     _quii_setup_acked: _EventLike
-    _wrapped_debug_seen: set[str]
     dest_id: int | None
     dest_ids: dict[int, int]
     local_id: int
@@ -55,6 +59,21 @@ class RbUdpWrappedFrameHandler:
 
     def __init__(self, owner: RbUdpWrappedFrameHandlerOwner) -> None:
         self._owner = owner
+        self._debug_seen: deque[bytes] = deque(
+            maxlen=MAX_WRAPPED_DEBUG_SAMPLES
+        )
+
+    def should_debug_frame(self, packet: bytes) -> bool:
+        """Deduplicate recent diagnostics without retaining media payloads."""
+        if not getattr(
+            getattr(self._owner, "config", None), "rbudp_debug", False
+        ):
+            return False
+        fingerprint = sha256(packet).digest()
+        if fingerprint in self._debug_seen:
+            return False
+        self._debug_seen.append(fingerprint)
+        return True
 
     def handle_parsed_wrapped_frame(
         self,
@@ -67,6 +86,27 @@ class RbUdpWrappedFrameHandler:
         self.debug_parsed_frame(
             parsed, frame_hex=frame_hex, should_debug=should_debug
         )
+
+        if parsed.disconnect is not None:
+            packet = parsed.disconnect.raw
+            if int.from_bytes(packet[0x12:0x14], "little") != 0:
+                return
+            if len(packet) < 0x30:
+                raise QuiiConnectionError("truncated KCP disconnect packet")
+            # Native OnP2PRequDisconect looks up both IDs in the connection map.
+            for offset in (0x2C, 0x28):
+                connection_id = int.from_bytes(
+                    packet[offset : offset + 4], "little"
+                )
+                lane = self._owner._lane_for_src_id(connection_id)
+                if lane is not None and (
+                    connection_id in self._owner.dest_ids
+                    or lane["connect_sent"]
+                ):
+                    raise QuiiConnectionError(
+                        "camera disconnected KCP preview connection"
+                    )
+            return
 
         if parsed.connect is not None:
             self.handle_connect_frame(parsed.connect)
@@ -142,15 +182,12 @@ class RbUdpWrappedFrameHandler:
     def debug_unparsed_wrapped_once(
         self, inner_packet: bytes, exc: Exception
     ) -> None:
-        wrapped_key = inner_packet.hex()
-        owner = self._owner
-        if wrapped_key in owner._wrapped_debug_seen:
+        if not self.should_debug_frame(inner_packet):
             return
-        owner._wrapped_debug_seen.add(wrapped_key)
-        owner._dbg(
+        self._owner._dbg(
             "recv_wrapped_unparsed",
             error=repr(exc),
-            inner_hex=wrapped_key,
+            inner_hex=inner_packet.hex(),
         )
 
     def debug_parsed_frame(

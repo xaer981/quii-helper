@@ -26,6 +26,11 @@ def _run_ffmpeg(command: list[str]) -> tuple[bool, str]:
         return True, ""
     except subprocess.CalledProcessError as exc:
         return False, (exc.stderr or str(exc)).strip()
+    except FileNotFoundError:
+        return False, (
+            "FFmpeg executable not found on PATH; install FFmpeg and verify "
+            "'ffmpeg -version' before saving JPEG/MP4 files."
+        )
     except Exception as exc:
         return False, str(exc)
 

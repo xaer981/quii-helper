@@ -1,5 +1,6 @@
 import ssl
 import urllib.request
+from http.cookiejar import CookieJar
 
 from quii_helper.cloud import get_device_token, login_cloud
 from quii_helper.cloud.config.runtime import (
@@ -74,6 +75,7 @@ def fetch_runtime_credentials(
     client_type: int | None = None,
     ip_region_id: int | None = None,
     tls_verify: bool | None = None,
+    cookie_jar: CookieJar | None = None,
 ) -> RuntimeCredentials:
     resolved = resolve_runtime_config(
         config,
@@ -92,15 +94,19 @@ def fetch_runtime_credentials(
     )
     validate_runtime_config(resolved)
     validate_camera_app_config(resolved)
+    if cookie_jar is None:
+        cookie_jar = CookieJar()
     login = login_cloud(
         resolved.cloud_account,
         resolved.cloud_password,
         **cloud_login_kwargs(resolved),
+        cookie_jar=cookie_jar,
     )
     token = get_device_token(
         login["session_id"],
         resolved.device_id,
         **device_token_kwargs(resolved),
+        cookie_jar=cookie_jar,
     )
     return runtime_credentials_from_cloud_results(login=login, token=token)
 

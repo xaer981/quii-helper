@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from quii_helper.support.errors import ConfigurationError
 
@@ -18,11 +18,11 @@ class EnvironmentSettings:
     default_assets_dir: Path
     default_native_lib_dir: Path
     cloud_account: str
-    cloud_password: str
+    cloud_password: str = field(repr=False)
     device_id: str
     camera_device_host: str
-    auth_code: str
-    device_password: str
+    auth_code: str = field(repr=False)
+    device_password: str = field(repr=False)
     cloud_client_uuid: str
     log_level: str
     cloud_auth_version: str
@@ -43,28 +43,40 @@ class EnvironmentSettings:
 
 
 class SettingsLoader:
-    """Load project settings from `.env` and process environment values."""
+    """Read application settings without changing the process environment."""
 
     def __init__(
         self,
         *,
         project_root: Path | None = None,
+        assets_dir: str | Path | None = None,
         env: Mapping[str, str] | None = None,
         load_env_file: bool = True,
     ) -> None:
-        self.project_root = project_root or self.default_project_root()
+        self.project_root = (
+            (project_root or self.default_project_root())
+            .expanduser()
+            .resolve()
+        )
+        self.assets_dir = (
+            Path(assets_dir) if assets_dir is not None else Path("assets")
+        )
         self.env = env
         self.load_env_file = load_env_file
+        self._file_values: Mapping[str, str | None] = {}
 
     @staticmethod
     def default_project_root() -> Path:
-        return Path(__file__).resolve().parents[2]
+        return Path.cwd()
 
     def load(self) -> EnvironmentSettings:
         if self.load_env_file and self.env is None:
-            load_dotenv(self.project_root / ".env")
+            self._file_values = dotenv_values(self.project_root / ".env")
 
-        assets_dir = self.project_root / "assets"
+        assets_dir = self.assets_dir.expanduser()
+        if not assets_dir.is_absolute():
+            assets_dir = self.project_root / assets_dir
+        assets_dir = assets_dir.resolve()
         native_lib_dir = assets_dir / "lib"
         return EnvironmentSettings(
             project_root=self.project_root,
@@ -159,12 +171,13 @@ class SettingsLoader:
     def env_value(self, name: str) -> str | None:
         if self.env is not None:
             return self.env.get(name)
-        return os.getenv(name)
+        return os.environ.get(name, self._file_values.get(name))
 
 
 def load_environment_settings(
     *,
     project_root: Path | None = None,
+    assets_dir: str | Path | None = None,
     env: Mapping[str, str] | None = None,
     load_env_file: bool = True,
 ) -> EnvironmentSettings:
@@ -172,13 +185,14 @@ def load_environment_settings(
 
     return SettingsLoader(
         project_root=project_root,
+        assets_dir=assets_dir,
         env=env,
         load_env_file=load_env_file,
     ).load()
 
 
 def get_default_settings() -> EnvironmentSettings:
-    """Return cached settings for the default project `.env`."""
+    """Return legacy cached process settings, without loading a `.env` file."""
 
     global _DEFAULT_SETTINGS
 
@@ -187,7 +201,7 @@ def get_default_settings() -> EnvironmentSettings:
 
     with _DEFAULT_SETTINGS_LOCK:
         if _DEFAULT_SETTINGS is None:
-            _DEFAULT_SETTINGS = load_environment_settings()
+            _DEFAULT_SETTINGS = load_environment_settings(load_env_file=False)
         return _DEFAULT_SETTINGS
 
 

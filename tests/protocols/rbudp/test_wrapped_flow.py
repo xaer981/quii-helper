@@ -96,7 +96,6 @@ class _FrameOwner:
     def __init__(self) -> None:
         self._connected = threading.Event()
         self._quii_setup_acked = threading.Event()
-        self._wrapped_debug_seen: set[str] = set()
         self.lane = _lane()
         self.dest_id = None
         self.dest_ids: dict[int, int] = {}

@@ -26,6 +26,7 @@ def service_query_request_parts(
 
 class CloudLoginKwargs(TypedDict):
     auth_url: str
+    auth_version: str
     ip_region_id: int
     client_id: str
     oem: str
@@ -37,6 +38,7 @@ class CloudLoginKwargs(TypedDict):
 
 class DeviceTokenKwargs(TypedDict):
     auth_url: str
+    auth_version: str
     client_id: str
     oem: str
     app_id: int
@@ -48,6 +50,7 @@ class DeviceTokenKwargs(TypedDict):
 def cloud_login_kwargs(config: AutonomousConfig) -> CloudLoginKwargs:
     return {
         "auth_url": config.auth_url,
+        "auth_version": config.auth_version,
         "ip_region_id": config.ip_region_id,
         "client_id": config.client_id,
         "oem": config.oem,
@@ -61,6 +64,7 @@ def cloud_login_kwargs(config: AutonomousConfig) -> CloudLoginKwargs:
 def device_token_kwargs(config: AutonomousConfig) -> DeviceTokenKwargs:
     return {
         "auth_url": config.auth_url,
+        "auth_version": config.auth_version,
         "client_id": config.client_id,
         "oem": config.oem,
         "app_id": config.app_id,

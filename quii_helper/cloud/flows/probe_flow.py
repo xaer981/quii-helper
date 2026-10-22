@@ -1,3 +1,4 @@
+from http.cookiejar import CookieJar
 from typing import Any
 
 from quii_helper.cloud import get_device_token, login_cloud
@@ -23,10 +24,12 @@ class CloudProbeFlow:
             )
             return
 
+        cookie_jar = CookieJar()
         login_result = login_cloud(
             settings.CLOUD_ACCOUNT,
             settings.CLOUD_PASSWORD,
             auth_url=config.auth_url,
+            auth_version=config.auth_version,
             ip_region_id=config.ip_region_id,
             client_id=config.client_id,
             oem=config.oem,
@@ -34,6 +37,7 @@ class CloudProbeFlow:
             client_type=config.client_type,
             debug=True,
             verify_tls=config.tls_verify,
+            cookie_jar=cookie_jar,
         )
         logger.debug("=== cloud_login_parsed ===")
         logger.debug("{}", self._redact_raw(login_result))
@@ -51,6 +55,7 @@ class CloudProbeFlow:
             login_result["session_id"],
             settings.DEVICE_ID,
             auth_url=config.auth_url,
+            auth_version=config.auth_version,
             is_hs_device=settings.IS_HS_DEVICE,
             client_id=config.client_id,
             oem=config.oem,
@@ -58,6 +63,7 @@ class CloudProbeFlow:
             client_type=config.client_type,
             debug=True,
             verify_tls=config.tls_verify,
+            cookie_jar=cookie_jar,
         )
         logger.debug("=== get_device_token_parsed ===")
         logger.debug("{}", self._redact_raw(token_result))

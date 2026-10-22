@@ -2,6 +2,7 @@ from quii_helper.preview.processing.packets.processor_state import (
     process_chained_packet_blob,
     should_build_media_collection_summary,
 )
+from quii_helper.support.errors import QuiiConnectionError
 
 
 def _fake_process_blob(calls: list[dict], results: list[object]):
@@ -20,6 +21,38 @@ def _fake_process_blob(calls: list[dict], results: list[object]):
 
 
 class PreviewPacketProcessorStateTests:
+    def test_stop_request_does_not_discard_chained_packets(self) -> None:
+        calls = []
+        stopped = process_chained_packet_blob(
+            blob=b"x" * 80,
+            source="direct",
+            meta={},
+            phase="live",
+            buffers={},
+            stats={},
+            process_blob=_fake_process_blob(
+                calls, [(True, b"y" * 40), (False, b"")]
+            ),
+            message_index_provider=lambda: 1,
+        )
+        assert stopped
+        assert len(calls) == 2
+
+    def test_stop_request_preserves_incomplete_chained_header(self) -> None:
+        buffers = {}
+        stopped = process_chained_packet_blob(
+            blob=b"x" * 80,
+            source="direct",
+            meta={},
+            phase="live",
+            buffers=buffers,
+            stats={},
+            process_blob=_fake_process_blob([], [(True, b"tail")]),
+            message_index_provider=lambda: 1,
+        )
+        assert stopped
+        assert buffers == {("global", "direct"): b"tail"}
+
     def test_process_chained_packet_buffers_short_header_without_callback(
         self,
     ) -> None:
@@ -66,26 +99,26 @@ class PreviewPacketProcessorStateTests:
         assert 1 == stats["buffered_prefixes"]
         assert 6 == stats["buffered_prefix_bytes"]
 
-    def test_process_chained_packet_buffers_decode_error(self) -> None:
+    def test_process_chained_packet_rejects_decode_error(self) -> None:
         calls = []
         buffers = {}
         stats = {}
         blob = b"x" * 32
 
-        stopped = process_chained_packet_blob(
-            blob=blob,
-            source="direct",
-            meta={},
-            phase="live",
-            buffers=buffers,
-            stats=stats,
-            process_blob=_fake_process_blob(calls, [ValueError("bad")]),
-            message_index_provider=lambda: 0,
-        )
+        with pytest.raises(QuiiConnectionError, match="invalid QUII packet"):
+            process_chained_packet_blob(
+                blob=blob,
+                source="direct",
+                meta={},
+                phase="live",
+                buffers=buffers,
+                stats=stats,
+                process_blob=_fake_process_blob(calls, [ValueError("bad")]),
+                message_index_provider=lambda: 0,
+            )
 
-        assert not stopped
-        assert {("global", "direct"): blob} == buffers
-        assert 1 == stats["buffered_decode_error"]
+        assert not buffers
+        assert 1 == stats["decode_errors"]
 
     def test_process_chained_packet_processes_remainder_with_meta(
         self,
@@ -161,3 +194,6 @@ class PreviewPacketProcessorStateTests:
             min_media_messages=2,
             max_media_messages=4,
         )
+
+
+import pytest

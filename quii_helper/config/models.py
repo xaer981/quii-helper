@@ -5,15 +5,10 @@ from typing import Any, cast
 
 from quii_helper.config.settings_loader import (
     EnvironmentSettings,
-    get_default_settings,
     load_environment_settings,
 )
 
 DEFAULT_SERVICE_QUERY_PATH = "/mst/query"
-
-
-def _settings() -> EnvironmentSettings:
-    return get_default_settings()
 
 
 @dataclass
@@ -29,12 +24,12 @@ class RuntimeCredentials:
         raw: Raw cloud response fields for diagnostics.
     """
 
-    session_id: str
-    dynamic_password: str
-    data_encode_key: str
-    auth_code: str
-    transparent_basedata: str
-    raw: dict[str, Any]
+    session_id: str = field(repr=False)
+    dynamic_password: str = field(repr=False)
+    data_encode_key: str = field(repr=False)
+    auth_code: str = field(repr=False)
+    transparent_basedata: str = field(repr=False)
+    raw: dict[str, Any] = field(repr=False)
 
 
 @dataclass
@@ -73,9 +68,8 @@ class ServiceQueryResponse:
 class AutonomousConfig:
     """Low-level configuration used by `Camera`.
 
-    Most users should pass overrides directly to `Camera(...)` instead of
-    constructing this class manually. The dataclass remains public for advanced
-    code that wants to prepare a reusable configuration object.
+    Construction is independent of `.env` and process environment values.
+    Use `load_config()` when environment-backed configuration is desired.
 
     Attributes:
         device_id: Camera device id.
@@ -91,6 +85,8 @@ class AutonomousConfig:
         connect_mode: Device live-play connect mode.
         service_url: Cloud service-discovery URL.
         auth_url: Cloud user-auth URL.
+        auth_version: Cloud XML protocol version from the original app.
+        assets_dir: Directory containing application-supplied native assets.
         oem: Original application OEM code.
         live_play_payload: QUII live-play payload mode.
         live_inner: Whether to use the inner live-play packet variant.
@@ -134,45 +130,33 @@ class AutonomousConfig:
             or hostname-mismatched certificates.
     """
 
-    device_id: str = field(default_factory=lambda: _settings().device_id)
-    cloud_account: str = field(
-        default_factory=lambda: _settings().cloud_account
-    )
-    cloud_password: str = field(
-        default_factory=lambda: _settings().cloud_password
-    )
-    device_host: str = field(
-        default_factory=lambda: _settings().camera_device_host
-    )
-    auth_code: str = field(default_factory=lambda: _settings().auth_code)
-    channel: int = field(default_factory=lambda: _settings().camera_channel)
-    stream: int = field(default_factory=lambda: _settings().camera_stream)
+    device_id: str = ""
+    cloud_account: str = ""
+    cloud_password: str = field(default="", repr=False)
+    device_host: str = ""
+    auth_code: str = field(default="", repr=False)
+    channel: int = 1
+    stream: int = 2
     connect_mode: int = -1
-    service_url: str = field(
-        default_factory=lambda: _settings().cloud_service_url
-    )
-    auth_url: str = field(default_factory=lambda: _settings().cloud_auth_url)
-    oem: str = field(default_factory=lambda: _settings().camera_oem)
+    service_url: str = ""
+    auth_url: str = ""
+    oem: str = ""
     live_play_payload: str = "path"
     live_inner: bool = False
     live_newcn: bool = False
     live_keepalive_interval: float = 10.0
     play_sync_iterations: int = 0
     enable_play_probes: bool = False
-    app_id: int = field(default_factory=lambda: _settings().camera_app_id)
-    client_type: int = field(
-        default_factory=lambda: _settings().camera_client_type
-    )
-    client_id: str = field(
-        default_factory=lambda: _settings().cloud_client_uuid
-    )
+    app_id: int = 0
+    client_type: int = 0
+    client_id: str = ""
     force_trans: int = 0
     ust_address: str = ""
     ust_test_address: str = ""
-    ca_path: Path = field(default_factory=lambda: _settings().tls_ca_path)
-    cert_path: Path = field(default_factory=lambda: _settings().tls_cert_path)
-    key_path: Path = field(default_factory=lambda: _settings().tls_key_path)
-    ip_region_id: int = field(default_factory=lambda: _settings().ip_region_id)
+    ca_path: Path = Path("ca.pem")
+    cert_path: Path = Path("client.pem")
+    key_path: Path = Path("client.txt")
+    ip_region_id: int = 0
     mqtt_timeout: float = 20.0
     prewarm_timeout: float = 12.0
     prewarm_retry_interval: float = 2.0
@@ -194,10 +178,19 @@ class AutonomousConfig:
     mqtt_will_message: str | None = None
     log_peer_diagnostics: bool = True
     rbudp_debug: bool = False
-    tls_verify: bool = field(default_factory=lambda: _settings().tls_verify)
-    unlock_password: str = field(
-        default_factory=lambda: _settings().unlock_password, repr=False
-    )
+    tls_verify: bool = True
+    unlock_password: str = field(default="", repr=False)
+    assets_dir: Path = Path("assets")
+    auth_version: str = ""
+
+    def __post_init__(self) -> None:
+        """Anchor relative asset paths once, without reading any assets."""
+        self.assets_dir = Path(self.assets_dir).expanduser().resolve()
+        for name in ("ca_path", "cert_path", "key_path"):
+            path = Path(getattr(self, name)).expanduser()
+            if not path.is_absolute():
+                path = self.assets_dir / path
+            setattr(self, name, path.resolve())
 
     @classmethod
     def from_settings(
@@ -216,6 +209,8 @@ class AutonomousConfig:
             "stream": settings.camera_stream,
             "service_url": settings.cloud_service_url,
             "auth_url": settings.cloud_auth_url,
+            "auth_version": settings.cloud_auth_version,
+            "assets_dir": settings.default_assets_dir,
             "oem": settings.camera_oem,
             "app_id": settings.camera_app_id,
             "client_type": settings.camera_client_type,
@@ -233,14 +228,21 @@ class AutonomousConfig:
 def load_config(
     *,
     project_root: Path | None = None,
+    assets_dir: str | Path | None = None,
     env: Mapping[str, str] | None = None,
     load_env_file: bool = True,
     **overrides: object,
 ) -> AutonomousConfig:
-    """Load an `AutonomousConfig` from explicit environment settings."""
+    """Load application settings explicitly; supplied env mappings are isolated.
+
+    By default, read `.env` in `project_root` (the working directory) and let
+    process values take precedence. Neither source is modified. Relative
+    `assets_dir` values are resolved against `project_root`.
+    """
 
     settings = load_environment_settings(
         project_root=project_root,
+        assets_dir=assets_dir,
         env=env,
         load_env_file=load_env_file,
     )

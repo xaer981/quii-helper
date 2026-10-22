@@ -1,25 +1,23 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "quii-helper"
-version = "0.1.0rc5"
+version = "0.1.0rc6"
 description = "Python toolkit for QUII/Qualvision cameras: snapshots, video, RTSP, LAN discovery, device inspection, and explicit door control."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Topic :: Multimedia :: Video",
 ]
 dependencies = [
-    "cffi>=2.0.0",
     "cryptography>=50.0.0",
-    "kcp>=0.1.6",
     "loguru>=0.7.3",
     "paho-mqtt>=2.1.0",
     "python-dotenv>=1.2.1",
@@ -29,6 +27,7 @@ dependencies = [
 Homepage = "https://github.com/xaer981/quii-helper"
 Repository = "https://github.com/xaer981/quii-helper"
 Issues = "https://github.com/xaer981/quii-helper/issues"
+Documentation = "https://github.com/xaer981/quii-helper/blob/main/docs/README.md"
 Changelog = "https://github.com/xaer981/quii-helper/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]

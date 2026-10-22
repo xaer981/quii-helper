@@ -49,7 +49,7 @@ def short_fragment_remainder_summary(
     return {
         "msg_index": message_index,
         "source": source,
-        "fragmented_media": "drop_short_remainder",
+        "fragmented_media": "buffer_short_remainder",
         "blob_len": blob_len,
     }
 

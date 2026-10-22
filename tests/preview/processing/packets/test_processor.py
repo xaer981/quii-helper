@@ -1,6 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
+from quii_helper.preview.pipeline.capture_pipeline import (
+    PreviewCapturePipeline,
+)
+from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 from quii_helper.preview.processing.packets.processor import (
     PreviewPacketProcessor,
 )
@@ -60,6 +66,86 @@ def _implausible_decoded(
 
 
 class PreviewPacketProcessorTests:
+    @pytest.mark.parametrize("stop_when_decodable", [False, True])
+    def test_pipeline_threshold_does_not_drop_packets_from_received_blob(
+        self, stop_when_decodable
+    ):
+        processor, _ = _processor()
+        processor.media_messages.extend([{}, {}, {}])
+        packet = {
+            "payload": b"x" * 32 + b"body" + b"y" * 32 + b"tail",
+            "source": "direct_quii_blob",
+        }
+        pipeline = PreviewCapturePipeline(
+            output_writer=None,
+            processor=processor,
+            packet_stream=SimpleNamespace(
+                live_packets=lambda **kwargs: iter([packet])
+            ),
+            preview_settings=PreviewCaptureSettings(
+                stop_when_decodable=stop_when_decodable
+            ),
+            tunnel=None,
+        )
+        with patch.object(
+            type(processor.decoder),
+            "decode",
+            side_effect=[_decoded(read_size=4), _decoded(read_size=4)],
+        ):
+            pipeline._consume_live_packets()
+        assert len(processor.decoded_messages) == 2
+        assert not processor.quii_packet_buffers
+
+    @pytest.mark.parametrize("tail_size", [4, 36])
+    def test_fragment_completion_keeps_remainder_despite_capture_threshold(
+        self, tail_size
+    ):
+        processor, _ = _processor()
+        processor.media_messages.extend([{}, {}, {}])
+        key = ("rb_data", 1, 2)
+        processor.fragmented_media_states[key] = {
+            "body": b"",
+            "expected_body_len": 40,
+        }
+        tail = b"t" * tail_size
+        with (
+            patch.object(
+                processor.fragment_flow,
+                "looks_like_new_media_packet",
+                return_value=False,
+            ),
+            patch.object(
+                processor.fragment_flow, "record_fragmented_media_decoded"
+            ),
+            patch(
+                "quii_helper.preview.fragments.fragment_flow.append_fragmented_media",
+                return_value=(
+                    _decoded(read_size=0),
+                    tail,
+                    {"expected_body_len": 40},
+                ),
+            ),
+            patch.object(
+                type(processor.decoder),
+                "decode",
+                return_value=_decoded(read_size=4),
+            ) as decode,
+        ):
+            assert processor.process_packet(
+                {
+                    "payload": b"c" * 80,
+                    "source": "wrapped_quii",
+                    "meta": {"src_id": 1, "dest_id": 2},
+                },
+                phase="live",
+            )
+        if tail_size < 32:
+            assert processor.quii_packet_buffers == {key: tail}
+            decode.assert_not_called()
+        else:
+            assert processor.quii_packet_buffers == {}
+            decode.assert_called_once_with(tail)
+
     def test_process_packet_buffers_short_header_without_decoding(
         self,
     ) -> None:

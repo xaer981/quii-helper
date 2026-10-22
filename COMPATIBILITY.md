@@ -16,8 +16,16 @@ signals for finding compatible firmware families and for search visibility.
 
 ## Python Platforms
 
-CI validates 64-bit Windows with Python 3.10 and 3.11. Other platforms are not
-covered by the current CI matrix.
+CI validates Windows x86_64 and Linux x86_64 with Python 3.10 and 3.11,
+including clean wheel/sdist installation. These are offline checks, not
+camera/cloud interoperability tests. Raspberry Pi ARM64 has separate mocked
+entrance-bot integration coverage, not live media/RTSP validation; see
+[Setup](docs/setup.md#installing-on-linux-arm64).
+
+The extracted P2P asset must use the verified vHome 2.2 `arm64-v8a` layout on
+every host platform. It is read as data, not executed. Other ABIs/builds are
+rejected unless their ELF/table profile is supported explicitly. JPEG/MP4
+output additionally requires a separate FFmpeg installation on `PATH`.
 
 The package requires `cryptography>=50.0.0`. Since version 49, upstream no
 longer provides wheels for 32-bit Windows or Intel (`x86_64`) macOS. Do not

@@ -133,6 +133,6 @@ class RbUdpLaneControl:
             candidate_keys.add((int(word8), int(word4)))
         return sum(
             len(stream.buffer)
-            for key, stream in streams.items()
-            if key in candidate_keys
+            for stream in streams.values()
+            if (stream.word4, stream.word8) in candidate_keys
         )

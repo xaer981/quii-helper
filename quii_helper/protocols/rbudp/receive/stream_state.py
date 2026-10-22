@@ -6,11 +6,18 @@ NATIVE_RECEIVE_WINDOW_BYTES = 0x10000
 
 @dataclass
 class RbUdpReceiveStreamState:
+    """Keep transport occupancy separate from an incomplete KCP packet."""
+
     word4: int
     word8: int
     next_local_id: int | None = None
     buffer: bytearray = field(default_factory=bytearray)
+    kcp_buffer: bytearray = field(default_factory=bytearray)
     cache: dict[int, bytes] = field(default_factory=dict)
+    cached_bytes: int = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.cached_bytes = sum(map(len, self.cache.values()))
 
 
 @dataclass(frozen=True)
@@ -51,6 +58,7 @@ def drain_receive_stream_cache(
     while state.next_local_id in state.cache:
         cached_local_id = int(state.next_local_id)
         payload = state.cache.pop(cached_local_id)
+        state.cached_bytes -= len(payload)
         events.append(
             append_receive_stream_payload(
                 state,
@@ -74,18 +82,18 @@ def receive_ack_status_word(
 
 def receive_stream_summary(
     stats: Mapping[str, int],
-    streams: Mapping[tuple[int, int], RbUdpReceiveStreamState],
+    streams: Mapping[int, RbUdpReceiveStreamState],
 ) -> dict[str, object]:
     active_streams = [
         {
             "word4": hex(stream.word4),
             "word8": hex(stream.word8),
             "next_local_id": stream.next_local_id,
-            "buffered": len(stream.buffer),
+            "buffered": len(stream.buffer) + len(stream.kcp_buffer),
             "cached": len(stream.cache),
         }
         for stream in streams.values()
-        if stream.buffer or stream.cache
+        if stream.buffer or stream.kcp_buffer or stream.cache
     ]
     return {
         **stats,
@@ -95,6 +103,9 @@ def receive_stream_summary(
 
 
 def has_pending_receive_streams(
-    streams: Mapping[tuple[int, int], RbUdpReceiveStreamState],
+    streams: Mapping[int, RbUdpReceiveStreamState],
 ) -> bool:
-    return any(stream.buffer or stream.cache for stream in streams.values())
+    return any(
+        stream.buffer or stream.kcp_buffer or stream.cache
+        for stream in streams.values()
+    )

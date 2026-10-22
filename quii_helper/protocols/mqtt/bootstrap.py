@@ -114,7 +114,9 @@ class MqttP2PBootstrap:
                 retain=False,
             )
         mqtt_username, mqtt_password = decode_ust_mqtt_credentials(
-            self.parsed, srcid=self.config.client_id
+            self.parsed,
+            srcid=self.config.client_id,
+            assets_dir=self.config.assets_dir,
         )
         if mqtt_username or mqtt_password:
             self._client.username_pw_set(mqtt_username, mqtt_password)

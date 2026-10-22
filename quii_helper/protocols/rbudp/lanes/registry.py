@@ -98,6 +98,8 @@ class RbUdpLaneRegistry:
         )
 
     def for_packet_words(self, *, word4: int, word8: int) -> RbUdpLane | None:
+        if word4 == 0:
+            return None
         for lane in self.lanes:
             if (
                 int(lane["peer_word4"]) == word4

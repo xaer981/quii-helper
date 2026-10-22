@@ -1,21 +1,13 @@
 from datetime import datetime
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(".")
 DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_TIMESTAMP_FORMAT = "%d-%m-%Y_%H-%M-%S"
 
 
 def _resolved_data_root() -> Path:
     return DATA_DIR.resolve(strict=False)
-
-
-def _is_under_data(path: Path, data_root: Path) -> bool:
-    try:
-        path.relative_to(data_root)
-    except ValueError:
-        return False
-    return True
 
 
 def _strip_data_prefix(path: Path) -> Path:
@@ -32,35 +24,28 @@ def ensure_data_dir() -> Path:
 
 
 def resolve_data_dir(directory: str | Path | None = None) -> Path:
-    data_root = ensure_data_dir()
+    """Create an output directory, honoring absolute application paths."""
+    data_root = _resolved_data_root()
     if directory is None:
-        return data_root
-
-    candidate = Path(directory)
-    if candidate.is_absolute():
-        resolved_candidate = candidate.resolve(strict=False)
-        output_dir = (
-            resolved_candidate
-            if _is_under_data(resolved_candidate, data_root)
-            else data_root / candidate.name
-        )
+        output_dir = data_root
     else:
-        output_dir = data_root / _strip_data_prefix(candidate)
+        candidate = Path(directory).expanduser()
+        output_dir = (
+            candidate
+            if candidate.is_absolute()
+            else data_root / _strip_data_prefix(candidate)
+        )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir.resolve(strict=False)
 
 
 def resolve_data_path(path: str | Path) -> Path:
-    data_root = ensure_data_dir()
-    candidate = Path(path)
+    """Create parent directories without remapping absolute output paths."""
+    data_root = _resolved_data_root()
+    candidate = Path(path).expanduser()
     if candidate.is_absolute():
-        resolved_candidate = candidate.resolve(strict=False)
-        output_path = (
-            resolved_candidate
-            if _is_under_data(resolved_candidate, data_root)
-            else data_root / candidate.name
-        )
+        output_path = candidate
     else:
         output_path = data_root / _strip_data_prefix(candidate)
 
@@ -77,18 +62,34 @@ def timestamped_output_base(
     *,
     timestamp_format: str = OUTPUT_TIMESTAMP_FORMAT,
 ) -> Path:
+    """Reserve a timestamped name with an exclusive, empty H.264 placeholder.
+
+    The output writer removes an unused placeholder when it finishes.
+    """
     output_dir = resolve_data_dir(directory)
     stem = datetime.now().strftime(timestamp_format)
-    candidate = output_dir / stem
     suffixes = (".mp4", ".jpg", ".h264")
-    if not any(candidate.with_suffix(suffix).exists() for suffix in suffixes):
-        return candidate.resolve()
-    for index in range(2, 1000):
-        candidate = output_dir / f"{stem}_{index}"
-        if not any(
-            candidate.with_suffix(suffix).exists() for suffix in suffixes
+    for index in range(1, 1000):
+        candidate = output_dir / (stem if index == 1 else f"{stem}_{index}")
+        if any(
+            candidate.with_name(candidate.name + suffix).exists()
+            for suffix in suffixes
         ):
-            return candidate.resolve()
+            continue
+        reservation = candidate.with_name(candidate.name + ".h264")
+        try:
+            with reservation.open("xb"):
+                pass
+        except FileExistsError:
+            continue
+        # A previous writer may have published its outputs after our first check.
+        if any(
+            candidate.with_name(candidate.name + suffix).exists()
+            for suffix in suffixes[:2]
+        ):
+            reservation.unlink()
+            continue
+        return candidate.resolve()
     raise RuntimeError(
         f"could not allocate unique timestamped output name for {stem}"
     )

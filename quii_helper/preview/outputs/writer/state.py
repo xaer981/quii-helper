@@ -30,8 +30,6 @@ def resolve_preview_output_base(
     if output_base is None:
         return timestamped_output_base(Path(data_dir))
     output_path = Path(output_base)
-    if output_path.suffix:
-        output_path = output_path.with_suffix("")
     return resolve_data_dir(output_path.parent) / output_path.name
 
 

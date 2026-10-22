@@ -64,9 +64,8 @@ def aes_cbc_crypt(
     key = key[:needed]
 
     cipher = Cipher(algorithms.AES(key), modes.CBC(make_ivec()))
-    if decrypt:
-        return cipher.decryptor().update(data) + cipher.decryptor().finalize()
-    return cipher.encryptor().update(data) + cipher.encryptor().finalize()
+    context = cipher.decryptor() if decrypt else cipher.encryptor()
+    return context.update(data) + context.finalize()
 
 
 def aes_cbc_crypt_aligned_prefix(

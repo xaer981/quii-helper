@@ -9,6 +9,7 @@ from quii_helper.protocols.rbudp.receive.stream_packet import (
     parse_receive_stream_packet,
 )
 from quii_helper.protocols.rbudp.receive.stream_state import (
+    NATIVE_RECEIVE_WINDOW_BYTES,
     RbUdpReceiveStreamAppendEvent,
     RbUdpReceiveStreamState,
     append_receive_stream_payload,
@@ -17,6 +18,10 @@ from quii_helper.protocols.rbudp.receive.stream_state import (
     receive_ack_status_word,
     receive_stream_summary,
 )
+from quii_helper.support.errors import QuiiConnectionError
+
+MAX_RECEIVE_CACHE_PACKETS = 4096
+MAX_RECEIVE_CACHE_BYTES = 2 * NATIVE_RECEIVE_WINDOW_BYTES
 
 DebugCallback = Callable[..., None]
 LaneLookupCallback = Callable[..., RbUdpLane | None]
@@ -29,8 +34,8 @@ class RbUdpReceiveStreamAssembler:
     Native-aligned RBUDP receive path.
 
     libqv-p2p-v2.so appends data packets (offset 0x1c onward) into an ordered
-    receive buffer, ACKs the cumulative next sequence and lets KcpLinkClient
-    pop complete 0xffffffff-prefixed frames from that byte stream.
+    receive buffer, drains it into a separate KCP buffer and ACKs the cumulative
+    next sequence before dispatching complete 0xffffffff-prefixed frames.
     """
 
     def __init__(
@@ -45,7 +50,7 @@ class RbUdpReceiveStreamAssembler:
         self.lane_for_packet_words = lane_for_packet_words
         self.send_fragment_ack = send_fragment_ack
         self.handle_wrapped = handle_wrapped
-        self.streams: dict[tuple[int, int], RbUdpReceiveStreamState] = {}
+        self.streams: dict[int, RbUdpReceiveStreamState] = {}
         self.stats: dict[str, int] = {
             "initialized": 0,
             "in_order": 0,
@@ -53,9 +58,11 @@ class RbUdpReceiveStreamAssembler:
             "cache_duplicates": 0,
             "cache_drained": 0,
             "replayed": 0,
+            "out_of_window": 0,
             "acked": 0,
             "frames": 0,
             "invalid": 0,
+            "unknown_lane": 0,
         }
 
     def feed(self, data: bytes) -> bool:
@@ -63,13 +70,23 @@ class RbUdpReceiveStreamAssembler:
         if packet is None:
             return False
 
-        state = self.streams.get(packet.stream_key)
+        lane = self.lane_for_packet_words(
+            word4=packet.word4, word8=packet.word8
+        )
+        if lane is None:
+            self.stats["unknown_lane"] += 1
+            return True
+
+        # Native routes by the registered local connection, not the peer word.
+        lane_id = int(lane["src_id"])
+        state = self.streams.get(lane_id)
         if state is None:
             state = RbUdpReceiveStreamState(
                 word4=packet.word4,
                 word8=packet.word8,
             )
-            self.streams[packet.stream_key] = state
+            self.streams[lane_id] = state
+        state.word4, state.word8 = packet.word4, packet.word8
 
         if state.next_local_id is None:
             state.next_local_id = packet.local_id
@@ -81,7 +98,21 @@ class RbUdpReceiveStreamAssembler:
                 next_local_id=state.next_local_id,
             )
 
-        if packet.local_id == state.next_local_id:
+        distance = (packet.local_id - state.next_local_id) & 0xFFFFFFFF
+        if distance >= NATIVE_RECEIVE_WINDOW_BYTES:
+            counter = "replayed" if distance >= 0x80000000 else "out_of_window"
+            self.stats[counter] += 1
+            self.debug(
+                f"rbudp_receive_stream_{counter}",
+                word4=hex(packet.word4),
+                word8=hex(packet.word8),
+                got_local_id=packet.local_id,
+                want_local_id=state.next_local_id,
+            )
+            self._ack(state, lane)
+            return True
+
+        if distance == 0:
             self._record_append_event(
                 state,
                 append_receive_stream_payload(
@@ -92,10 +123,11 @@ class RbUdpReceiveStreamAssembler:
             )
             for event in drain_receive_stream_cache(state):
                 self._record_append_event(state, event)
-            # Native DoRecvData queues data for the upper layer and immediately
-            # emits SendLogicProPacket. KCP frame handling happens after that
-            # through RecvData, so ACK must observe pre-dispatch lane state.
-            self._ack(state, remote_id=packet.remote_id)
+            # RecvData drains transport bytes even while KCP waits for a frame.
+            state.kcp_buffer.extend(state.buffer)
+            state.buffer.clear()
+            # Keep ACK before KCP callbacks that may update lane send counters.
+            self._ack(state, lane)
             self._dispatch_frames(
                 state,
                 local_id=packet.local_id,
@@ -106,22 +138,19 @@ class RbUdpReceiveStreamAssembler:
             )
             return True
 
-        if packet.local_id < state.next_local_id:
-            self.stats["replayed"] += 1
-            self.debug(
-                "rbudp_receive_stream_replay",
-                word4=hex(packet.word4),
-                word8=hex(packet.word8),
-                got_local_id=packet.local_id,
-                want_local_id=state.next_local_id,
-            )
-            self._ack(state, remote_id=packet.remote_id)
-            return True
-
         if packet.local_id in state.cache:
             self.stats["cache_duplicates"] += 1
         else:
+            if (
+                len(state.cache) >= MAX_RECEIVE_CACHE_PACKETS
+                or state.cached_bytes + len(packet.payload)
+                > MAX_RECEIVE_CACHE_BYTES
+            ):
+                raise QuiiConnectionError(
+                    "RBUDP receive cache limit exceeded; missing packets were not recovered"
+                )
             state.cache[packet.local_id] = packet.payload
+            state.cached_bytes += len(packet.payload)
             self.stats["cached"] += 1
             self.debug(
                 "rbudp_receive_stream_cache",
@@ -131,7 +160,7 @@ class RbUdpReceiveStreamAssembler:
                 want_local_id=state.next_local_id,
                 payload_len=len(packet.payload),
             )
-        self._ack(state, remote_id=packet.remote_id)
+        self._ack(state, lane)
         return True
 
     def _record_append_event(
@@ -151,17 +180,8 @@ class RbUdpReceiveStreamAssembler:
             from_cache=event.from_cache,
         )
 
-    def _ack(self, state: RbUdpReceiveStreamState, *, remote_id: int) -> None:
+    def _ack(self, state: RbUdpReceiveStreamState, lane: RbUdpLane) -> None:
         if state.next_local_id is None:
-            return
-        lane = self.lane_for_packet_words(word4=state.word4, word8=state.word8)
-        if lane is None:
-            self.debug(
-                "skip_rbudp_receive_stream_ack_no_lane",
-                word4=hex(state.word4),
-                word8=hex(state.word8),
-                next_local_id=state.next_local_id,
-            )
             return
         lane["remote_id"] = state.next_local_id
         self.stats["acked"] += 1
@@ -187,22 +207,26 @@ class RbUdpReceiveStreamAssembler:
         rand16: int,
         packet_len16: int,
     ) -> None:
-        try:
-            frames = pop_complete_kcp_packet_frames(state.buffer)
-        except Exception as exc:
-            self.stats["invalid"] += 1
-            self.debug(
-                "rbudp_receive_stream_invalid",
-                word4=hex(state.word4),
-                word8=hex(state.word8),
-                error=repr(exc),
-                buffered=len(state.buffer),
-                prefix=bytes(state.buffer[:32]).hex(),
-            )
-            state.buffer.clear()
-            return
-
-        for frame in frames:
+        frames = pop_complete_kcp_packet_frames(state.kcp_buffer)
+        while True:
+            try:
+                frame = next(frames)
+            except StopIteration:
+                return
+            except ValueError as exc:
+                self.stats["invalid"] += 1
+                self.debug(
+                    "rbudp_receive_stream_invalid",
+                    word4=hex(state.word4),
+                    word8=hex(state.word8),
+                    error=repr(exc),
+                    buffered=len(state.kcp_buffer),
+                    prefix=bytes(state.kcp_buffer[:32]).hex(),
+                )
+                state.kcp_buffer.clear()
+                raise QuiiConnectionError(
+                    "invalid KCP receive stream"
+                ) from exc
             self.stats["frames"] += 1
             self.debug(
                 "rbudp_receive_stream_frame",
@@ -210,7 +234,7 @@ class RbUdpReceiveStreamAssembler:
                 word8=hex(state.word8),
                 frame_len=len(frame.raw),
                 command=hex(frame.command),
-                remaining=len(state.buffer),
+                remaining=len(state.kcp_buffer),
             )
             self.handle_wrapped(
                 ParsedRbUdpWrappedPacket(

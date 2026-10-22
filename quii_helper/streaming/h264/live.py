@@ -1,3 +1,4 @@
+from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,7 +18,10 @@ AccessUnitSink = Callable[[bytes], None]
 class H264LiveAssembler:
     sink: AccessUnitSink | None = None
     packer: QuiiCFramePack = field(default_factory=QuiiCFramePack)
-    frame_info: list[MediaFrameSummary] = field(default_factory=list)
+    frame_info: deque[MediaFrameSummary] = field(
+        default_factory=lambda: deque(maxlen=128)
+    )
+    frame_count: int = 0
     access_unit_count: int = 0
 
     def feed_message(self, decoded: Mapping[str, Any]) -> list[bytes]:
@@ -31,6 +35,7 @@ class H264LiveAssembler:
 
         access_units = []
         for frame in self.packer.feed(payload):
+            self.frame_count += 1
             self.frame_info.append(frame_info_from_parsed_frame(frame))
             access_unit = access_unit_from_frame(frame)
             if not access_unit:
@@ -44,7 +49,7 @@ class H264LiveAssembler:
     @property
     def stats(self) -> dict[str, Any]:
         return {
-            "frames": len(self.frame_info),
+            "frames": self.frame_count,
             "access_units": self.access_unit_count,
             "cframe_pack": dict(self.packer.stats),
         }

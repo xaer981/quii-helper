@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from quii_helper.camera.capture_request.request_state import (
     capture_settings_overrides,
+    normalized_duration_seconds,
 )
 from quii_helper.camera.outputs.paths import output_base_from_path
 from quii_helper.preview.pipeline.config import PreviewCaptureSettings
@@ -24,6 +25,11 @@ def resolve_capture_settings(
     save_diagnostic_artifacts: bool | None,
     stop_when_decodable: bool | None,
 ) -> PreviewCaptureSettings:
+    normalized_duration_seconds(
+        preview_settings.capture_seconds
+        if duration_seconds is None
+        else duration_seconds
+    )
     values = capture_settings_overrides(
         duration_seconds=duration_seconds,
         save_diagnostic_artifacts=save_diagnostic_artifacts,

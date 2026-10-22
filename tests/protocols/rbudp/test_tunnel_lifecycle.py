@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -106,3 +107,24 @@ class RbUdpTunnelLifecycleTests:
         assert owner._threads.joined
         assert sock.closed
         assert owner._udp_sock is None
+
+    @pytest.mark.parametrize("stage", ["fragments", "join"])
+    def test_close_releases_socket_even_when_cleanup_stage_fails(self, stage):
+        owner = _Owner()
+        sock = _Socket()
+        owner._udp_sock = sock
+        owner._threads = Mock()
+        owner._wrapped_fragments = Mock()
+        failure = RuntimeError("cleanup failed")
+        target = (
+            owner._wrapped_fragments.emit_active
+            if stage == "fragments"
+            else owner._threads.join_all
+        )
+        target.side_effect = failure
+        with pytest.raises(RuntimeError) as error:
+            owner.lifecycle.close()
+        assert error.value is failure
+        assert owner._stop.is_set()
+        owner._threads.join_all.assert_called_once()
+        assert sock.closed and owner._udp_sock is None

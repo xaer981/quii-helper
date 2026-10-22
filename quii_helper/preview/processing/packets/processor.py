@@ -27,6 +27,7 @@ from quii_helper.preview.processing.packets.diagnostics_collector import (
 from quii_helper.preview.processing.packets.flow import (
     buffer_chained_packet,
     chained_packet_summary,
+    check_pending_quii_limits,
     decoded_needs_more_data,
     decoded_remainder,
     fragment_key,
@@ -47,6 +48,7 @@ from quii_helper.preview.processing.summaries.emitter import (
 from quii_helper.preview.summaries.media_summary import (
     media_collection_summary,
 )
+from quii_helper.support.errors import QuiiConnectionError
 
 PacketPhase = Literal["live", "flush", "close"]
 Emitter = Callable[[object], None]
@@ -115,16 +117,28 @@ class PreviewPacketProcessor:
         self, packet: TunnelPacket, *, phase: PacketPhase
     ) -> bool:
         blob, source, meta = packet_payload_context(packet)
-        return process_chained_packet_blob(
-            blob=blob,
-            source=source,
-            meta=meta,
-            phase=phase,
-            buffers=self.quii_packet_buffers,
-            stats=self.chained_packet_stats,
-            process_blob=self._process_packet_blob,
-            message_index_provider=lambda: self.message_index,
-        )
+        try:
+            check_pending_quii_limits(
+                self.quii_packet_buffers,
+                self.fragmented_media_states,
+                fragment_key(source=source, meta=meta),
+                blob,
+            )
+            return process_chained_packet_blob(
+                blob=blob,
+                source=source,
+                meta=meta,
+                phase=phase,
+                buffers=self.quii_packet_buffers,
+                stats=self.chained_packet_stats,
+                process_blob=self._process_packet_blob,
+                message_index_provider=lambda: self.message_index,
+                pending_media_keys=self.fragmented_media_states,
+            )
+        except QuiiConnectionError:
+            self.quii_packet_buffers.clear()
+            self.fragmented_media_states.clear()
+            raise
 
     def _process_packet_blob(
         self,
@@ -146,6 +160,21 @@ class PreviewPacketProcessor:
                 fragment_key=packet_fragment_key,
             )
             if fragment_result is None:
+                return (
+                    should_stop_packet_processing(
+                        phase=phase,
+                        stop_media=self.should_stop_media_collection(),
+                    ),
+                    b"",
+                )
+            if len(fragment_result[0]) < 32:
+                buffer_chained_packet(
+                    self.quii_packet_buffers,
+                    self.chained_packet_stats,
+                    packet_fragment_key,
+                    fragment_result[0],
+                    reason="short_header",
+                )
                 return (
                     should_stop_packet_processing(
                         phase=phase,

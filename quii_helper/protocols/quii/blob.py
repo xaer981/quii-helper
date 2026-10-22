@@ -16,6 +16,9 @@ from quii_helper.protocols.quii.crypto import (
     aes_cbc_crypt_aligned_prefix,
 )
 
+# Host-side admission limit, not a native protocol constant.
+MAX_QUII_BODY_SIZE = 20 * 1024 * 1024
+
 __all__ = [
     "MEDIA_PACKET_TYPES",
     "VALID_PACKET_TYPES",
@@ -47,6 +50,8 @@ def decode_quii_blob(
     media_encrypted = header[15] != 0
     is_media = packet_type in MEDIA_PACKET_TYPES
     read_size = media_payload_size if is_media else command_payload_size
+    if is_media and not 0 < read_size <= MAX_QUII_BODY_SIZE:
+        raise ValueError("invalid QUII media body size")
     encrypted_body = blob[offset + 32 : offset + 32 + read_size]
     body_available = max(0, len(blob) - offset - 32)
     plausible = is_plausible_quii_header(
@@ -54,7 +59,12 @@ def decode_quii_blob(
     )
 
     if is_media:
-        command_part_len = min(command_payload_size, len(encrypted_body))
+        # Buffer partial metadata rather than passing an incomplete block to AES.
+        command_part_len = (
+            command_payload_size
+            if len(encrypted_body) >= command_payload_size
+            else 0
+        )
         media_offset = min(media_payload_offset, len(encrypted_body))
         body = bytearray(encrypted_body)
         media_decrypt_len = 0
@@ -95,7 +105,7 @@ def decode_quii_blob(
             aes_cbc_crypt(
                 encrypted_body, key, crypto_mode=crypto_mode, decrypt=True
             )
-            if encrypted_body
+            if encrypted_body and len(encrypted_body) == read_size
             else b""
         )
 

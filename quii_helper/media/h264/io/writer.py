@@ -83,10 +83,12 @@ def write_h264_stream(
         mp4_ok=mp4_ok,
         snapshot_ok=snapshot_ok,
         keep_raw_h264=keep_raw_h264,
+        render_video=render_video,
+        render_snapshot=render_snapshot,
     ):
         try:
             stream_path.unlink(missing_ok=True)
-        except Exception:
+        except OSError:
             pass
 
     return h264_stream_result_payload(
@@ -95,7 +97,7 @@ def write_h264_stream(
         snapshot_path=snapshot_path,
         frames=assembled_stream.frames,
         summary=summary,
-        keep_raw_h264=keep_raw_h264,
+        keep_raw_h264=stream_path.is_file(),
         mp4_ok=mp4_ok,
         mp4_error=mp4_error,
         snapshot_ok=snapshot_ok,

@@ -116,6 +116,7 @@ from quii_helper.camera.outputs.results import (
     CameraCaptureResult,
 )
 from quii_helper.camera.settings import options
+from quii_helper.cloud.alarms import CameraCallEvent, CameraCallEventPage
 from quii_helper.cloud.iot import CameraIotCommandSupportInfo
 from quii_helper.cloud.shadow import (
     CameraDeviceShadowInfo,
@@ -127,6 +128,8 @@ from quii_helper.network import LanDeviceCandidate
 
 __all__ = [
     "Camera",
+    "CameraCallEvent",
+    "CameraCallEventPage",
     "CameraCaptureError",
     "CameraCaptureResult",
     "CameraDoorOpenResult",

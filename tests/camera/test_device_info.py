@@ -1,3 +1,5 @@
+from http.cookiejar import CookieJar
+
 from quii_helper.camera import Camera, CameraDeviceInfo
 from quii_helper.camera import api as camera_api
 from quii_helper.camera.metadata import camera_device_info_from_credentials
@@ -46,6 +48,7 @@ class _FakeConnector:
     def __init__(self) -> None:
         self.fetch_count = 0
         self.open_preview_count = 0
+        self.cookie_jar = CookieJar()
 
     def fetch_credentials(self) -> RuntimeCredentials:
         self.fetch_count += 1
@@ -126,7 +129,9 @@ class CameraDeviceInfoTests:
             config: AutonomousConfig,
             *,
             session_id: str,
+            cookie_jar: CookieJar,
         ) -> list[CloudDeviceListEntry]:
+            assert cookie_jar is connector.cookie_jar
             device_list_calls.append((config, session_id))
             return [
                 CloudDeviceListEntry(

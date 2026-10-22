@@ -47,19 +47,15 @@ def open_direct_preview(
     local_ips = discover_local_ips()
     logger.debug("[NetInfo] public_ip={} local_ips={}", public_ip, local_ips)
     udp_sock = make_dualstack_udp_socket()
-    local_udp_port = udp_sock.getsockname()[1]
-    public_udp_port = local_udp_port
-
-    if config.log_peer_diagnostics:
-        logger.debug(
-            "[P2PDiag] response_candidates_pending {}",
-            {
-                "local_udp_port": local_udp_port,
-                "local_ips": local_ips,
-            },
-        )
-
+    tunnel = None
     try:
+        local_udp_port = udp_sock.getsockname()[1]
+        public_udp_port = local_udp_port
+        if config.log_peer_diagnostics:
+            logger.debug(
+                "[P2PDiag] response_candidates_pending {}",
+                {"local_udp_port": local_udp_port, "local_ips": local_ips},
+            )
         p2p_session = establish_direct_p2pconnect_session(
             config=config,
             credentials=credentials,
@@ -69,38 +65,48 @@ def open_direct_preview(
             local_ips=local_ips,
             local_udp_port=local_udp_port,
         )
-    except Exception:
-        udp_sock.close()
-        raise
+        response = p2p_session.response
+        request_session_id = p2p_session.request_session_id
+        session_flag = p2p_session.session_flag
 
-    response = p2p_session.response
-    request_session_id = p2p_session.request_session_id
-    session_flag = p2p_session.session_flag
+        if config.log_peer_diagnostics:
+            log_p2pconnect_response(response)
 
-    if config.log_peer_diagnostics:
-        log_p2pconnect_response(response)
-
-    test_response, peer_addr, transport_peer_addr = (
-        probe_and_select_direct_peers(
-            config=config,
-            udp_sock=udp_sock,
-            response=response,
-            request_session_id=request_session_id,
-            session_flag=session_flag,
-            rng=rng,
+        test_response, peer_addr, transport_peer_addr = (
+            probe_and_select_direct_peers(
+                config=config,
+                udp_sock=udp_sock,
+                response=response,
+                request_session_id=request_session_id,
+                session_flag=session_flag,
+                rng=rng,
+            )
         )
-    )
-    udp_sock.settimeout(None)
+        udp_sock.settimeout(None)
 
-    tunnel = DirectKcpQuiiTunnel(
-        config,
-        response,
-        test_response,
-        request_session_id,
-        udp_sock=udp_sock,
-        peer_addr=peer_addr,
-        transport_peer_addr=transport_peer_addr,
-        p2p_session_flag=session_flag,
-    )
-    tunnel.start()
+        tunnel = DirectKcpQuiiTunnel(
+            config,
+            response,
+            test_response,
+            request_session_id,
+            udp_sock=udp_sock,
+            peer_addr=peer_addr,
+            transport_peer_addr=transport_peer_addr,
+            p2p_session_flag=session_flag,
+        )
+        tunnel.start()
+    except BaseException:
+        try:
+            if tunnel is not None:
+                tunnel.close()
+        except Exception:
+            logger.debug("Preview tunnel cleanup failed during startup")
+        finally:
+            try:
+                udp_sock.close()
+            except OSError:
+                logger.debug(
+                    "Preview UDP socket cleanup failed during startup"
+                )
+        raise
     return credentials, response, test_response, tunnel

@@ -1,3 +1,5 @@
+from typing import Any
+
 from quii_helper.cloud.flows.probe_flow import CloudProbeFlow, run_cloud_flow
 from quii_helper.device.probes.flow import (
     DeviceCgiProbeRunner,
@@ -10,11 +12,6 @@ from quii_helper.protocols.tcp.probes.quii_probe import (
     run_quii_probe,
 )
 from quii_helper.protocols.tcp.probes.settings import (
-    AUTH_CODE,
-    CLOUD_ACCOUNT,
-    CLOUD_PASSWORD,
-    DEVICE_ID,
-    DEVICE_PASSWORD,
     HOST,
     IS_HS_DEVICE,
     NC,
@@ -40,6 +37,19 @@ from quii_helper.protocols.tcp.probes.settings import (
     RUN_CLOUD_FLOW,
     RUN_DEVICE_CGI_PROBES,
 )
+
+AUTH_CODE: str
+CLOUD_ACCOUNT: str
+CLOUD_PASSWORD: str
+DEVICE_ID: str
+DEVICE_PASSWORD: str
+
+
+def __getattr__(name: str) -> Any:
+    """Preserve legacy setting aliases without reading credentials at import."""
+    if name in __all__:
+        return getattr(settings, name)
+    raise AttributeError(name)
 
 
 class TcpProbeRunner:

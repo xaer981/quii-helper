@@ -23,14 +23,17 @@ def _lane() -> RbUdpLane:
 
 class _BufferedStream:
     def __init__(self, size: int) -> None:
+        self.word4 = 0x01000000
+        self.word8 = 0x3D000022
         self.buffer = b"x" * size
+        self.kcp_buffer = b""
 
 
 class _Owner:
     def __init__(self, *, buffered: int = 0) -> None:
         self._peer_addr = ("127.0.0.1", 59318)
         self._receive_streams = SimpleNamespace(
-            streams={(0x01000000, 0x3D000022): _BufferedStream(buffered)}
+            streams={0x04000006: _BufferedStream(buffered)}
         )
         self.sent: list[bytes] = []
         self.debug: list[tuple[str, dict[str, object]]] = []
@@ -47,6 +50,14 @@ class _Owner:
 
 
 class RbUdpLaneControlTests:
+    def test_partial_kcp_frame_does_not_reduce_advertised_window(self) -> None:
+        owner = _Owner()
+        owner._receive_streams.streams[0x04000006].kcp_buffer = b"x" * 80000
+        assert (
+            owner.lane_control.native_control_status_word(_lane(), 0xFFFF0900)
+            == 0xFFFF0900
+        )
+
     def test_native_status_word_advertises_remaining_receive_window(
         self,
     ) -> None:

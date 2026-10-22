@@ -94,6 +94,7 @@ from quii_helper.protocols.rbudp.wrapped.sender import (
     RbUdpWrappedSender,
     RbUdpWrappedSenderOwner,
 )
+from quii_helper.support.errors import QuiiConnectionError
 from quii_helper.support.log import logger
 
 
@@ -138,7 +139,7 @@ class RbUdpQuiiTunnel(
         self._quii_play_sent = threading.Event()
         self._stop = threading.Event()
         self._payload_queue = RbUdpPayloadQueue()
-        self._data = self._payload_queue.data
+        self._data = self._payload_queue
         self._udp_sock = udp_sock
         endpoints = resolve_tunnel_endpoints(
             response=response,
@@ -173,7 +174,6 @@ class RbUdpQuiiTunnel(
         self._live_command_sender = RbUdpLiveCommandSender(self)
         self._last_wrapped: ParsedRbUdpWrappedPacket | None = None
         self._bootstrap_sent_to: tuple[str, int] | None = None
-        self._wrapped_debug_seen: set[str] = set()
         self._wrapped_handler = RbUdpWrappedHandler(self)
         self._wrapped_fragments = RbUdpWrappedFragmentAssembler(
             debug=self._dbg,
@@ -231,7 +231,12 @@ class RbUdpQuiiTunnel(
         return self._transport_io.transport_peer_addr
 
     def start(self) -> None:
-        self._lifecycle.start()
+        try:
+            self._lifecycle.start()
+        except TimeoutError:
+            self._payload_queue.raise_if_failed()
+            raise
+        self._payload_queue.raise_if_failed()
 
     def flush_fragment_partials(self) -> None:
         self._lifecycle.flush_fragment_partials()
@@ -243,7 +248,22 @@ class RbUdpQuiiTunnel(
         self._keepalive.run_loop()
 
     def _receive_loop(self) -> None:
-        self._receive_loop_runner.run_loop()
+        try:
+            self._receive_loop_runner.run_loop()
+        except Exception as exc:
+            if not self._stop.is_set():
+                error = QuiiConnectionError("RBUDP receiver failed")
+                error.__cause__ = exc
+                self._payload_queue.fail(error)
+                self._stop.set()
+                self._connected.set()
+                self._quii_ready.set()
+        else:
+            if not self._stop.is_set():
+                self._payload_queue.fail(
+                    QuiiConnectionError("RBUDP receiver stopped unexpectedly")
+                )
+                self._stop.set()
 
     def _play_sync_loop(self) -> None:
         self._play_sync.run_loop()
@@ -659,7 +679,11 @@ class RbUdpQuiiTunnel(
     def _queue_payload(
         self, payload: bytes, *, source: str, **meta: Any
     ) -> None:
-        self._payload_queue.queue_payload(payload, source=source, **meta)
+        try:
+            self._payload_queue.queue_payload(payload, source=source, **meta)
+        except QuiiConnectionError:
+            self._stop.set()
+            raise
 
     def recv_packet(self, timeout: float = 5.0) -> RbUdpPayloadPacket:
         return self._payload_queue.recv_packet(timeout=timeout)

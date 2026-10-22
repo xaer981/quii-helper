@@ -49,35 +49,44 @@ class PreviewOutputWriter:
         target_duration_seconds: float | None = None,
     ) -> CaptureArtifacts:
         output_base = str(self._resolve_output_base())
-        media_result = (
-            write_h264_stream(
-                output_base,
-                decoded_messages,
-                render_snapshot=self.render_snapshot,
-                render_video=self.render_video,
-                target_duration_seconds=target_duration_seconds,
+        try:
+            media_result = (
+                write_h264_stream(
+                    output_base,
+                    decoded_messages,
+                    render_snapshot=self.render_snapshot,
+                    render_video=self.render_video,
+                    target_duration_seconds=target_duration_seconds,
+                )
+                if decoded_messages
+                else None
             )
-            if decoded_messages
-            else None
-        )
-        container_probe_summary = self._write_container_probe_summary(
-            output_base, fragment_partial_collector
-        )
-        cpacket_probe_summary = self._write_cpacket_probe_summary(
-            output_base, fragment_partial_collector
-        )
-        embedded_fallback = self._write_embedded_fallback(
-            output_base,
-            media_result=media_result,
-            fragment_partial_collector=fragment_partial_collector,
-        )
-        return capture_artifacts(
-            media_result=media_result,
-            embedded_fallback=embedded_fallback,
-            container_probe_summary=container_probe_summary,
-            cpacket_probe_summary=cpacket_probe_summary,
-            artifacts_cls=CaptureArtifacts,
-        )
+            container_probe_summary = self._write_container_probe_summary(
+                output_base, fragment_partial_collector
+            )
+            cpacket_probe_summary = self._write_cpacket_probe_summary(
+                output_base, fragment_partial_collector
+            )
+            embedded_fallback = self._write_embedded_fallback(
+                output_base,
+                media_result=media_result,
+                fragment_partial_collector=fragment_partial_collector,
+            )
+            return capture_artifacts(
+                media_result=media_result,
+                embedded_fallback=embedded_fallback,
+                container_probe_summary=container_probe_summary,
+                cpacket_probe_summary=cpacket_probe_summary,
+                artifacts_cls=CaptureArtifacts,
+            )
+        finally:
+            if self.output_base is None:
+                reservation = Path(output_base + ".h264")
+                try:
+                    if reservation.stat().st_size == 0:
+                        reservation.unlink()
+                except OSError:
+                    pass
 
     def _resolve_output_base(self) -> Path:
         return resolve_preview_output_base(self.output_base, self.data_dir)

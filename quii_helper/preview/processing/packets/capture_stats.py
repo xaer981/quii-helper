@@ -11,7 +11,7 @@ MediaMessageSink = Callable[[DecodedQuiiMessage], None]
 
 @dataclass
 class CaptureStats:
-    """Production packet state collected while decoding preview traffic."""
+    """Capture packet state; streaming mode forwards payloads without retaining them."""
 
     decoded_messages: list[DecodedQuiiMessage] = field(default_factory=list)
     media_messages: list[DecodedQuiiMessage] = field(default_factory=list)
@@ -19,7 +19,7 @@ class CaptureStats:
     store_media_messages: bool = True
 
     def record_decoded(self, decoded: DecodedQuiiMessage) -> None:
-        if decoded["plausible"]:
+        if self.store_media_messages and decoded["plausible"]:
             self.decoded_messages.append(decoded)
 
     def record_live_media(

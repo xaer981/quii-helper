@@ -1,7 +1,7 @@
 from dataclasses import replace
 from typing import Any, cast
 
-from quii_helper.config import AutonomousConfig
+from quii_helper.config import AutonomousConfig, load_config
 from quii_helper.support.errors import ConfigurationError
 
 
@@ -24,11 +24,9 @@ def resolve_runtime_config(
     if isinstance(config, AutonomousConfig):
         resolved = config
     else:
-        resolved = (
-            AutonomousConfig(device_id=config)
-            if isinstance(config, str)
-            else AutonomousConfig()
-        )
+        resolved = load_config(load_env_file=False)
+        if isinstance(config, str):
+            resolved = replace(resolved, device_id=config)
 
     if (
         cloud_username is not None

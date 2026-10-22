@@ -816,6 +816,12 @@ SDK_ERROR_CODES: dict[int, VendorErrorInfo] = {
         "device authentication failed",
         "SDKStatus",
     ),
+    1012: _info(
+        1012,
+        "ALARM_RESULT_SESSION_ERROR",
+        "alarm-service session is missing or invalid",
+        "SDKStatus",
+    ),
     100000: _info(
         100000,
         "EmErrSystemUnknown",

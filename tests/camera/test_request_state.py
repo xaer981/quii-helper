@@ -1,12 +1,33 @@
 import pytest
 
+from quii_helper.camera.capture_request.request import resolve_capture_settings
 from quii_helper.camera.capture_request.request_state import (
     capture_settings_overrides,
     normalized_duration_seconds,
 )
+from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 
 
 class CameraRequestStateTests:
+    @pytest.mark.parametrize("duration", [float("nan"), float("inf")])
+    def test_invalid_duration_in_default_settings_is_rejected(self, duration):
+        with pytest.raises(ValueError, match="finite"):
+            resolve_capture_settings(
+                PreviewCaptureSettings(capture_seconds=duration),
+                duration_seconds=None,
+                save_diagnostic_artifacts=None,
+                stop_when_decodable=None,
+            )
+
+    @pytest.mark.parametrize(
+        "duration", [float("nan"), float("inf"), -float("inf"), -1]
+    )
+    def test_non_finite_or_negative_duration_is_rejected(
+        self, duration
+    ) -> None:
+        with pytest.raises(ValueError, match="greater than zero"):
+            normalized_duration_seconds(duration)
+
     def test_normalized_duration_seconds_preserves_cast_and_validation(
         self,
     ) -> None:
