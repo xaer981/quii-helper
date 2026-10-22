@@ -26,8 +26,8 @@
 
 Documentation follows the current source tree. For a pinned package version,
 use the files at its matching Git tag, such as
-[`v0.1.0`](https://github.com/xaer981/quii-helper/tree/v0.1.0).
+[`v0.1.1`](https://github.com/xaer981/quii-helper/tree/v0.1.1).
 Published PyPI descriptions are snapshots of the README at build time, not
 live copies of GitHub `main`.
-The current guides correct documentation shipped with `0.1.0` without changing
-its runtime behavior; older descriptions may still mention the preceding RC.
+Version `0.1.1` includes the corrected guides. Runtime behavior and public APIs
+are unchanged from `0.1.0`; older descriptions may still mention the preceding RC.

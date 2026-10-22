@@ -17,8 +17,8 @@ Use only software and devices you are authorized to inspect.
 
 ## Using An Installed Package
 
-Use Python **3.10 or newer**. Version `0.1.0` is available on
-[PyPI](https://pypi.org/project/quii-helper/0.1.0/).
+Use Python **3.10 or newer**. Install the latest final release from
+[PyPI](https://pypi.org/project/quii-helper/).
 
 Create an application directory and a virtual environment. On Windows:
 

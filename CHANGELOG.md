@@ -7,6 +7,8 @@ being stabilized.
 
 ## Unreleased
 
+## 0.1.1 - 2026-10-23
+
 - Rework README and setup around PyPI installation and a first application;
   separate cloud/preview, LAN inspection, and explicit door-control inputs.
 - Align the API reference with all current public Camera methods, arguments,
@@ -14,8 +16,14 @@ being stabilized.
 - Consolidate compatibility evidence, contributor/release instructions, and
   safety notes. Restore the README GIF through a verified historical URL.
 - Add offline documentation regressions for API tables, snippet syntax,
-  environment coverage, and repository links/anchors. No runtime behavior or
-  package version changes; these documentation updates are not yet published.
+  environment coverage, and repository links/anchors.
+- Update Black to `26.10.1` consistently in development requirements and
+  pre-commit for GHSA-cg8m-r9f2-5wm2. The affected bundled GitHub Action is not
+  used by this repository; CI invokes the formatter CLI directly.
+- Include the revised README in the PyPI package description and keep current
+  installation instructions independent of a specific release number.
+- Runtime behavior, public APIs, protocols, and runtime dependencies are
+  unchanged from `0.1.0`.
 
 ## 0.1.0 - 2026-10-22
 
