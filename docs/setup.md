@@ -1,135 +1,83 @@
 # Setup And APK Extraction
 
-QUII Helper needs two groups of user-specific inputs:
+[Documentation](README.md) | [API Reference](api.md) | [Compatibility](../COMPATIBILITY.md)
 
-- Runtime configuration supplied from code, process environment, or an explicit `.env` file.
-- Native assets extracted from the Android app for operations that need them.
+QUII Helper is a library, not a replacement mobile-app installer. Some setup
+values must be obtained from your account/device and the original Android app.
+Use only software and devices you are authorized to inspect.
 
-These values are intentionally not bundled with the project because they can differ by app version, country, cloud region, OEM, and device model.
+## Contents
+
+- [Install from PyPI](#using-an-installed-package) or [use a checkout](#using-a-checkout).
+- [Choose the inputs for your operation](#what-your-operation-needs).
+- [Extract assets](#required-assets) and [find APK constants](#finding-apk-constants).
+- [Fill environment settings](#environment-settings) and [discover cloud values](#discovering-cloud-values).
+- [Run a first check](#first-read-only-check) and [install FFmpeg](#media-prerequisites).
+- [Handle TLS failures](#cloud-region-and-auth-url), [ARM64](#installing-on-linux-arm64), and [other errors](#troubleshooting).
 
 ## Using An Installed Package
 
-Use Python 3.10 or newer and a virtual environment. The currently published
-release is [0.1.0rc6](https://pypi.org/project/quii-helper/0.1.0rc6/):
+Use Python **3.10 or newer**. Version `0.1.0` is available on
+[PyPI](https://pypi.org/project/quii-helper/0.1.0/).
 
-```shell
-python -m pip install "quii-helper==0.1.0rc6"
+Create an application directory and a virtual environment. On Windows:
+
+```powershell
+mkdir my-camera-app
+cd my-camera-app
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install quii-helper
 ```
 
-Version `0.1.0` is prepared in this checkout but is **not published yet**. After
-its publication, `python -m pip install quii-helper` installs the final release;
-use `python -m pip install --upgrade quii-helper` to replace an installed RC.
-No `--pre` is needed for final releases. To test an unpublished build instead,
-install its wheel with `python -m pip install /path/to/quii_helper.whl`.
+On Linux/macOS, activate the environment with `source .venv/bin/activate`
+instead. Check platform restrictions in [Compatibility](../COMPATIBILITY.md).
+Use `python -m pip install --upgrade quii-helper` to upgrade an existing
+installation; no `--pre` is needed for final releases.
 
-The wheel installs `quii_helper`, not the repository's `examples/`, `docs/`, or
-`.env.example`. Create a separate application directory, download the
-[environment template](https://github.com/xaer981/quii-helper/blob/main/.env.example)
-matching your release, and save a filled-in copy there as `.env`. Put extracted
-assets in that directory's `assets/`. Do not modify `site-packages`.
+The wheel installs `quii_helper`, not `examples/`, `docs/`, or `.env.example`.
+Download the [environment template](https://github.com/xaer981/quii-helper/blob/main/.env.example)
+and save a filled-in copy as `.env` in your application directory. For a pinned
+version, use the template at its matching Git tag. Do not edit `site-packages`.
 
-For example, save this in your application's `app.py`:
+## Using A Checkout
 
-```python
-from pathlib import Path
+A checkout is needed for bundled examples and the discovery helper. This is
+separate from installing the library into your own application:
 
-from quii_helper import Camera, load_config
-
-application_dir = Path(__file__).resolve().parent
-camera = Camera(config=load_config(project_root=application_dir))
-print(camera.get_device_info())
+```powershell
+git clone https://github.com/xaer981/quii-helper.git
+cd quii-helper
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+Copy-Item .env.example .env
 ```
 
-This example performs a read-only cloud query when run; importing the library
-alone performs no cloud/device I/O. You can instead construct `AutonomousConfig`
-with explicit values, avoiding `.env` entirely. See
-[Library Configuration](api.md#library-configuration).
+On Linux/macOS, use `source .venv/bin/activate` and `cp .env.example .env`.
+Run `python -m examples.<name>` from this checkout's root. The extracted source
+distribution also contains examples; a wheel installation does not.
+Contributor tooling is covered in [Contributing](../CONTRIBUTING.md).
 
-Commands starting with `python -m examples.` require a repository checkout or
-the extracted source distribution, run from its root. They are not installed
-as modules by the wheel. Extraction helpers are development tools, not an
-implicit part of library installation.
+## What Your Operation Needs
 
-## Media Prerequisites
+| Operation | Inputs and prerequisites |
+| --- | --- |
+| Snapshot, MP4, RTSP | Cloud/app settings, device id, native assets, and a working preview connection. JPEG/MP4 also needs FFmpeg. |
+| `get_device_info()` | Cloud account/device and app settings. It does not start a media session or discover the LAN host. |
+| `get_call_events()` | Cloud/app settings and service-discovery TLS assets; no LAN host or FFmpeg. |
+| Local CGI inspection | Reachable `CAMERA_DEVICE_HOST` and `AUTH_CODE`; no implicit cloud login, APK assets, or FFmpeg. |
+| `open_door()` with an explicit password mode | Local CGI settings and `UNLOCK_PASSWORD`; no cloud lookup, APK assets, or FFmpeg. |
+| `open_door(password_mode="auto")` | Local door settings plus cloud metadata if capability 24 is not already cached. |
+| LAN discovery | Access to the local network; no account login or opening command. |
 
-`Camera.snapshot()` and MP4 output from `Camera.save_video()` / `capture()`
-invoke the external `ffmpeg` executable. Install a suitable build using the
-[official FFmpeg download page](https://ffmpeg.org/download.html), add its
-executable directory to `PATH`, and restart the terminal/service if necessary.
-On Windows this is the directory containing `ffmpeg.exe`, not the archive itself.
-On Linux, your distribution's FFmpeg package is another option.
-
-Verify from the same terminal or service environment that runs your application:
-
-```text
-ffmpeg -version
-```
-
-Neither pip nor QUII Helper installs this executable. RTSP forwarding, raw
-H.264 output, metadata queries, and door control do not require it. If rendering
-fails, the capture result/error reports the failure and retained raw H.264 path;
-it does not silently treat a missing JPEG/MP4 as success.
-
-## Installing On Linux ARM64
-
-The Python package is platform-independent. Its cryptography dependencies
-contain native code, so use compatible Linux ARM64 wheels rather than copying
-Windows/x86 packages or compiling them on the target device. For example,
-`python -m pip install --only-binary=:all: /path/to/quii_helper.whl` fails
-explicitly if the interpreter/platform has no compatible dependency wheels.
-The supported check targets Debian-based Python 3.11 on ARM64, not ARMv7.
-
-The external PyPI `kcp` package is not required: the RBUDP implementation lives
-inside `quii_helper.protocols`. `cffi`, if needed by `cryptography`, is resolved
-transitively rather than imposed as an independent application dependency.
-
-Embedding applications should install a built wheel or an exact published
-version, not copy the source tree into their handlers. Local CGI door control
-with an explicit password mode requires neither native APK assets nor FFmpeg.
-The published `0.1.0rc6` package contains these library changes. Updating
-entrance-bot's dependency and deploying it are separate operations; neither
-happens when this package is installed elsewhere.
-
-On 2026-10-20, installation and `pip check` passed in both entrance-bot ARM64
-images using Python 3.11.17 under QEMU. Each image also passed 11 mocked
-integration tests with networking disabled. The library's 754-test suite
-passed separately on Windows in an environment without the external `kcp`
-package.
-
-The local wheel was subsequently deployed as an entrance-bot dependency on a
-physical Raspberry Pi ARM64. On 2026-10-21, its integration suite passed 140
-tests in an isolated container on that device with networking disabled and
-fake door openers. This verifies that integration on physical ARM64, not live
-preview, FFmpeg rendering, or RTSP capture there. No real door command was
-sent by the validation tests. Those ARM64 checks used a local build, not the
-subsequently published PyPI package.
-
-On 2026-10-21, wheel and sdist installation checks also passed in fresh Windows
-Python 3.11 and Linux x86_64 Python 3.10 environments outside the source tree.
-These checks exercised import/configuration/path/logging isolation and a mocked
-local door adapter; they did not connect to a camera or log into the cloud.
-The sdist includes documentation, examples, tests, and the empty `.env.example`.
-Neither artifact includes extracted assets or runtime data. Local validation
-artifacts from that initial check used `0.1.0rc5`; do not publish them as a
-replacement for the already released version.
-
-On 2026-10-22, all 140 entrance-bot tests (commit `40680ee`) passed with
-`quii-helper==0.1.0rc6` downloaded from PyPI into a fresh Windows Python 3.11
-environment alongside the consumer's pinned dependencies. `pip check` passed;
-imports came from `site-packages`, not the library checkout. Test execution
-forbade non-loopback network access and private `.env` reads and used fake door
-openers. This proves offline consumer compatibility, not live device behavior
-or installation of that exact PyPI artifact on ARM64. The consumer repository
-still references its local wheel; it was not modified or deployed by this check.
-
-The next prepared version is `0.1.0`, with planned Git tag `v0.1.0`. Preparation
-does not publish it; do not reuse any already published version for a new build.
-See [Release Checklist](../RELEASE_CHECKLIST.md) for CI and PyPI setup.
+Do not enter every credential just to perform a local-only query. Conversely,
+cloud/P2P preview does not need `CAMERA_DEVICE_HOST`: it selects peers from
+the cloud/P2P response. Local CGI methods require that host explicitly.
 
 ## Required Assets
 
-For the standalone examples, place these files in `assets/` under the working
-directory (normally the repository root):
+For preview/RTSP, put these files in the application's `assets/` directory:
 
 ```text
 assets/
@@ -139,116 +87,193 @@ assets/
   libqv-p2p-v2.so
 ```
 
-Expected sources after APK extraction:
+| File | Source and purpose |
+| --- | --- |
+| `ca.pem` | Vendor CA material used for service discovery; look in APK assets/resources. |
+| `client.pem` | Vendor client certificate for mutual TLS service discovery. |
+| `client.txt` | Matching client private key; do not publish or paste its contents. |
+| `libqv-p2p-v2.so` | `lib/arm64-v8a/libqv-p2p-v2.so` from the verified vHome 2.2 build; read for crypto tables. |
 
-- `libqv-p2p-v2.so`: use `lib/arm64-v8a/libqv-p2p-v2.so` from the verified vHome 2.2 build, not an arbitrary `lib/<abi>` file.
-- `ca.pem`, `client.pem`, `client.txt`: usually under `assets/`, `res/raw/`, or app resource folders depending on the APK build.
+Use [JADX](https://github.com/skylot/jadx) for Java sources and
+[Apktool](https://apktool.org/docs/cli-parameters/) for resources. For example,
+with these tools already installed, decode an authorized `vendor.apk` into
+ignored working directories:
 
-The `.so` is read as data, never loaded or executed. Its ABI therefore stays
-`arm64-v8a` even on Windows or Linux x86_64. The loader validates ELF64,
-little-endian AArch64, and SHA-256 fingerprints of all three 4096-byte tables
-at the verified offsets. A truncated file, another ABI, or different tables
-raises `AssetMissingError` rather than deriving an incorrect key. The fallback
-layout `assets/lib/arm64-v8a/libqv-p2p-v2.so` is also accepted.
-
-Other app builds are **not** automatically supported: native inspection must
-confirm table layout/content before adding another profile. See
-[Native Crypto Asset Validation](protocol-notes.md#native-crypto-asset-validation).
-The fingerprints check compatibility, not the provenance or trustworthiness
-of a downloaded APK.
-
-Embedding applications can use their own asset directory with
-`Camera(assets_dir=...)` or `load_config(assets_dir=...)`. Nothing needs to be
-copied into `site-packages`. Local door control with a verified explicit
-password mode does not read these assets; preview/cloud discovery may need them.
-
-## `.env`
-
-Create `.env` from `.env.example`:
-
-```powershell
-Copy-Item .env.example .env
+```shell
+jadx -d data/apk-java vendor.apk
+apktool d vendor.apk -o data/apk-resources
 ```
 
-Fill in the required values:
+In these outputs, inspect `data/apk-java/sources/` for Java classes and
+`data/apk-resources/assets/`, `res/raw/`, and `lib/arm64-v8a/` for resources.
+Some other decompilers name the source directory `java_src/`. Resource names
+can vary; follow the application's certificate-loading code rather than
+renaming an unrelated key or certificate.
 
-| Variable | Purpose |
+The `.so` is read as data, **never loaded or executed**. Use the verified
+`arm64-v8a` file on every host architecture. The loader validates its ELF/table
+profile; another ABI, truncated file, or incompatible build raises
+`AssetMissingError`. The fallback location
+`assets/lib/arm64-v8a/libqv-p2p-v2.so` is also accepted.
+
+Other APK builds are not automatically supported. The fingerprints validate
+compatibility, not APK provenance. See
+[Native Crypto Asset Validation](protocol-notes.md#native-crypto-asset-validation).
+You can choose another application asset directory with `load_config(assets_dir=...)`
+or `Camera(assets_dir=...)`; nothing belongs inside `site-packages`.
+
+## Finding APK Constants
+
+Begin with the app that successfully connects to your device. Do not copy
+another user's account details, device id, or region-specific constants.
+
+| Value | Where to look |
 | --- | --- |
-| `CLOUD_ACCOUNT` | Mobile app account login. `CLOUD_USERNAME` is accepted as a legacy alias. |
-| `CLOUD_PASSWORD` | Mobile app account password. |
-| `DEVICE_ID` | Camera/device identifier. |
-| `CLOUD_CLIENT_UUID` | Stable per-install client id. Generate once and keep it stable. |
-| `CLOUD_AUTH_URL` | Cloud auth URL for your region/app. |
-| `CLOUD_SERVICE_URL` | Cloud service discovery URL from the APK. |
-| `CAMERA_OEM` | OEM/app family value extracted from the APK. |
-| `CAMERA_APP_ID` | App identifier extracted from the APK. |
-| `CAMERA_CLIENT_TYPE` | Cloud client type extracted from the APK. |
-| `IP_REGION_ID` | Region identifier used by the cloud endpoint. |
+| `CLOUD_SERVICE_URL` | The base address passed to native service discovery (`/mst/query`), not the user-login URL. Trace P2P/service initialization. |
+| `CAMERA_OEM`, `CAMERA_APP_ID`, `CAMERA_CLIENT_TYPE` | Application/SDK initialization and cloud request headers. Search for OEM, app-id, and client-type setters and trace their callers. |
+| `CLOUD_AUTH_URL`, `IP_REGION_ID` | The app's selected cloud region or the [discovery helper](#discovering-cloud-values). |
+| `CLOUD_AUTH_VERSION` | The XML header version selected by the app's auth implementation; leave empty only where that app uses the unversioned variant. |
+| `DEVICE_ID` | Your device's account entry, label/QR data, or app device details. Do not confuse it with a client UUID. |
+| `AUTH_CODE` | The device binding/CGI authentication value used by the app's local request header; not the cloud password or door password. |
+| `UNLOCK_PASSWORD` | The separately configured door-opening password. Needed only for explicit door control. |
 
-Optional values:
+Useful classes in the inspected vHome source include `QvP2PClientV2`,
+`UserApi`, and the userauth request `Header`. Class/package names and
+obfuscation vary between builds. An IDE's find-references view helps trace
+an initializer value back to the app configuration.
 
-| Variable | Purpose |
+The discovery helper does **not** decompile the APK or recover every setting.
+Extract its prerequisite values and TLS assets first. If the app keeps a value
+only in native code, inspect that build in Ghidra rather than guessing a default.
+Do not paste extracted passwords, private keys, or account traffic into an issue.
+
+## Environment Settings
+
+Start from `.env.example`. Keep one `.env` per application, outside
+`site-packages` and out of version control.
+
+### Cloud And Preview
+
+These values configure cloud-backed operations and preview:
+
+| Variable | Meaning |
 | --- | --- |
-| `CLOUD_AUTH_VERSION` | Auth version mapped from the APK auth code. Empty for auth code `0`. |
-| `CAMERA_DEVICE_HOST` | Camera LAN IP/host. Required for local `/tdkcgi` methods, including door control, not for cloud/P2P preview. |
-| `CAMERA_CHANNEL` | Default channel index. |
-| `CAMERA_STREAM` | Default stream index. |
-| `AUTH_CODE` | Device binding/auth code used by local `/tdkcgi` methods and TCP/CGI probes. |
-| `DEVICE_PASSWORD` | Local CGI/admin password used by direct TCP/CGI probe helpers. |
-| `UNLOCK_PASSWORD` | Door-opening password used only by explicit `Camera.open_door()` calls. Separate from CGI/admin and cloud credentials. The body format follows capability 24, or an explicit `password_mode="plain"` / `"sha256"` argument. |
-| `TLS_VERIFY` | Enables/disables TLS certificate verification. Keep `true` unless a vendor endpoint requires otherwise. |
-| `LOG_LEVEL` | `info` for normal messages, `debug` for protocol diagnostics. |
+| `CLOUD_ACCOUNT` | Your mobile-app account login. `CLOUD_USERNAME` is a legacy alias. |
+| `CLOUD_PASSWORD` | Your mobile-app account password. |
+| `DEVICE_ID` | The camera/intercom identifier for that account. |
+| `CLOUD_CLIENT_UUID` | Stable per-install client identity, generated once below. |
+| `CLOUD_SERVICE_URL` | Service-discovery base URL extracted from the app. |
+| `CLOUD_AUTH_URL` | Region-specific auth endpoint; the helper can discover it. |
+| `CAMERA_OEM` | App/OEM family identifier from the APK. |
+| `CAMERA_APP_ID` | Numeric app identifier from the APK. |
+| `CAMERA_CLIENT_TYPE` | Numeric client type from the APK. |
+| `IP_REGION_ID` | Numeric cloud region id, returned by discovery. |
+| `CLOUD_AUTH_VERSION` | Auth XML version required by that app build; default empty. |
 
-Do not commit `.env`.
+Generate the client UUID once, copy it into `.env`, and keep it between runs:
 
-The entry point and examples explicitly load this file. Library code should
-use `Camera(config=load_config(project_root=...))` to opt in, or pass a plain
-`AutonomousConfig` without file loading. `Camera()` alone uses process
-environment values. `load_config()` uses python-dotenv's non-mutating
-`dotenv_values()` reader; unlike `load_dotenv()`, it does not populate
-`os.environ`. Applications that already call `load_dotenv()` themselves can
-continue doing so before constructing `Camera()`.
-
-Generate `CLOUD_CLIENT_UUID` once:
-
-```powershell
+```shell
 python -c "import uuid; print(uuid.uuid4().hex)"
 ```
 
-Do not regenerate it on every run.
+### Local Access And Preferences
+
+| Variable | Meaning and default |
+| --- | --- |
+| `CAMERA_DEVICE_HOST` | LAN host/IP for local CGI queries and door control. No automatic cloud/P2P fallback. |
+| `AUTH_CODE` | CGI authentication code. Required for local CGI queries and door control. |
+| `UNLOCK_PASSWORD` | Separate opening password. Used only by explicit `open_door()` calls. |
+| `DEVICE_PASSWORD` | Password for low-level development/probe helpers; not a `Camera` unlock setting. |
+| `CAMERA_CHANNEL` | Default video-panel channel; `1`. |
+| `CAMERA_STREAM` | Default stream id; `2` (lower bandwidth). `1` selects the high-quality stream on the tested device. |
+| `TLS_VERIFY` | Certificate verification; `true`. Disabling it weakens cloud/device trust. |
+| `LOG_LEVEL` | Standalone/example console level; `info`, or `debug` for diagnostics. |
+
+For an explicit high/low selector in code, use
+`Camera(config=load_config(), stream_quality="high")` or `"low"`.
+Device support can differ. `stream` and `stream_quality` are
+mutually exclusive overrides.
+
+`load_config()` reads `.env` explicitly through python-dotenv's non-mutating
+`dotenv_values()` reader. Process environment values take precedence.
+`Camera()` alone uses process environment values, not `.env` files; a plain
+`AutonomousConfig` reads neither. See [Library Configuration](api.md#library-configuration)
+for precedence, paths, and embedding.
 
 ## Discovering Cloud Values
 
-From a repository checkout or extracted source distribution, run the helper:
+Run this only from a [checkout](#using-a-checkout) or extracted source
+distribution. Before running, fill **`CLOUD_SERVICE_URL`, `CAMERA_OEM`, and
+`CLOUD_CLIENT_UUID`** in `.env`, and install the TLS files in `assets/`.
+This discovery step does not need the cloud account password.
 
-```powershell
+```shell
 python -m examples.discover_env_values
 ```
 
-The script prints candidate values for `.env`, including `CLOUD_AUTH_URL`.
+Copy the returned `IP_REGION_ID` and recommended `CLOUD_AUTH_URL` into `.env`.
+The script also prints raw service addresses for inspection; those are not
+all interchangeable with the auth URL. It does not discover your app id,
+client type, device credentials, or door password.
 
-If you manually inspect the Android app traffic or Java code, look for:
+For a pip-only application, use a separate checkout to run this helper, then
+transfer only the needed settings/assets into your application directory.
+Do not edit the installed library to add personal constants.
 
-- Cloud login/auth URL.
-- Region ID.
-- OEM/app ID.
-- Client type.
-- Device ID and device password.
+## First Read-Only Check
+
+Save this as `app.py` next to your configured `.env` and `assets/`:
+
+```python
+from pathlib import Path
+
+from quii_helper import Camera, load_config
+
+application_dir = Path(__file__).resolve().parent
+camera = Camera(
+    config=load_config(project_root=application_dir),
+    data_dir=application_dir / "data",
+)
+info = camera.get_device_info()
+print(info)
+```
+
+Run `python app.py`. This logs into the cloud and reads device metadata; it
+does not start a preview or open the door. Sparse metadata may be normal for
+the firmware. Local `get_product_info()` and similar methods need the separate
+LAN host and `AUTH_CODE`; see [Local Methods](api.md#local-device-read-only-methods).
+
+After this succeeds, try `snapshot()`, `save_video()`, or the
+[RTSP example](api.md#rtsp-streaming). These are real camera operations, not
+offline installation checks. The dedicated `examples.open_door` script sends
+a **real opening command** and must never be used as a read-only smoke test.
+
+## Media Prerequisites
+
+JPEG/MP4 rendering invokes the external **FFmpeg executable**. Install a build
+from [FFmpeg](https://ffmpeg.org/download.html) or your Linux package manager,
+put its executable directory on `PATH`, and restart the terminal/service if
+needed. On Windows, that directory must contain `ffmpeg.exe`.
+
+Check from the same environment that runs your application:
+
+```shell
+ffmpeg -version
+```
+
+Neither pip nor QUII Helper installs FFmpeg. RTSP, raw H.264, metadata queries,
+and door control do not need it. Rendering failures report the failure and
+retained raw H.264 path rather than claiming a missing JPEG/MP4 was saved.
 
 ## Cloud Region And Auth URL
 
-`CLOUD_AUTH_URL` should be the base auth endpoint used by your app build and region.
+Use the auth endpoint selected by your app build/region. Decompiled traffic
+may include `;jus_duplex=up`; the helper omits this suffix from its recommended
+`.env` value. It is not required for the tested flow. Do not append it to every
+service address or replace a discovery base URL with an auth endpoint.
 
-Some app traffic or decompiled constants may show auth URLs with a suffix like:
-
-```text
-;jus_duplex=up
-```
-
-QUII Helper does not require this suffix in `.env`; use the clean auth URL unless your specific app build fails without it. The discovery helper omits the suffix for the recommended `.env` value.
-
-If authentication fails with `CERTIFICATE_VERIFY_FAILED`, load your application
-settings explicitly and override verification for the camera:
+For `CERTIFICATE_VERIFY_FAILED`, first check the system clock, vendor hostname,
+and certificate files. If your vendor endpoint still needs an explicit bypass:
 
 ```python
 from quii_helper import Camera, load_config
@@ -256,28 +281,50 @@ from quii_helper import Camera, load_config
 camera = Camera(config=load_config(), tls_verify=False)
 ```
 
-Use this only when required by your environment or extracted certificates. Keeping TLS verification enabled is safer.
+The configuration class is **`AutonomousConfig`**, not `AnonymousConfig`;
+its equivalent option is `AutonomousConfig(tls_verify=False, ...)`.
+For examples/the discovery helper, opt in with `TLS_VERIFY=false` in `.env`.
 
-## Finding APK Constants
+**Disabling verification permits interception or spoofing of server responses.**
+Keep verification enabled where possible, especially if cloud history informs
+an access-control application. A per-camera override does not update `.env`.
 
-The exact locations vary by APK version, but these are common places to inspect after decompilation:
+## Installing On Linux ARM64
 
-- `java_src`: Java/Kotlin constants, cloud URLs, OEM values, client type, app IDs.
-- `lib`: native `.so` files, including P2P/crypto implementation.
-- `assets` or `res/raw`: certificates, client keys, PEM files, and app resources.
+Use an ARM64-compatible Python environment and current pip. Prefer compatible
+binary dependency wheels rather than copying Windows/x86 packages or building
+native dependencies on a small device:
 
-Recommended tools:
+```shell
+python -m pip install --only-binary=:all: quii-helper
+python -m pip check
+```
 
-- `apktool` for resources and smali.
-- `jadx` for Java/Kotlin sources.
-- `Ghidra` for native `.so` inspection when Java code references native behavior.
+This fails explicitly if compatible wheels are unavailable for that platform.
+The separately extracted `.so` must still be the verified **arm64-v8a** asset.
+The external PyPI `kcp` package is not needed. FFmpeg is separate.
 
-## Secret Hygiene
+Earlier ARM64 checks cover installation and mocked entrance-bot integration,
+not live media capture. See the [validation matrix](../COMPATIBILITY.md#validation-scope)
+for the exact scope; they do not certify every new PyPI build on ARM64.
 
-Before publishing or sharing logs:
+## Troubleshooting
 
-- Remove `.env`.
-- Remove `assets/`.
-- Remove `data/`.
-- Remove generated `.log`, `.jsonl`, `.h264`, `.mp4`, and `.jpg` files.
-- Run a secret scanner such as `gitleaks`.
+| Symptom | Check |
+| --- | --- |
+| `ModuleNotFoundError: quii_helper` | Activate the environment where the package was installed; use that interpreter's `python -m pip`. |
+| `No module named examples` | Examples are checkout/source-distribution tools. Run `python -m examples.<name>` from that root, not a wheel-only application. |
+| Missing app-specific configuration | Complete the cloud/app values, and pass `config=load_config()` if using `.env`. |
+| `AssetMissingError` | Check `assets_dir`, required files, and the verified vHome ABI/table profile. Do not substitute an arbitrary `.so`. |
+| `CERTIFICATE_VERIFY_FAILED` | Follow [TLS guidance](#cloud-region-and-auth-url); do not disable verification silently. |
+| Missing `CAMERA_DEVICE_HOST` / `AUTH_CODE` | Local CGI settings are separate from cloud/P2P credentials. Supply the host explicitly. |
+| Device `error=-1` with empty content | Often an unsupported/rejected firmware command. Inspect the raw response or profile status; do not assume every device implements every query. |
+| Missing JPEG/MP4 | Check FFmpeg in the application's environment and inspect the capture error/summary and retained H.264. |
+| VLC cannot connect | Wait for media readiness; check the bind host, server LAN IP, firewall, and producer error from `session.wait()`. |
+| No console progress in library code | Logging is disabled by default. Enable it explicitly as described in [Logging](api.md#logging). |
+| Empty or repeated call history | History is not a live subscription. Read a fresh page and compare record ids; do not infer a new ring from old rows. |
+
+Collect `LOG_LEVEL=debug` diagnostics only when needed. Redact credentials,
+tokens, device ids, IPs, and private media before sharing. Do not upload `.env`,
+APK resources, or `assets/`; keep originals local rather than deleting them
+as a troubleshooting step. See [Security](../SECURITY.md).

@@ -1,6 +1,25 @@
 # Protocol Notes
 
-This project is based on observed behavior of the original Android client and native libraries.
+[Documentation](README.md) | [API Reference](api.md) | [Contributing](../CONTRIBUTING.md)
+
+These are implementation/parity notes for contributors, not the first-run
+guide. Start with [Setup](setup.md) to use the library. Native addresses and
+findings below refer to the inspected app builds, not every vendor release.
+
+## Contents
+
+- [Connection flow](#connection-flow), [media](#media-capture), and [RTSP](#rtsp-streaming).
+- [Runtime limits](#runtime-limits-and-lifecycle).
+- [Cloud history](#cloud-incoming-call-history) and [local device APIs](#local-device-apis).
+- [Receive parity](#receive-buffer-parity) and [failure/backpressure](#receiver-failure-and-backpressure).
+- [Native asset validation](#native-crypto-asset-validation) and [package layout](#package-layout).
+
+## Evidence Boundaries
+
+Static native parity and synthetic regression fixtures do not prove live
+camera/cloud behavior. Host-side admission/memory limits below are defensive
+policy unless a native constant is explicitly identified. Live observations
+and platform validation are summarized in [Compatibility](../COMPATIBILITY.md#validation-scope).
 
 ## Connection Flow
 
@@ -37,6 +56,35 @@ It does not ask the camera to enable a native RTSP mode. Instead, it:
 - Opens the normal QUII preview stream.
 - Receives camera H.264 frames.
 - Serves those frames to RTSP clients.
+
+## Runtime Limits And Lifecycle
+
+These limits are host-side safety policy, not a claim to reproduce native
+queue capacities or bound total process RSS:
+
+| Layer | Limit | On failure/overload |
+| --- | --- | --- |
+| RTSP listener | 32 clients; 16 KiB headers, 64 KiB bodies; incomplete-request timeout 10 seconds. | Reject/close the affected client. |
+| Per-viewer output | 32 pending access units, 4 MiB including in-flight RTP bytes; two-second access-unit deadline. | Disconnect the viewer without blocking the camera producer. |
+| RBUDP application payload queue | 4096 packets / 32 MiB. | Fail the session with `QuiiConnectionError`, not silent packet loss. |
+| RBUDP receive/reordering | Native 64 KiB start-sequence window; extra cache guard 4096 packets / 128 KiB. | Cumulative ACK outside the window; explicit failure on safety-limit overflow. |
+| KCP packet assembly | 20 MiB packet limit; transport bytes drain separately. | Reject malformed/oversized packets; retain valid incomplete input. |
+| Upper QUII assembly | 32 logical stream keys / 32 MiB pending payload, including incoming input; positive media body up to 20 MiB. | Abort and release pending buffers. |
+| Diagnostics | At most 128 recent wrapped-frame fingerprints and bounded streaming metadata. | No retained full-frame history; disabled diagnostics skip fingerprint/HEX work. |
+
+An unexpected terminal receiver/decoder failure clears pending application
+payloads and aborts capture. A valid prefix does not promise a usable partial
+recording. RTSP closes the listener and reports producer failure through
+`session.wait()`; it does not reconnect the camera automatically.
+
+Shutdown requests producer cancellation and releases sockets/listeners. A
+cloud/connection call already in flight still has its own timeout; later
+startup stages are skipped. Restart is rejected while that producer is stopping.
+Timeouts and intentional closure are not unexpected receiver failures.
+
+The native parity evidence for receive windows, assembly, and disconnects is
+recorded below. The public usage/lifecycle contract is in the
+[API reference](api.md#rtsp-streaming).
 
 ## Cloud Incoming-Call History
 

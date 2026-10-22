@@ -1,119 +1,109 @@
 # QUII Helper 📹
 
-Python package for connecting to QUII / Qualvision-based cameras and video doorbells from code.
+[![PyPI](https://img.shields.io/pypi/v/quii-helper)](https://pypi.org/project/quii-helper/)
+[![Python](https://img.shields.io/pypi/pyversions/quii-helper)](https://pypi.org/project/quii-helper/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/xaer981/quii-helper/blob/main/LICENSE)
 
-It can capture snapshots, save video clips, expose the camera as an RTSP stream, read available device metadata, and explicitly open a connected door without using the original mobile app.
+Use QUII / Qualvision cameras and video intercoms from Python, without running
+the original mobile app. Capture images and video, serve RTSP, inspect device
+information, and explicitly open a connected door.
 
-## What It Does ✨
+**The first final release, `0.1.0`, is available on
+[PyPI](https://pypi.org/project/quii-helper/0.1.0/).**
 
-- 📸 Captures JPEG snapshots from the camera preview stream.
-- 🎞 Saves MP4/H.264 video clips for a user-selected duration.
-- 📡 Serves the live preview as an RTSP stream for players such as VLC.
-- 🔎 Reads cloud, LAN, storage, network, product, alarm, video, and capability information where the device supports it.
-- 🧭 Discovers local devices that expose Qualvision-compatible HTTP services.
-- Reads incoming-call cloud history with the experimental [`get_call_events()` API](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental), without push registration or door commands.
-- Sends explicit local door-opening commands with `Camera.open_door()`; see [Door Control](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#door-control) for settings and acknowledgement semantics.
+[Features](https://github.com/xaer981/quii-helper#features-) ·
+[Compatibility](https://github.com/xaer981/quii-helper#compatibility-) ·
+[Quick Start](https://github.com/xaer981/quii-helper#quick-start-) ·
+[RTSP](https://github.com/xaer981/quii-helper#rtsp-streaming-) ·
+[Documentation](https://github.com/xaer981/quii-helper#documentation-) ·
+[Safety](https://github.com/xaer981/quii-helper#safety-and-limitations-)
+
+## Features ✨
+
+| Feature | What you can do |
+| --- | --- |
+| Snapshots | Capture a JPEG with `Camera.snapshot()`. |
+| Recording | Save an MP4 clip with `Camera.save_video()`. |
+| RTSP | Forward the live H.264 preview to a player such as VLC. |
+| Device inspection | Read supported cloud and local device information. |
+| LAN discovery | Find devices exposing Qualvision-compatible services. |
+| Call history | Read incoming-call cloud history with experimental `get_call_events()`. |
+| Door control | Send an explicit local opening command with `Camera.open_door()`. |
+
+Call history is **not** a live ringing subscription. Available device fields
+and local commands depend on firmware; an unsupported query does not imply
+that video capture is unsupported.
 
 ## Compatibility 🔍
 
-This project targets devices that use the QUII / Qualvision protocol family, including devices managed by the **vHome 2.2** mobile app.
+The tested device is **Tantos Marilyn Wi-Fi s**, used with **vHome 2.2**:
+snapshots, MP4 capture, RTSP, door opening in `auto` mode, and incoming-call
+history on the tested account/backend.
 
-Useful discovery hints:
-
-- A direct HTTP request to the device IP may return `Server: Qualvision -HTTPServer`.
-- Many compatible devices expose TCP port `34567`.
-- Local read-only device methods usually require that your machine can reach the camera LAN IP.
-
-Successfully tested devices:
-
-- `Tantos Marilyn Wi-Fi s`: snapshot, MP4 capture, RTSP, door opening in `auto` mode, and incoming-call cloud history on the tested account/backend.
-
-History access does not guarantee live delivery or a maximum notification
-delay. The library is also used by entrance-bot on Raspberry Pi ARM64; its
-mocked integration tests cover that deployment, not ARM64 media capture.
-
-If another device works, please open an issue or pull request so the compatibility list can be expanded.
+Related devices may return the HTTP header `Server: Qualvision -HTTPServer`
+or expose TCP port `34567`. These are discovery hints, not proof of support.
+See [Compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md)
+for platform coverage and how to report another device.
 
 ## Quick Start 🚀
 
-Use Python 3.10 or newer. For JPEG/MP4 output, also install the **FFmpeg
-executable** and put it on `PATH` (`ffmpeg -version` must work in the same
-environment). Installing this Python package does not install FFmpeg; see
-[Media Prerequisites](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#media-prerequisites).
-RTSP and read-only device methods do not require FFmpeg.
+### 1. Install
 
-For development or the bundled examples, install from a checkout:
-
-```powershell
-git clone https://github.com/xaer981/quii-helper.git
-cd quii-helper
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
-```
-
-This checkout prepares the first final version, `0.1.0`; it has **not** been
-published yet. For library use today, install the published pre-release from
-[PyPI](https://pypi.org/project/quii-helper/0.1.0rc6/):
+Use Python **3.10 or newer**, preferably in a virtual environment:
 
 ```shell
-python -m pip install "quii-helper==0.1.0rc6"
+python -m pip install quii-helper
 ```
 
-After `0.1.0` is published, install or upgrade to the latest final release with
-`python -m pip install --upgrade quii-helper`, without `--pre`.
-For now, use the explicit `0.1.0rc6` version above.
-No repository checkout is needed for library use.
-The wheel does **not** include `examples` or `.env.example`; use the
-[installed-package setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-an-installed-package)
-to create your own application directory and configuration.
+To upgrade an existing installation, use
+`python -m pip install --upgrade quii-helper`. No `--pre` is needed.
 
-Copy the required native assets extracted from the Android app into `assets/`:
+### 2. Configure Your Application
+
+**Installing the package is not the complete camera setup.** Preview/RTSP
+requires app-specific settings and assets extracted from an Android APK you
+are authorized to use. The verified native asset is from **vHome 2.2,
+arm64-v8a**, even when Python runs on Windows or Linux x86_64.
+
+Follow [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md)
+to prepare an application directory:
 
 ```text
-assets/
-  ca.pem
-  client.pem
-  client.txt
-  libqv-p2p-v2.so
+my-camera-app/
+  app.py
+  .env
+  assets/
+    ca.pem
+    client.pem
+    client.txt
+    libqv-p2p-v2.so
+  data/                 # Generated output; created when needed.
 ```
 
-Use the verified **vHome 2.2 arm64-v8a** `libqv-p2p-v2.so`, regardless of your
-computer's architecture. Unsupported ELF/table layouts are rejected; files
-from other ABIs or app builds are not interchangeable without native verification.
+The wheel does not include `.env.example` or the repository's `examples/`.
+The setup guide explains both installed-package and checkout workflows.
+JPEG/MP4 output also needs the external **FFmpeg executable** on `PATH`;
+RTSP does not. Verify it with `ffmpeg -version`.
 
-Create `.env` from `.env.example` and fill in your account, device, cloud, and app constants:
+### 3. Capture Media
 
-```env
-CLOUD_ACCOUNT=
-CLOUD_PASSWORD=
-DEVICE_ID=
-CLOUD_CLIENT_UUID=
-CLOUD_AUTH_URL=
-CLOUD_SERVICE_URL=
-CAMERA_OEM=
-CAMERA_APP_ID=
-CAMERA_CLIENT_TYPE=
-IP_REGION_ID=
-```
-
-Detailed extraction instructions are in [docs/setup.md](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md).
-
-## Basic Usage 🧩
+Run this from the directory containing your configured `.env` and `assets/`:
 
 ```python
 from quii_helper import Camera, load_config
 
 camera = Camera(config=load_config())
 
-snapshot = camera.snapshot()
-print(snapshot)
-
-video = camera.save_video(duration_seconds=15)
-print(video)
+print(camera.snapshot())
+print(camera.save_video(duration_seconds=15))
 ```
 
-Start an RTSP stream:
+Both methods return a `pathlib.Path`. Default output goes to `./data/` with
+timestamped names. Connection setup and file rendering add time to the media
+collection window. See the [API reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#capture-methods)
+for timeouts, output paths, and capture results.
+
+## RTSP Streaming 📡
 
 ```python
 from quii_helper import Camera, load_config
@@ -128,86 +118,46 @@ except KeyboardInterrupt:
     pass
 ```
 
-Open the stream in VLC:
+Open `rtsp://127.0.0.1:8554/live` in VLC after media becomes available.
+The context manager stops the server on exit; `session.wait()` reports
+background failures and remains interruptible with `Ctrl+C`.
 
-```text
-rtsp://127.0.0.1:8554/live
-```
-
-Alternatively, run `python -m quii_helper.main` to serve RTSP on port `8554`
-until `Ctrl+C`. This entry point does not open the door.
-RTSP binds to localhost by default. To serve a trusted LAN, explicitly pass
-`host="0.0.0.0"` and use the server's LAN IP in the player. There is no RTSP
-authentication or TLS: restrict access and do not expose the port publicly.
-Examples honor `TLS_VERIFY` (enabled by default). The editable `main.py`
-currently passes `tls_verify=False` for the owner's tested setup; remove that
-override to use configured TLS verification.
-
-Read device information:
-
-```python
-from quii_helper import Camera, load_config
-
-camera = Camera(config=load_config())
-
-print(camera.get_device_info())
-print(camera.get_product_info())
-print(camera.get_storage_info())
-print(camera.get_network_info())
-```
-
-For the complete API reference, see [docs/api.md](https://github.com/xaer981/quii-helper/blob/main/docs/api.md).
-
-`load_config()` explicitly reads `.env` from the working directory without
-changing the process environment. For embedding, pass an `AutonomousConfig`
-or use `Camera(...)` with process environment values and keyword arguments;
-neither reads `.env` implicitly. Assets and default outputs belong to the
-application (`./assets` and `./data`), not the installed package. See
-[Library Configuration](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#library-configuration).
-
-## Logging 🧾
-
-The standalone entry point and examples configure console logging explicitly.
-Set `LOG_LEVEL=info` for user-friendly progress messages:
-
-```env
-LOG_LEVEL=info
-```
-
-Set `LOG_LEVEL=debug` when collecting diagnostics for bug reports:
-
-```env
-LOG_LEVEL=debug
-```
-
-Debug logging includes protocol counters, packet statistics, decoding summaries, and connection details.
-
-Library logging is disabled by default and importing the package preserves
-application Loguru sinks. To use your own logging setup, call
-`logger.enable("quii_helper")` after importing the package. See
-[Logging](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#logging) for the optional console helper.
+For a trusted LAN, pass `host="0.0.0.0"` and connect to the server's LAN IP,
+not `0.0.0.0`. **There is no RTSP authentication or TLS.** Restrict access
+with a firewall/VPN and never expose this port publicly.
 
 ## Documentation 📚
 
-- [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md)
-- [Camera API Reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md)
-- [Protocol Notes](https://github.com/xaer981/quii-helper/blob/main/docs/protocol-notes.md)
-- [Compatibility Notes](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md)
-- [Contributing](https://github.com/xaer981/quii-helper/blob/main/CONTRIBUTING.md)
-- [Security Policy](https://github.com/xaer981/quii-helper/blob/main/SECURITY.md)
+| I want to... | Read |
+| --- | --- |
+| Set up an account, assets, and `.env` | [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md) |
+| Find methods, parameters, results, and errors | [Camera API Reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md) |
+| Read call history | [Incoming Call History](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental) |
+| Open a door explicitly | [Door Control](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#door-control) |
+| Resolve a setup failure | [Troubleshooting](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#troubleshooting) |
+| Check platforms or report a device | [Compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md) |
+| Contribute or understand internals | [Contributing](https://github.com/xaer981/quii-helper/blob/main/CONTRIBUTING.md), [Protocol Notes](https://github.com/xaer981/quii-helper/blob/main/docs/protocol-notes.md) |
 
-## Important Notes ⚠️
+Library imports do not read `.env` or reconfigure application logging.
+Use `load_config()` to opt into file loading. Console examples honor
+`LOG_LEVEL=info` or `LOG_LEVEL=debug`; embedding applications enable logging
+explicitly. See [Configuration](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#library-configuration)
+and [Logging](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#logging).
 
-- Do not commit `.env`, `assets/`, `data/`, logs, screenshots, or recordings.
-- The package depends on native crypto/material extracted from the original Android app version you use.
-- Some local read-only methods return `error=-1` on devices that do not support that command.
-- If cloud TLS fails with `CERTIFICATE_VERIFY_FAILED`, see [Cloud Region And Auth URL](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-region-and-auth-url).
-- From a checkout, `python -m examples.open_door` is an explicit door-control check. It prints capability 24 and sends a **real opening command** using `UNLOCK_PASSWORD` and `password_mode="auto"`; do not use it as a read-only smoke test.
+## Safety And Limitations 🔒
 
-## Status 🛠
+- Use only devices, accounts, and APKs you own or are authorized to access.
+- Never share `.env`, extracted assets, private keys, raw logs, or camera media.
+- Keep TLS verification enabled. For vendor certificate failures, see the
+  [TLS guidance](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-region-and-auth-url).
+- Local CGI methods need an explicit camera LAN host and authentication code;
+  preview/cloud credentials do not automatically configure local access.
+- `open_door()` sends a **real command**. Acknowledgement is not proof of
+  physical movement, and an uncertain outcome must not be retried automatically.
+- The package is pre-`1.0`; experimental APIs and firmware compatibility have
+  explicit limits. See the [Security Policy](https://github.com/xaer981/quii-helper/blob/main/SECURITY.md)
+  and [Changelog](https://github.com/xaer981/quii-helper/blob/main/CHANGELOG.md).
 
-The project is usable but still protocol-research-heavy. Public APIs are being stabilized around `Camera`, capture results, RTSP streaming, read-only device inspection, and explicit local door control.
-
-<p align=center>
-  <a href="https://github.com/xaer981"><img src="https://github.com/xaer981/xaer981/blob/main/main_cat.gif" align="center" height="40" width="128"></a>
+<p align="center">
+  <a href="https://github.com/xaer981"><img src="https://raw.githubusercontent.com/xaer981/xaer981/0aa64a3f8982d7dd0f90d5eaf2254ccc3d614994/main_cat.gif" alt="Animated cat" height="40" width="128"></a>
 </p>

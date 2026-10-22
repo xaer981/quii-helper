@@ -1,6 +1,20 @@
 # Camera API Reference
 
-The stable public API is centered around `Camera`.
+[Documentation](README.md) | [Setup](setup.md) | [Compatibility](../COMPATIBILITY.md)
+
+`Camera` is the public entry point. The API is synchronous; importing the
+package or constructing a camera does not connect to a device.
+
+## Contents
+
+- [Constructor](#constructor) and [configuration](#library-configuration).
+- [Capture](#capture-methods), [RTSP](#rtsp-streaming), and [logging](#logging).
+- [Cloud queries](#cloud-read-only-methods) and [call history](#incoming-call-history-experimental).
+- [LAN discovery](#lan-discovery) and [local inspection](#local-device-read-only-methods).
+- [Archive queries](#archive-queries), [door control](#door-control), and [errors](#error-codes).
+- [Bundled examples](#application-entry-point).
+
+## Constructor
 
 ```python
 from quii_helper import Camera, load_config
@@ -8,149 +22,167 @@ from quii_helper import Camera, load_config
 camera = Camera(config=load_config())
 ```
 
-`Camera()` reads process environment defaults, not `.env` files. The explicit
-`load_config()` call above adds `.env` support without changing `os.environ`.
+`config` is an optional `AutonomousConfig`. If omitted, `Camera()` reads
+process environment defaults, **not `.env` files**. Every other constructor
+argument is keyword-only. A non-`None` keyword overrides the base configuration
+for this camera; the supplied configuration is copied.
 
-## Constructor
+### Account And Device
 
-```python
-Camera(config=None, device_host=None, auth_code=None, unlock_password=None)
-```
-
-Selected constructor parameters are shown below; the class docstring documents
-the complete signature. Keyword arguments override the base configuration.
-
-| Parameter | Purpose |
+| Parameter | Meaning |
 | --- | --- |
-| `config` | Optional `AutonomousConfig`. If omitted, defaults are read from process environment values. |
-| `device_host` | Camera LAN IP or hostname for local CGI methods; defaults to `CAMERA_DEVICE_HOST`. |
-| `auth_code` | Local CGI authentication code; defaults to `AUTH_CODE`. |
-| `unlock_password` | Separate door-opening password; defaults to `UNLOCK_PASSWORD`. |
-| `assets_dir` | Application asset directory, default `./assets`. Sets default TLS file paths; individual `ca_path`, `cert_path`, and `key_path` overrides take precedence. |
-| `auth_version` | XML cloud-auth version, normally supplied by `CLOUD_AUTH_VERSION` through `load_config()`. |
-| `data_dir` | Capture/diagnostic directory, default `./data`. Explicit relative paths are anchored to the working directory when constructing `Camera`. |
+| `device_id` | Device identifier; `DEVICE_ID` in environment-backed configuration. |
+| `cloud_account`, `cloud_username` | Cloud login; `cloud_username` is an alias. |
+| `cloud_password` | Cloud account password. |
+| `device_host` | Explicit LAN host/IP for local CGI methods. Not discovered implicitly. |
+| `auth_code` | Local CGI authentication code, separate from the opening password. |
+| `unlock_password` | Door-opening password used only by explicit `open_door()` calls. |
+| `channel` | Video-panel channel; base default `1`. |
+| `stream` | Numeric stream id; base default `2`. |
+| `stream_quality` | Friendly selector such as `"high"` (`1`) or `"low"` (`2`). Mutually exclusive with an explicit `stream`. |
+
+### Cloud And Assets
+
+| Parameter | Meaning |
+| --- | --- |
+| `client_id` | Stable per-install cloud/UST/MQTT client UUID. |
+| `service_url` | Service-discovery base URL. |
+| `auth_url` | Region/app user-auth endpoint. |
+| `oem`, `app_id`, `client_type`, `ip_region_id` | App/OEM and region values, not universal defaults. |
+| `auth_version` | Cloud XML auth version from the app build; base default empty. |
+| `assets_dir` | Asset directory; base default `./assets`. Sets default TLS file paths. |
+| `ca_path`, `cert_path`, `key_path` | Individual TLS file overrides, taking precedence over asset-directory defaults. |
+| `tls_verify` | HTTPS certificate verification; base default `True`. |
+
+### Capture And Advanced Options
+
+| Parameter | Meaning |
+| --- | --- |
+| `data_dir` | Output/diagnostic directory; default `./data`. |
+| `preview_settings` | `PreviewCaptureSettings`; keep defaults unless tuning capture/diagnostics. |
+| `emit` | Callback receiving structured diagnostic summaries. |
+| `status` | Callback receiving user-facing status strings. |
+| `live_play_payload` | Native live-play variant; base default `"path"`. |
+| `live_inner`, `live_newcn` | Native packet/connection flags; base defaults `False`. |
+| `live_keepalive_interval` | Live keepalive interval; base default `10.0` seconds. |
+| `play_sync_iterations` | Extra post-play sync iterations; base default `0`. |
+| `enable_play_probes` | Extra play probes; base default `False`. |
+
+Advanced protocol options are compatibility controls, not general performance
+presets. Change them only with device/native evidence. The defaults above are
+plain configuration defaults; environment settings or a supplied config can
+replace them.
 
 ## Library Configuration
 
-`AutonomousConfig` is a plain configuration object: constructing it does not
-read environment values, `.env`, certificates, or native libraries. Pass it
-when the application owns its settings. `Camera` copies the configuration,
-so mutable session settings are not shared between camera instances.
+Choose one configuration source:
 
-Each camera connector also owns its cloud cookie jar. Login, device-token and
-device-list requests for that camera share it; another `Camera` does not.
-Standalone credential-fetch flows allocate their own jar unless one is passed
-explicitly. Alarm login/query retain a separate jar from ordinary userauth.
+| Construction | What it reads |
+| --- | --- |
+| `Camera(config=load_config())` | `.env` in the working directory, with process environment values taking precedence. |
+| `Camera(config=load_config(project_root=...))` | That directory's `.env`; relative `assets_dir` is resolved against it. |
+| `Camera()` | Process environment values only. |
+| `Camera(config=AutonomousConfig(...))` | Explicit fields; neither `.env` nor process environment values. |
+| `load_config(env={...})` | Only the supplied mapping; no `.env` or process values. |
+| `load_config(load_env_file=False)` | Process environment only. |
+
+`load_config()` uses python-dotenv's non-mutating `dotenv_values()` reader.
+It does not populate `os.environ` or share another application's loaded file.
+`**overrides` use `AutonomousConfig` field names, for example `tls_verify=False`.
+
+For application-owned local settings, no cloud credentials are needed:
 
 ```python
-from pathlib import Path
 from quii_helper import AutonomousConfig, Camera
 
-config = AutonomousConfig(
-    device_host="192.0.2.10",
-    auth_code="your-cgi-auth-code",
-    unlock_password="your-door-password",
-    assets_dir=Path("/srv/entrance/assets"),
+camera = Camera(
+    config=AutonomousConfig(
+        device_host="192.0.2.10",
+        auth_code="replace-with-your-cgi-code",
+    )
 )
-camera = Camera(config=config, data_dir="/srv/entrance/captures")
 ```
 
-Use `load_config(project_root=Path(...), assets_dir=...)` for an application's
-`.env` file. Process variables override file values; loading one application's
-file never changes another application's environment. Relative `assets_dir`
-values are resolved against `project_root`, which defaults to the working
-directory. An explicit `env={...}` mapping ignores both `.env` and process
-values. `load_env_file=False` reads only the process environment.
+The example configures a client only; it does not query or open anything.
+See [Setup](setup.md#what-your-operation-needs) for per-operation requirements.
 
-TLS files default to `ca.pem`, `client.pem`, and `client.txt` in `assets_dir`.
-Relative TLS paths in `AutonomousConfig` are relative to that asset directory.
-UST table loading also uses the camera's `assets_dir`; no global asset setting
-is needed. Files are read only by operations that need them.
+### Paths And Output
 
-Explicit `output_path` values are honored, including absolute paths outside
-`data_dir`. Relative output paths are anchored to the working directory;
-omitting the path allocates a timestamped file in `data_dir`. The caller owns
-the destination and must validate any paths accepted from untrusted users.
-Dots in the requested stem are preserved: `clip.1.mp4` and `clip.2.mp4` are
-different captures, and `frame.front.jpg` keeps its full name. Only the final
-extension is removed when deriving the shared JPEG/MP4/H.264 base name.
+Assets default to `./assets`; TLS files default to `ca.pem`, `client.pem`, and
+`client.txt` inside it. Relative TLS paths in `AutonomousConfig` are resolved
+against `assets_dir`. Asset files are read only by operations needing them.
 
-### Async Applications
+Default media goes into `./data`, relative to the working directory at camera
+construction. `load_config(project_root=...)` does not relocate default output:
+pass `data_dir=application_dir / "data"` for that. Explicit `output_path`
+destinations are honored, including paths outside `data_dir`; relative output
+paths are relative to the working directory. Validate paths from untrusted users.
 
-The API is synchronous. An aiohttp/aiogram application such as `entrance-bot`
-can retain a small adapter without embedding XML commands in its handlers:
-
-```python
-import asyncio
-from quii_helper import Camera, CameraDoorOpenResult
-
-async def open_configured_door(camera: Camera) -> CameraDoorOpenResult:
-    return await asyncio.to_thread(camera.open_door, password_mode="sha256")
-```
-
-This function sends a real command when called. Choose the explicit password
-mode only after verifying the device's requirements. Explicit modes need no
-cloud metadata or APK assets for local unlocking. Caller cancellation does not
-stop a running thread; never retry an unlock automatically after a timeout.
-
-## Logging
-
-Importing the package does not configure or remove application Loguru sinks.
-Library messages are disabled by default. An embedding application may configure
-Loguru normally and then call `logger.enable("quii_helper")`.
-
-For an additional library-only console sink, call
-`quii_helper.support.log.configure_logging("INFO")`. Repeated calls replace only
-the helper's own sink and preserve application sinks. Existing sinks retain
-their own filters and levels. `"OFF"` disables library messages without
-disabling application messages.
-
-`configure_logging(replace_existing=True)` intentionally replaces all sinks and
-is reserved for standalone programs that own process logging. The entry point
-and examples use it, reading `LOG_LEVEL` from their explicit settings file.
+Automatic filenames use `DD-MM-YYYY_HH-MM-SS` and reserve a unique output base.
+Dotted names such as `clip.1.mp4` retain their full stem. JPEG/MP4 normally
+does not retain diagnostic JSONL files; failed rendering can retain raw H.264.
 
 ## Capture Methods
 
-### `snapshot()`
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `snapshot(timeout_seconds=5.0, output_path=None)` | `Path` | Save one JPEG; stop when enough decodable media is available. |
+| `save_video(duration_seconds, output_path=None)` | `Path` | Collect video for the requested window and render MP4. |
+| `record(duration_seconds, output_path=None)` | `Path` | Alias for `save_video()`. |
+| `capture(...)` | `CameraCaptureResult` | Select artifacts and inspect the structured summary. |
 
-Captures one JPEG image from the live preview.
+`duration_seconds` can be positional in `save_video()` / `record()`. All other
+capture arguments are keyword-only. Durations must be positive and finite.
+Use a `.jpg` output path for `snapshot()` and `.mp4` for `save_video()`.
 
 ```python
-result = camera.snapshot()
-print(result)
+image_path = camera.snapshot(timeout_seconds=10, output_path="data/front.jpg")
+video_path = camera.save_video(15, output_path="data/entrance.mp4")
 ```
 
-Returns a `pathlib.Path`. The default output path is generated under `data/`
-with a timestamp-based filename.
+### Timing
 
-### `save_video(duration_seconds)`
+The collection window starts after credentials, connection, and live-preview
+setup, when the packet-consumption loop begins. It does **not** wait for the
+first successfully decoded frame. Connection startup, pending-fragment draining,
+and FFmpeg rendering can make the call take longer than the requested window.
 
-Captures a video clip and writes an MP4 file.
+`snapshot(timeout_seconds=...)` limits that collection window, not the complete
+call including connection and rendering. `save_video()` disables early stopping;
+the requested duration is a collection target, not a guarantee of frame count,
+delivery quality, or an exact wall-clock return time.
+
+### Capture Settings And Results
+
+| `capture()` argument | Default and purpose |
+| --- | --- |
+| `duration_seconds=None` | Use `preview_settings.capture_seconds` (`35.0` by default). |
+| `output_path=None` | Allocate a timestamped output base in `data_dir`; a requested final extension is removed to derive companion artifact names. |
+| `stop_when_decodable=None` | Inherit the preview setting, which defaults to **`True`**. |
+| `render_snapshot=True` | Request JPEG rendering. |
+| `render_video=True` | Request MP4 rendering. |
+| `save_diagnostic_artifacts=None` | Inherit diagnostic saving, disabled by default. |
+
+To request both files across a full collection window, disable early stopping:
 
 ```python
-result = camera.save_video(duration_seconds=60)
-print(result)
-```
-
-Returns a `pathlib.Path`. `duration_seconds` is the requested media collection
-time after the preview session starts receiving packets.
-
-### `capture(...)`
-
-Lower-level capture method used by `snapshot()` and `save_video()`.
-
-Use it when you need both artifacts or need access to the full capture summary.
-
-```python
-result = camera.capture(duration_seconds=15)
+result = camera.capture(duration_seconds=15, stop_when_decodable=False)
+print(result.snapshot_path, result.snapshot_written)
+print(result.video_path, result.video_written)
 print(result.summary)
 ```
 
+`CameraCaptureResult` also exposes `media_written`, `require_snapshot()`, and
+`require_video()`. The latter methods return a `Path` or raise
+`CameraCaptureError` / `MediaRenderError`. `capture()` reports render failure
+in its result; it can still raise configuration, connection, or decoder errors.
+`snapshot()` and `save_video()` require their requested artifact to succeed.
+
 ## RTSP Streaming
 
-### `serve_rtsp(host="127.0.0.1", port=8554, path="/live")`
-
-Starts a local RTSP server and forwards camera H.264 frames to connected clients.
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `serve_rtsp(host="127.0.0.1", port=8554, path="/live")` | `CameraRtspStream` | Start a listener and background camera producer. |
 
 ```python
 from quii_helper import Camera, load_config
@@ -165,171 +197,72 @@ except KeyboardInterrupt:
     pass
 ```
 
-Open in VLC:
+Open `rtsp://127.0.0.1:8554/live` in VLC after media arrives. The helper forwards
+the QUII H.264 preview; it does not enable native RTSP on the camera or require
+FFmpeg. Each call opens its own preview session.
 
-```text
-rtsp://127.0.0.1:8554/live
-```
+| Stream handle | Meaning |
+| --- | --- |
+| `session.url` | Address, **not** a readiness check. |
+| `session.stats` | Current RTSP/H.264 counters. |
+| `session.wait(timeout=None)` | Wait for completion; re-raise producer failure; remain responsive to `Ctrl+C`. A timeout alone does not close the stream. |
+| `session.close()` | Request cancellation and release the listener; also called by the context manager. |
 
-The context manager closes the preview session and RTSP server automatically.
-Stop the example with `Ctrl+C`. Keep `session.wait()` in a standalone stream:
-it reports a background producer failure instead of waiting indefinitely for
-terminal input after the listener has stopped.
-Waiting stays responsive to `Ctrl+C` on Windows as well as Linux, including
-when a timeout is supplied. A timeout alone does not close the stream. Leaving
-the context manager closes the listener and requests producer cancellation;
-an in-flight connection still has its own network timeout.
-Each RTSP client has its own bounded send queue (32 pending access units,
-4 MiB including in-flight RTP bytes). A full queue, socket failure, or access
-unit delayed more than two seconds disconnects that client instead of blocking
-the camera producer or other viewers. This is a best-effort live stream, not a
-lossless recording service; a disconnected viewer must reconnect.
+The `RTSP stream ready` log appears after the first assembled H.264 access
+unit, if library logging is enabled. A producer failure closes the listener;
+there is no automatic camera reconnect. An in-flight cloud/connection call can
+finish only at its own timeout during shutdown; subsequent startup stages are
+cancelled and overlapping restarts are rejected while the producer is stopping.
 
-The decoded RBUDP payload queue is bounded to 4096 packets / 32 MiB. Consumer
-overload or an unexpected UDP receiver failure raises `QuiiConnectionError`
-instead of silently dropping packets or leaving an apparently live stream with
-no producer. `session.wait()` re-raises producer errors and the RTSP listener
-is closed. No automatic camera reconnection or command retry is performed.
+Slow viewers are disconnected rather than blocking the producer. This is a
+best-effort stream, not lossless recording. See
+[Runtime Limits](protocol-notes.md#runtime-limits-and-lifecycle) for queue,
+packet-size, and request limits.
 
-RBUDP reordering accepts packet starts only inside the native 64 KiB sequence
-window, including uint32 wraparound. Outside-window packets are not cached and
-receive the cumulative ACK for the current position. Each reordering cache also
-has host-side safety limits of 4096 packets / 128 KiB; exceeding them fails the
-session explicitly rather than silently discarding required media.
+The default bind is loopback only. For a trusted LAN, pass `host="0.0.0.0"`
+and connect using the server's LAN IP, not the wildcard address.
+**There is no RTSP authentication or TLS.** Use a firewall/VPN and never expose
+the port directly to the Internet.
 
-Transport bytes are drained into a separate KCP assembly buffer before ACK
-generation. A partial KCP frame does not occupy the transport receive window;
-frames larger than 64 KiB therefore do not stall while awaiting their own tail.
-Only registered, nonzero local connection IDs are admitted. Each lane owns one
-receive state, even when the peer word changes; unknown IDs allocate no state,
-receive no ACK, and deliver no data. These checks are routing, not cryptographic
-authentication of a sender.
+## Logging
 
-Complete KCP frames are dispatched one at a time. A malformed next header or
-length raises a terminal `QuiiConnectionError`, rather than dropping the valid
-prefix silently and carrying on. The prefix reaches the decoder first, but a
-terminal receiver failure clears pending application payloads and aborts the
-operation: it does not promise a usable partial recording. Incomplete valid
-headers/bodies remain buffered. KCP packets are limited to 20 MiB.
-
-Upper QUII assembly also bounds pending data across chained and fragmented
-media buffers: 32 logical stream keys / 32 MiB including the next input chunk.
-Declared media bodies must be positive and at most 20 MiB. Invalid lengths,
-decode errors or a buffer limit abort the operation with `QuiiConnectionError`
-and release pending data, rather than silently losing required bytes.
-A camera disconnect request for a connected/connecting preview lane likewise
-aborts capture; unrelated IDs and response flags are ignored. For RTSP,
-`session.wait()` reports the failure and the listener closes. These safety
-limits are library policy, not vendor constants or total process-memory limits.
-
-Diagnostic deduplication stores at most 128 SHA-256 fingerprints, never a history of full
-frames; disabled RBUDP diagnostics do not calculate those fingerprints or HEX.
-
-The `RTSP stream ready` log appears only after the first assembled H.264 access
-unit. `session.url` is an address, not a readiness check.
-
-The default listener accepts local clients only. For a trusted LAN, explicitly
-pass `host="0.0.0.0"` and connect using the server's LAN IP. **There is no RTSP
-authentication or TLS:** restrict access with a firewall/VPN and do not expose
-this port to the Internet. The server allows at most 32 concurrent clients;
-headers are limited to 16 KiB, request bodies to 64 KiB, and incomplete messages
-expire after 10 seconds.
-
-`close()` requests cancellation and waits briefly for the producer. An in-flight
-cloud/connection call can remain until its own timeout, but later startup stages
-are skipped. A restart is rejected while that producer is still stopping.
-`wait()` reports producer failures; the listener closes on failure rather than
-remaining available without media. Streaming retains only recent frame metadata,
-not the complete packet history.
-
-## Door Control
-
-### `open_door(...)`
-
-Sends one local XML `set.device.opendoor` command through `/tdkcgi`. It does not
-open a preview, retry the command, or follow redirects. The default `auto` mode
-may query read-only cloud metadata to determine the password format; explicit
-modes work without cloud login.
-
-Configure `CAMERA_DEVICE_HOST`, `AUTH_CODE`, and `UNLOCK_PASSWORD` in `.env`.
-`UNLOCK_PASSWORD` is the door-opening password, separate from CGI authentication
-and the cloud account password. The XML body format is selected using capability
-24 (`TYPE_ENCRYPY_SHA256`), matching `QvDeviceApi.deviceUnlock` in vHome: a set
-flag applies `EncodeDevicePassword`, while a clear flag sends the exact password.
-CGI header authentication continues to use encoded `AUTH_CODE` in both modes.
-
-The following example **sends a real opening command** when executed:
+Library logging is disabled by default. Imports do not remove or reconfigure
+the host application's Loguru sinks. If your application already owns logging:
 
 ```python
+from loguru import logger
 from quii_helper import Camera, load_config
 
+logger.enable("quii_helper")
 camera = Camera(config=load_config())
-result = camera.open_door(lock_number=1)
-print(result.accepted, result.error, result.message)
 ```
 
-To print capability 24 and the command result using `.env` settings, explicitly
-run the dedicated example below. It **opens the configured door**; the normal
-`python -m quii_helper.main` entry point only starts RTSP.
+For an optional library-only console sink, use
+`quii_helper.support.log.configure_logging("INFO")`. Repeated calls replace
+only this helper's sink and preserve application sinks. `"OFF"` disables library
+messages without disabling application messages.
 
-```powershell
-python -m examples.open_door
-```
-
-| Parameter | Purpose |
-| --- | --- |
-| `channel=None` | Video-panel channel, sent as `door`. Defaults to `Camera.channel` / `CAMERA_CHANNEL`. |
-| `lock_number=1` | Positive lock/relay number, sent as `locknumber`. |
-| `unlock_password=None` | Per-call override of `Camera(unlock_password=...)` / `UNLOCK_PASSWORD`. Accepts plain text or the vendor-encoded password. |
-| `password_mode="auto"` | Uses capability 24 from cached metadata or a read-only `get_device_info()` lookup. `"plain"` sends the body password unchanged; `"sha256"` applies the vendor encoding rule. Explicit modes override capability and skip cloud lookup. |
-| `port=80`, `scheme="http"` | Local CGI endpoint. HTTPS is available where the device supports it. |
-| `auth_code=None` | Per-call CGI authentication override. Defaults to `Camera(auth_code=...)` / `AUTH_CODE`. |
-| `verify_tls=None` | HTTPS certificate verification override. Defaults to the camera configuration. |
-| `debug=False` | Enables redacted CGI exchange logging at DEBUG level. |
-
-Returns `CameraDoorOpenResult` with `error`, `channel`, `lock_number`, `accepted`,
-and `message`. `accepted=True` requires an explicit numeric `<error>0</error>`
-response. It confirms the device acknowledgement, not physical door movement.
-Unlock errors have command-specific meanings, including incorrect opening
-password, busy device, disabled channel, and disabled lock.
-
-Missing settings or invalid parameters raise `ConfigurationError` before sending.
-Transport failures and malformed responses raise `QuiiConnectionError`: the
-device may already have acted, so the physical outcome is unknown. The package
-does not automatically repeat the command or try the other password format.
-
-If cloud metadata is unavailable or capability 24 cannot be decoded, `auto`
-raises `ConfigurationError` before sending an opening command. Once the expected
-format is known, select it explicitly:
-
-```python
-# Sends a real command with the body password unchanged; no cloud lookup.
-result = camera.open_door(password_mode="plain")
-# Alternatively, password_mode="sha256" selects the vendor-encoded format.
-```
-
-`camera.get_device_info().supports_sha256_password` exposes the decoded flag as
-`True`, `False`, or `None`. Missing, malformed, or truncated basedata is unknown,
-not an indication that plain passwords are supported.
+Standalone scripts can call `configure_logging(replace_existing=True)` to
+own all sinks and read `LOG_LEVEL` from `.env`. This deliberately replaces
+existing sinks; do not use it casually in an embedding application. INFO is
+user-facing progress; DEBUG adds protocol counters and diagnostics. Redact
+logs before sharing them.
 
 ## Cloud Read-Only Methods
 
-These methods use cloud/app APIs and do not require direct LAN access to the camera:
+These methods use cloud/app services, not the camera's LAN CGI endpoint.
+They do not open a preview or send opening commands.
 
-| Method | Purpose |
-| --- | --- |
-| `get_device_info()` | Returns basic device metadata available from cloud runtime credentials. |
-| `get_device_shadow_info()` | Returns cloud shadow/device state where supported. |
-| `get_iot_command_support()` | Returns cloud-supported command metadata where supported. |
-| `get_call_events(...)` | Experimental read-only incoming-call history from the cloud `UserAlarm` journal. |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_device_info()` | `CameraDeviceInfo` | Login, device-token metadata, and best-effort device-list enrichment. |
+| `get_device_shadow_info()` | `CameraDeviceShadowInfo` | Cloud shadow/device state where supported. |
+| `get_iot_command_support()` | `CameraIotCommandSupportInfo` | Command-support metadata, not command execution. |
+| `get_call_events(...)` | `CameraCallEventPage` | Experimental incoming-call journal history. |
 
-Example:
-
-```python
-info = camera.get_device_info()
-print(info.device_id)
-print(info.transparent_basedata)
-```
+Sparse fields in `CameraDeviceInfo` do not necessarily mean parsing failed.
+`supports_sha256_password` is `True`, `False`, or `None` when capability data
+is missing/invalid. Do not log raw credentials or basedata publicly.
 
 ### Incoming Call History (Experimental)
 
@@ -338,198 +271,303 @@ page = camera.get_call_events(page_size=15)
 for event in page.events:
     print(event.record_id, event.alarm_id, event.time, event.channel)
 
-# Next page of the same query; keep the filters and page size unchanged.
 next_page = camera.get_call_events(page=1, max_id=page.max_id, page_size=15)
 ```
 
-The method discovers `alarmapp`, performs cloud login and a separate alarm
-`client-login`, then makes one `client-query-recordlist` request to `UserAlarm`.
-It does not require the camera LAN IP or start a media session. Existing
-cloud/app settings and the TLS assets from [Setup](setup.md) are used.
-The alarm login uses a dedicated, stable, account-scoped reader id and a
-separate cookie jar; no Android push token or HS/LT credentials are supplied.
-It may create a reader-client record/session on the server, but never logs out
-existing clients or changes notification settings.
-
-| Parameter | Purpose |
+| Argument | Default and meaning |
 | --- | --- |
-| `page=0` | Zero-based page number, matching the original client. |
-| `page_size=15` | Positive number of records requested per page. |
-| `max_id="0"` | Native pagination anchor; pass the returned value on later pages. Not a since-id cursor. |
-| `start_time=""`, `end_time=""` | Optional time bounds as `YYYY-MM-DD HH:MM:SS` in the vendor's time convention. No timezone is assumed or converted. |
+| `page` | `0`; zero-based page number. |
+| `page_size` | `15`; positive requested page size. |
+| `max_id` | `"0"`; native pagination anchor, **not** a since-id cursor. Keep the returned anchor, filters, and page size when reading later pages. |
+| `start_time`, `end_time` | Empty; optional `YYYY-MM-DD HH:MM:SS` bounds in the vendor's time convention. No timezone conversion. |
 
-Returns `CameraCallEventPage` with `events`, `max_id`, `total_count`, and
-`unread_count`. Each `CameraCallEvent` preserves journal `record_id`, original
-`alarm_id`, device/channel, timestamp text, alarm/message states, and optional
-source/resource fields. Only native event `19` for this device is returned;
-event `20` means call received/handled, not another incoming call. Resource URLs
-are not downloaded and are omitted from object `repr` because they may contain
-private access tokens. Avoid publishing event metadata or URLs.
+The page exposes `events`, `max_id`, `total_count`, and `unread_count`. Each
+event preserves `record_id`, `alarm_id`, device/channel, timestamp text,
+alarm/message states, and optional source/resource fields. Only incoming-call
+event `19` for this device is returned; event `20` means received/handled.
+Resource URLs are not downloaded and are hidden from `repr` because they can
+contain private tokens. Do not publish event metadata or URLs.
 
-Reading never marks records read, deletes them, registers push, changes alarm
-settings, answers a call, or opens a door. Invalid parameters raise
-`ConfigurationError`; transport, malformed responses, and server rejection raise
-`QuiiConnectionError`, never a successful empty page.
+Each query discovers `alarmapp`, performs ordinary cloud login and a separate
+tokenless alarm `client-login`, then reads `UserAlarm`. The stable reader identity
+is account-scoped and uses a separate cookie jar. Login may create a reader
+record/session, but never registers push, logs out existing clients, marks
+records read, deletes them, or changes notification settings.
 
-If discovery reports `did not return a usable alarmapp service`, include the
-complete error text in a bug report. It contains the discovery `result` and
-returned service names, per-service `query_result`, and URL-presence flags,
-but omits private URLs. This failure happens before cloud login and does not
-indicate whether the account can read call history.
-
-If a response is not valid XML, the error reports HTTP status, content type,
-content encoding, and byte count instead of the private body. Gzip responses
-are decoded automatically; unsupported encodings are reported explicitly.
-The journal URL uses the discovered address plus `UserAlarm`, not its separate
-P2P `uri` field.
-
-**This is history access, not a live ringing subscription.** Cloud and alarm
-login are performed on each query. Error `1012` is the native
-`ALARM_RESULT_SESSION_ERROR`: the alarm-service session is missing or invalid.
-A rejected login stops the request; the helper does not retry with a push token,
-modify notifications, or fall back to controlling an existing Android client.
-Tokenless login and history reads were user-confirmed for the tested
-installation on 2026-10-19. A subsequent entrance-bot polling check observed a
-new call. The manual marker was entered after the record was already visible,
-so it does not provide a reliable delivery-latency measurement. These results
-do not prove delivery with Android fully disconnected, guarantee availability
-on other backends, or turn history into a live subscription. Do not use history
+**This is history access, not a live ringing subscription.** Repeated queries
+can return the same rows; no background polling, deduplication, delivery-time
+guarantee, face recognition, or door automation is included. For a fresh check,
+compare a baseline with `page=0, max_id="0"` after a ring. Do not use history
 alone as an automatic door-opening trigger.
 
-Run the standalone read-only check with:
-
-```powershell
-python -m examples.call_events
-```
-
-To check whether new calls are logged without Android, close the app, read a
-baseline page, ring the doorbell, then query a fresh page (`page=0`, `max_id="0"`).
-Compare `record_id` values and timestamps; old history is not evidence of a new
-ring. Repeating a query may return the same records. No deduplication, background
-poller, face recognition, or door automation is included.
+Discovery/authentication/response failures raise `QuiiConnectionError`, not
+a successful empty page. Error `1012` is the native alarm-session error.
+The package does not fall back to an Android push token or control an existing
+Android client. See [Protocol Notes](protocol-notes.md#cloud-incoming-call-history)
+for request parity and [Compatibility](../COMPATIBILITY.md#validation-scope)
+for the observed validation scope.
 
 ## LAN Discovery
 
-| Method | Purpose |
-| --- | --- |
-| `discover_lan_devices()` | Searches the local network for compatible Qualvision-style devices. |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `discover_lan_devices(...)` | `list[LanDeviceCandidate]` | Read HTTP headers and probe native TCP port availability. |
 
-Discovery hints:
+Keyword arguments: `hosts=None`, `local_ips=None`, `subnet_prefix=24`,
+`http_port=80`, `stream_port=34567`, `timeout=0.3`, `max_workers=64`, and
+`require_qualvision=True`. Explicit `hosts` bypass subnet derivation; otherwise
+local addresses determine scan ranges. `timeout` is per probe, not the whole
+scan. Only scan networks you administer.
 
-- Compatible devices may return `Server: Qualvision -HTTPServer`.
-- TCP port `34567` is commonly open on compatible cameras.
+Candidates expose discovery hints such as `Server: Qualvision -HTTPServer`
+and open TCP port `34567`. A candidate is not proof of protocol compatibility.
+Choose the intended device and set `Camera(device_host=...)` explicitly;
+discovery does not silently change the camera's configuration.
 
 ## Local Device Read-Only Methods
 
-These methods query the device directly over LAN. They require a reachable device IP, usually resolved from cloud/P2P data.
+All methods below query LAN HTTP/CGI directly. Set **`CAMERA_DEVICE_HOST` and
+`AUTH_CODE`**, or pass their constructor equivalents. There is no implicit
+cloud login or cloud/P2P host discovery. Default `port=80` is the HTTP port,
+**not** native TCP port `34567`.
+
+Common keyword-only arguments on these methods are `port=80`, `scheme="http"`,
+`auth_code=None`, `verify_tls=None`, and `debug=False`. A per-call auth code
+overrides camera configuration; `verify_tls=None` follows the camera setting
+for HTTPS. DEBUG exchange logging remains subject to the logging level.
+Additional arguments are shown in the tables; arguments with defaults are optional.
+
+Most responses expose `error` and `raw` (parsed response/raw XML or JSON).
+`error=0` is success; `-1` with empty content often indicates unsupported/rejected
+firmware functionality. Derived tuples do not carry a separate error code.
+`get_device_profile()` aggregates multiple queries and command statuses; it
+is not a single lightweight request.
+
+[Device/Product](#device-and-product) | [Network/Storage](#network-and-storage) |
+[Video](#video-and-encoding) | [Alarms](#alarm-and-detection) |
+[Accessories](#accessories-and-device-features) | [Upgrade](#upgrade-information) |
+[Archive](#archive-queries)
 
 ### Device And Product
 
-| Method | Purpose |
-| --- | --- |
-| `get_device_profile()` | Aggregates commonly useful local device information. |
-| `get_device_all_info()` | Requests the broad all-info command where supported. |
-| `get_product_info()` | Reads firmware/product version fields. |
-| `get_time_info()` | Reads device timezone/time fields. |
-| `get_system_general_info()` | Reads general system settings where supported. |
-| `get_system_capabilities()` | Reads capability flags where supported. |
-| `get_qr_code_info()` | Reads QR/device binding data where supported. |
-| `get_stream_key_info()` | Reads stream key data where supported. |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_device_profile()` | `CameraDeviceProfile` | Aggregate common queries and supported/unsupported/failed command lists. |
+| `get_device_all_info()` | `CameraDeviceAllInfo` | Broad status fields. |
+| `get_product_info()` | `CameraDeviceProductInfo` | Firmware/product metadata. |
+| `get_time_info()` | `CameraDeviceTimeInfo` | Timezone/time fields. |
+| `get_system_general_info()` | `CameraDeviceGeneralInfo` | General system settings. |
+| `get_system_capabilities()` | `CameraDeviceCapabilitiesInfo` | Reported capabilities. |
+| `get_qr_code_info()` | `CameraDeviceQrCodeInfo` | QR/binding data; potentially sensitive. |
+| `get_stream_key_info()` | `CameraDeviceStreamKeyInfo` | Stream key data; potentially sensitive. |
 
 ### Network And Storage
 
-| Method | Purpose |
-| --- | --- |
-| `get_storage_info()` | Reads storage state. |
-| `get_tf_card_info()` | Reads TF/SD card state. |
-| `get_network_info()` | Reads network summary. |
-| `get_network_base_info()` | Reads base network configuration. |
-| `get_network_interfaces()` | Reads available network interfaces. |
-| `get_wifi_list()` | Reads visible Wi-Fi networks where supported. |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_storage_info()` | `CameraDeviceStorageInfo` | Disk capacity/state. |
+| `get_tf_card_info()` | `CameraDeviceTfCardInfo` | TF/SD-card state. |
+| `get_network_info()` | `CameraDeviceNetworkInfo` | Network configuration. |
+| `get_network_base_info()` | `CameraDeviceNetworkBaseInfo` | Base network settings/abilities. |
+| `get_network_interfaces()` | `tuple[CameraDeviceLanInfo, ...]` | Flattened interfaces from network information. |
+| `get_wifi_list()` | `CameraDeviceWifiListInfo` | Visible Wi-Fi networks. |
 
 ### Video And Encoding
 
-| Method | Purpose |
-| --- | --- |
-| `get_video_config()` | Reads encode/video configuration. |
-| `get_video_channels()` | Reads channel information. |
-| `get_stream_profiles()` | Reads stream profile settings. |
-| `get_fps_info()` | Reads FPS configuration. |
-| `get_json_fps_mode_info()` | Reads JSON FPS mode information where supported. |
-| `get_screen_flip_info()` | Reads mirror/rotation state where supported. |
-| `get_video_switch_info()` | Reads video on/off state where supported. |
-| `get_time_title_info()` | Reads time/title overlay settings where supported. |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_video_config()` | `CameraDeviceVideoConfigInfo` | Encode/video configuration. |
+| `get_video_channels()` | `tuple[CameraDeviceVideoChannelInfo, ...]` | Channels from video configuration. |
+| `get_stream_profiles(channel_id=None)` | `tuple[CameraDeviceStreamProfile, ...]` | Flattened profiles, optionally filtered by channel id. |
+| `get_fps_info(channel_id=-1, stream_id=-1)` | `CameraDeviceFpsInfo` | FPS settings; `-1` requests all channels/streams. |
+| `get_json_fps_mode_info()` | `CameraDeviceJsonFpsModeInfo` | JSON FPS-mode information. |
+| `get_screen_flip_info()` | `CameraDeviceScreenFlipInfo` | Mirror/rotation state. |
+| `get_video_switch_info()` | `CameraDeviceVideoSwitchInfo` | Video on/off state. |
+| `get_time_title_info()` | `CameraDeviceTimeTitleInfo` | Time/title overlays. |
 
 ### Alarm And Detection
 
-| Method | Purpose |
-| --- | --- |
-| `get_alarm_channel_info()` | Reads alarm channel information. |
-| `get_alarm_input_info()` | Reads alarm input information. |
-| `get_alarm_detail_info()` | Reads alarm detail information. |
-| `get_alarm_status_info()` | Reads current alarm status. |
-| `get_alarm_motion_detection_info()` | Reads alarm motion-detection settings. |
-| `get_alarm_video_lost_info()` | Reads video-lost alarm settings. |
-| `get_alarm_video_shelter_info()` | Reads video-shelter alarm settings. |
-| `get_motion_detection_info()` | Reads motion detection configuration. |
-| `get_human_trace_info()` | Reads human-trace settings where supported. |
-| `get_move_detection_info()` | Reads move-detection settings where supported. |
-
-Schedule variants:
-
-| Method | Purpose |
-| --- | --- |
-| `get_motion_detection_schedule()` | Reads motion detection schedule. |
-| `get_video_lost_schedule()` | Reads video lost schedule. |
-| `get_video_shelter_schedule()` | Reads video shelter schedule. |
-| `get_alarm_in_schedule()` | Reads alarm input schedule. |
-| `get_human_trace_schedule()` | Reads human trace schedule. |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_alarm_channel_info()` | `CameraDeviceAlarmChannelInfo` | Alarm channels. |
+| `get_alarm_input_info(channel_id=-1)` | `CameraDeviceAlarmInputInfo` | Inputs; `-1` requests all channels. |
+| `get_alarm_detail_info(alarm_type=...)` | `CameraDeviceAlarmDetailInfo` | Detail settings; requires the native integer alarm type. |
+| `get_alarm_status_info()` | `CameraDeviceAlarmStatusInfo` | Current alarm state. |
+| `get_alarm_motion_detection_info(channel_id=1)` | `CameraDeviceAlarmMotionDetectionInfo` | Motion alarm settings. |
+| `get_alarm_video_lost_info(channel_id=1)` | `CameraDeviceAlarmVideoLostInfo` | Video-lost alarm settings. |
+| `get_alarm_video_shelter_info(channel_id=1)` | `CameraDeviceAlarmVideoShelterInfo` | Video-shelter alarm settings. |
+| `get_motion_detection_info()` | `CameraDeviceMotionDetectionInfo` | Device motion-detection settings. |
+| `get_human_trace_info()` | `CameraDeviceHumanTraceInfo` | Human-trace settings. |
+| `get_move_detection_info()` | `CameraDeviceMoveDetectionInfo` | Move-detection settings. |
+| `get_alarm_motion_detection_schedule(channel_id=1)` | `CameraDeviceAlarmScheduleInfo` | Motion alarm schedule. |
+| `get_alarm_video_lost_schedule(channel_id=1)` | `CameraDeviceAlarmScheduleInfo` | Video-lost schedule. |
+| `get_alarm_video_shelter_schedule(channel_id=1)` | `CameraDeviceAlarmScheduleInfo` | Video-shelter schedule. |
+| `get_alarm_input_schedule(channel_id=1)` | `CameraDeviceAlarmScheduleInfo` | Alarm-input schedule. |
 
 ### Accessories And Device Features
 
-| Method | Purpose |
-| --- | --- |
-| `get_device_attachment_info()` | Reads accessory/attachment data. |
-| `get_ptz_state()` | Reads PTZ state where supported. |
-| `get_ptz_presets()` | Reads PTZ presets where supported. |
-| `get_smart_light_info()` | Reads smart light settings. |
-| `get_sound_light_info()` | Reads sound/light settings. |
-| `get_audio_volume_info()` | Reads audio volume settings. |
-| `get_audio_session_info()` | Reads audio session settings. |
-| `get_hardware_info()` | Reads hardware information. |
-| `get_light_info()` | Reads light settings. |
-| `get_babysitter_state_info()` | Reads babysitter state where supported. |
-| `get_pir_config_info()` | Reads PIR configuration where supported. |
-| `get_third_party_push_info()` | Reads third-party push settings where supported. |
-| `get_smart_switch_info()` | Reads smart switch settings where supported. |
-| `get_lock_status_info()` | Reads lock status where supported. |
-| `get_floodlight_switch_info()` | Reads floodlight switch state where supported. |
-| `get_floodlight_schedule_info()` | Reads floodlight schedule where supported. |
-| `get_city_coordinate_info()` | Reads city/coordinate settings where supported. |
-| `get_voice_message_info()` | Reads voice-message settings where supported. |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_device_attachment_info()` | `CameraDeviceAttachmentInfo` | Attached channels, locks, elevators, and switches. |
+| `get_ptz_state()` | `CameraDevicePtzStateInfo` | PTZ state; does not move the camera. |
+| `get_ptz_presets()` | `CameraDevicePtzPresetInfo` | Existing presets; does not select one. |
+| `get_smart_light_info(room=1)` | `CameraDeviceSmartLightInfo` | Smart-light state for a room. |
+| `get_sound_light_info(channel_id=1)` | `CameraDeviceSoundLightInfo` | Sound/light alarm settings. |
+| `get_audio_volume_info()` | `CameraDeviceAudioVolumeInfo` | Volume settings/ranges. |
+| `get_audio_session_info()` | `CameraDeviceAudioSessionInfo` | Audio session metadata; does not start talkback. |
+| `get_hardware_info()` | `CameraDeviceHardwareInfo` | Hardware information. |
+| `get_light_info()` | `CameraDeviceLightInfo` | Light settings. |
+| `get_babysitter_state_info()` | `CameraDeviceBabysitterStateInfo` | Babysitter feature state. |
+| `get_pir_config_info()` | `CameraDevicePirConfigInfo` | PIR configuration/schedule. |
+| `get_third_party_push_info()` | `CameraDeviceThirdPartyPushInfo` | Existing push settings; does not register push. |
+| `get_smart_switch_info()` | `CameraDeviceSmartSwitchInfo` | Switch state/settings. |
+| `get_lock_status_info()` | `CameraDeviceLockStatusInfo` | Lock status/settings; does not unlock. |
+| `get_floodlight_switch_info()` | `CameraDeviceFloodlightSwitchInfo` | Floodlight state. |
+| `get_floodlight_schedule_info()` | `CameraDeviceFloodlightScheduleInfo` | Floodlight schedule. |
+| `get_city_coordinate_info()` | `CameraDeviceCityCoordinateInfo` | City/coordinate settings; potentially sensitive. |
+| `get_voice_message_info()` | `CameraDeviceVoiceMessageInfo` | Voice-message/file metadata. |
 
-### Upgrade And Recording
+### Upgrade Information
 
-| Method | Purpose |
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_upgrade_version_info()` | `CameraDeviceUpgradeVersionInfo` | Available version information. |
+| `get_upgrade_status_info()` | `CameraDeviceUpgradeStatusInfo` | Upgrade status. |
+| `get_upgrade_process_info()` | `CameraDeviceUpgradeProcessInfo` | Progress information. |
+
+These are queries, not firmware-update commands.
+
+## Archive Queries
+
+These are local CGI methods with the same common arguments and credentials as
+[local inspection](#local-device-read-only-methods). They list archive metadata;
+they do not download or play stored recordings.
+
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `get_record_config_info(channel_id=1)` | `CameraDeviceRecordConfigInfo` | Recording mode, stream, and schedule. |
+| `get_record_session_info(start_time=..., end_time=...)` | `CameraDeviceRecordSessionInfo` | Open a read-only archive search session. |
+| `get_record_message_info(session_id=...)` | `CameraDeviceRecordMessageInfo` | Read one page for the returned search-session id. |
+| `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Search and collect pages up to a safety cap. |
+| `get_record_alarm_info(timestamp=...)` | `CameraDeviceRecordAlarmInfo` | Read archive entries associated with an alarm timestamp. |
+
+Time/session arguments shown as `...` are **required strings**. The search
+methods and `get_record_alarm_info()` also accept `channel_id=1`,
+`file_type="all"`, `occur_type="all"`, and `stream="all"` (or `"main"` / `"sub"`).
+The alarm query additionally accepts `alarm_type=None` and `alarm_id=None`.
+Preserve the device's timestamp convention; archive strings and cloud-history
+time bounds are different interfaces and must not be assumed interchangeable.
+
+The list result exposes `records`, fetched `pages`, session/status fields, and
+completion information. A page cap is not proof of a complete archive search.
+Calendar/day/month queries and archive downloading are not exposed by this API.
+
+## Door Control
+
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `open_door(...)` | `CameraDoorOpenResult` | Send one local `set.device.opendoor` command. |
+
+Configure `CAMERA_DEVICE_HOST`, `AUTH_CODE`, and the separate `UNLOCK_PASSWORD`.
+Default `password_mode="auto"` uses capability 24 (`TYPE_ENCRYPY_SHA256`),
+matching the original client. A set flag selects vendor password encoding;
+a clear flag sends the opening password unchanged. CGI header authentication
+continues to encode `AUTH_CODE` in both modes.
+
+| Argument | Default and meaning |
 | --- | --- |
-| `get_upgrade_version_info()` | Reads available upgrade version info where supported. |
-| `get_upgrade_status_info()` | Reads upgrade status where supported. |
-| `get_upgrade_process_info()` | Reads upgrade process information where supported. |
-| `get_record_files()` | Reads recording file list where supported. |
-| `get_record_days()` | Reads days with recordings where supported. |
-| `get_record_months()` | Reads months with recordings where supported. |
+| `channel` | `None`; use the camera channel, sent as native `door`. |
+| `lock_number` | `1`; positive lock/relay number. |
+| `unlock_password` | `None`; use the camera's opening password. Accepts plain text or a vendor-encoded value. |
+| `password_mode` | `"auto"`; cached capability or a read-only cloud metadata lookup. Explicit `"plain"` / `"sha256"` skips that lookup. |
+| `port`, `scheme` | `80`, `"http"`; local CGI address, not native port `34567`. |
+| `auth_code` | `None`; use the camera's CGI authentication code. |
+| `verify_tls` | `None`; follow camera configuration for HTTPS CGI. |
+| `debug` | `False`; request redacted DEBUG exchange logging. |
+
+**The following example sends a real opening command:**
+
+```python
+from quii_helper import Camera, load_config
+
+camera = Camera(config=load_config())
+result = camera.open_door(lock_number=1, password_mode="auto")
+print(result.accepted, result.error, result.message)
+```
+
+`accepted=True` requires an explicit numeric `<error>0</error>` response.
+It means the device acknowledged the command, not that the door physically
+moved. Error descriptions are command-specific.
+
+Unknown capability in `auto` mode raises `ConfigurationError` **before** an
+opening command. Choose an explicit mode only after verifying the device's
+requirements. There is no automatic retry, redirect, alternate-format attempt,
+or cloud IoT unlock fallback. After transport/response failure, the physical
+outcome can be unknown: do not retry automatically.
+
+On Tantos Marilyn Wi-Fi s, the user confirmed physical opening in `auto`
+mode with capability 24 enabled. This does not validate the plain-password
+path or all firmware; see [Compatibility](../COMPATIBILITY.md).
+
+### Async Applications
+
+Use a thread adapter when embedding synchronous calls in an async service:
+
+```python
+import asyncio
+
+from quii_helper import Camera, CameraDoorOpenResult
+
+
+async def open_configured_door(camera: Camera) -> CameraDoorOpenResult:
+    return await asyncio.to_thread(camera.open_door, password_mode="sha256")
+```
+
+Calling this function sends a real command. Cancelling its await does not
+stop an already running thread; a caller timeout must not trigger an unlock
+retry. Authentication, operation deduplication, and access policy belong to
+the embedding service, not this transport library.
 
 ## Error Codes
 
-Local device calls may return numeric device errors such as `-1` or `-8`.
+Exceptions and firmware rejection are different outcomes:
 
-The package maps known codes to human-readable descriptions where available. Unknown codes are preserved in the raw response so unsupported commands can still be diagnosed.
+| Exception/result | Meaning |
+| --- | --- |
+| `ConfigurationError` | Missing/invalid configuration; also a `ValueError`. Some argument validators raise plain `ValueError`. |
+| `AssetMissingError` | Missing/incompatible required asset; also a `FileNotFoundError`. |
+| `QuiiConnectionError` | Cloud/device transport, malformed response, or terminal receive failure; also an `OSError`. |
+| `CameraCaptureError` | Requested media artifact could not be produced. |
+| `MediaRenderError` | Rendering failed; subclass of `CameraCaptureError`. |
+| Nonzero response `error` | The device answered but rejected/does not support that command. Inspect the response instead of assuming an exception. |
+
+`QuiiHelperError` is the common domain base class; not every low-level Python
+or argument error is normalized into it. Do not hide programming errors with
+unconditional retry loops. Unlock failures require the special caution above.
+
+For numeric error interpretation, the optional helper
+`quii_helper.support.error_codes.describe_error_code(code, domain="device_cgi")`
+preserves vendor-layer context. Use `domain="device_unlock"` for unlock results;
+the same integer can mean different things in different layers. Unknown codes
+are retained, not converted to success. Raw responses can contain private data.
+See [Troubleshooting](setup.md#troubleshooting) for common setup failures.
 
 ## Application Entry Point
 
-The default entry point starts RTSP on port `8554` until interrupted with
-`Ctrl+C`. It does not send door-opening commands.
+Bundled examples require a checkout or extracted source distribution, run
+from its root after installation/configuration:
 
-```powershell
-python -m quii_helper.main
-```
+| Command | Effect |
+| --- | --- |
+| `python -m examples.discover_env_values` | Service discovery; prints candidate cloud settings. |
+| `python -m examples.call_events` | Read one history page; may create an alarm reader session. |
+| `python -m examples.snapshot` | Capture one JPEG. |
+| `python -m examples.save_video` | Record the example's default 30-second collection window. |
+| `python -m examples.serve_rtsp` | Serve RTSP on localhost port `8554`. |
+| `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
+
+The installed entry point `python -m quii_helper.main` also serves RTSP until
+`Ctrl+C`, without opening a door. It currently forces `stream_quality="high"`,
+`live_newcn=True`, and **`tls_verify=False`**, overriding `.env` for those
+options. Prefer the API example or `examples.serve_rtsp` when configured TLS
+verification must be respected.

@@ -7,18 +7,29 @@ being stabilized.
 
 ## Unreleased
 
-## 0.1.0 - Unreleased
+- Rework README and setup around PyPI installation and a first application;
+  separate cloud/preview, LAN inspection, and explicit door-control inputs.
+- Align the API reference with all current public Camera methods, arguments,
+  result types, capture timing, and firmware/transport error semantics.
+- Consolidate compatibility evidence, contributor/release instructions, and
+  safety notes. Restore the README GIF through a verified historical URL.
+- Add offline documentation regressions for API tables, snippet syntax,
+  environment coverage, and repository links/anchors. No runtime behavior or
+  package version changes; these documentation updates are not yet published.
 
-- Prepare the first final release with package version `0.1.0` and planned tag
-  `v0.1.0`. This preparation does not create a tag, release, or PyPI upload.
-- Validate entrance-bot commit `40680ee` with the published PyPI `0.1.0rc6`
+## 0.1.0 - 2026-10-22
+
+- Published the first final release as `0.1.0` on PyPI and `v0.1.0` on GitHub.
+  The library runtime and public API are unchanged from `0.1.0rc6`.
+- Validated entrance-bot commit `40680ee` with the published PyPI `0.1.0rc6`
   package in a fresh Windows Python 3.11 environment: dependencies are
   compatible and all 140 integration tests pass using synthetic settings,
   loopback-only networking and fake door openers. The consumer repository and
   deployed services are unchanged.
-- Update installed-package setup, release instructions and version-policy
-  documentation. Final-release tag checks retain pre-release normalization
-  coverage. Runtime code, protocol behavior and public APIs are unchanged.
+- Retained pre-release normalization coverage in final-release tag checks.
+- Verified published wheel/sdist installation and unpinned pip resolution in
+  clean Windows Python 3.11 environments, including dependency and library
+  isolation smoke checks. This is offline validation, not a live-device retest.
 
 ## 0.1.0-rc.6 - 2026-10-22
 

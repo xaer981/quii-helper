@@ -1,30 +1,50 @@
 # Security Policy
 
-## Sensitive Files
-
-This project expects users to provide their own local `.env` values and assets
-extracted from their own application/device environment. These files are
-intentionally ignored by git:
-
-- `.env`
-- `assets/*`
-- `data/*`
-- generated `*.mp4`, `*.jpg`, `*.h264`, `*.jsonl`, and `*.log` files
-
-Do not open issues or pull requests containing device credentials, cloud
-accounts, extracted private keys, certificates, native libraries, logs with
-tokens, or media from private cameras.
-
-## Reporting Vulnerabilities
-
-Until a dedicated disclosure channel exists, report security-sensitive issues
-privately to the repository owner. Do not publish exploit details or real
-credentials in public issues.
+[Project Overview](README.md) | [Setup](docs/setup.md) | [Contributing](CONTRIBUTING.md)
 
 ## Supported Versions
 
-Version `0.1.0` is the first final release being prepared; until it is
-published, the latest public package remains `0.1.0rc6`. After publication,
-security fixes will target the latest `0.1.x` release; older release candidates
-will not receive separate backports. The API remains pre-`1.0`, and experimental
-features and compatibility limits are documented explicitly.
+`0.1.0` is the first published final release. Security fixes target the latest
+`0.1.x` release; older release candidates do not receive separate backports.
+The API remains pre-`1.0`, with experimental features and compatibility limits
+documented explicitly. See the [Changelog](CHANGELOG.md).
+
+## Sensitive Material
+
+Users supply credentials and APK assets from software/devices they are
+authorized to use. Never share real `.env` files, asset contents, extracted
+certificates/private keys/native libraries, account tokens, raw traffic, or
+camera media in issues, pull requests, fixtures, or release archives.
+
+Git ignores `.env` variants, `assets/*`, `data/*`, and generated media/logs.
+The empty `.env.example` and `.gitkeep` files are intentional exceptions.
+Ignore rules do not remove material already committed; review history with
+a scanner and rotate affected credentials after an exposure.
+
+## Runtime Boundaries
+
+- RTSP has no authentication or TLS. Its default listener is loopback-only;
+  restrict any explicit LAN listener and never expose it publicly.
+- TLS verification is enabled by default in the library and examples. An
+  explicit bypass weakens authenticity; the current `quii_helper.main` entry
+  point contains such an override. See [TLS guidance](docs/setup.md#cloud-region-and-auth-url).
+- Door commands have physical effects. An acknowledged command is not proof
+  of movement; a timeout may leave an unknown outcome. Do not retry blindly.
+- Cloud history is not a live subscription or a sufficient access-control
+  signal by itself. Authentication, freshness/deduplication, and authorization
+  policy belong to the embedding application.
+- Validate caller-supplied output paths; explicit paths can leave `data_dir`.
+- Native-asset fingerprints check a supported layout, not APK trustworthiness.
+
+## Reporting Vulnerabilities
+
+Do not publish exploit details, secrets, account data, or private camera
+material in a public issue. Use the repository's
+[Security tab](https://github.com/xaer981/quii-helper/security) to submit a
+private report if a **Report a vulnerability** option is available.
+
+If no private channel is available, open an issue **only to request a
+private security contact**, without reproduction steps, affected credentials,
+or technical vulnerability details. Wait for a private channel before sending
+the report. This is a reporting limitation, not an invitation to disclose
+sensitive details publicly.
