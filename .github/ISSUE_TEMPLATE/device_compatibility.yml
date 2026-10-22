@@ -57,6 +57,8 @@ body:
         - label: MP4 capture works
         - label: RTSP serving works
         - label: Cloud/P2P login works
+        - label: Incoming-call cloud history works
+        - label: Door control was explicitly authorized and physically confirmed
   - type: textarea
     id: notes
     attributes:

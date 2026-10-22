@@ -1,181 +1,144 @@
 # Release Checklist
 
-Use this checklist before publishing a public release.
+[Documentation](docs/README.md) | [Contributing](CONTRIBUTING.md) |
+[Compatibility](COMPATIBILITY.md) | [Security](SECURITY.md)
+
+This is a maintainer workflow, not part of normal library setup. Building,
+merging, tagging, creating a GitHub release, and publishing to PyPI are
+separate actions. None is implied by a local validation run.
+
+## Contents
+
+- [Prepare the candidate](#prepare-the-candidate).
+- [Run the unified gate](#unified-release-gate).
+- [Record manual validation](#manual-validation).
+- [Check publishing protection](#ci-and-pypi-setup).
+- [Publish deliberately](#publication) and [verify the result](#after-publication).
+
+## Prepare The Candidate
+
+- Assign a **new unused version** in `pyproject.toml`. Never replace an already
+  published version or move a reviewed release tag.
+- Review API compatibility, examples, tests, license metadata, and archive contents.
+- Update CHANGELOG and current release statements across README, setup, and
+  SECURITY. The README embedded in a release must describe the intended released
+  version, not instruct users to install an older RC or say it is unpublished.
+- Preserve historical test/RC notes as history, not as current setup guidance.
+- Verify README links/images work outside GitHub too; PyPI embeds build-time
+  metadata, not a live GitHub README.
+- Inspect public inputs for `.env` values, APK assets, private keys, media,
+  virtual environments, and generated files. `.env.example` / `.gitkeep` are
+  intentional public placeholders.
+- Confirm `LICENSE` matches the SPDX metadata and that users provide their own
+  authorized assets. Do not redistribute vendor material in a release.
+- Commit the reviewed candidate and stop editing it before running the gate.
 
 ## Unified Release Gate
 
-Freeze the candidate first: commit the reviewed changes and stop editing it.
-Run the local gate with Python 3.10 or 3.11, Git and Go on `PATH`:
+Use Python 3.10 or 3.11, Git, and Go on `PATH`:
 
-```powershell
+```shell
 python -m pip install -e ".[dev]" build twine
 python .github/scripts/release_gate.py
 ```
 
-This command does not publish, tag, call the cloud, or send device commands.
-It rejects a dirty worktree, copies only public inputs to an ignored snapshot,
-and writes `data/release-gate/<timestamp>/report.json`, source SHA-256 hashes,
-archive hashes and individual check logs. It runs dependency checks, lint,
-formatting, strict typing, all offline tests, public-source Gitleaks scanning,
-workflow validation, build/Twine/archive checks, and fresh wheel **and** sdist
-installs. Both installed artifacts run the full suite from a consumer directory
-without the source package on the import path, not just an import smoke test.
-Tests block non-loopback socket connections/sends as an extra safety check.
-The local source scan does not replace CI's Git history scan.
+The gate does not publish, tag, call the cloud, or send device commands. It
+requires a clean candidate and copies only public inputs into an ignored
+snapshot. Evidence goes to `data/release-gate/<timestamp>/report.json`, with
+source/archive SHA-256 hashes and per-check logs.
 
-The installed wheel also runs a 2-minute synthetic loopback RTSP test: a fast
-TCP viewer, a non-reading viewer, RTP sequence checks, bounded output queues,
-repeated server/client shutdown, thread cleanup and retained Python allocations.
-The 8 MiB growth guard measures `tracemalloc` allocations after warmup, **not**
-total process RSS. This is not a video-decoder quality test or a real camera,
-cloud, UDP or ARM64 validation.
+| Check | What it proves |
+| --- | --- |
+| Lint, formatting, strict typing, dependencies | The configured static/dependency checks pass. |
+| Source tests | Offline behavioral regressions pass; non-loopback I/O is blocked. |
+| Gitleaks and actionlint | Public snapshot/workflows pass checks; CI separately scans Git history. |
+| Build, strict Twine, archive validation | sdist and wheel metadata/rendering, SPDX/license, `py.typed`, privacy, and package-source parity. |
+| Isolated installs | Wheel and sdist each install outside the source tree and run the full suite, not just imports. |
+| RTSP soak | The installed wheel passes a two-minute synthetic loopback backpressure/lifecycle check. |
 
-For development only, use
-`python .github/scripts/release_gate.py --allow-dirty --soak-seconds 5`.
-A dirty or shortened run is explicitly reported as
-`development_pass_not_release_candidate`, never as release approval. Source or
-commit changes during a run fail the gate. A clean full run reports
-`automated_pass`; manual camera validation is still marked **pending**.
+The soak covers fast and non-reading viewers, RTP sequence checks, bounded
+queues, repeated shutdown, thread cleanup, and retained Python allocations.
+Its 8 MiB growth guard uses `tracemalloc` after warmup, **not process RSS**.
+It does not validate real camera/cloud/UDP behavior, codec quality, or ARM64.
 
-CI exposes one aggregate **`release-gate`** job. It requires every lint/test,
-secret-scan, build, installed-artifact matrix and 2-minute RTSP job to succeed;
-failed, cancelled or skipped prerequisites cannot turn it green. Configure this
-job as a required branch-protection check in GitHub. The publishing workflow
-already depends on the reusable CI workflow, so the same gate must pass before
-its separately approved upload. It uses the exact tested archives without
-rebuilding them. GitHub protection settings are not changed by this script.
+A clean full run reports `automated_pass`, with manual validation still
+**pending**. Changes to the candidate during a run fail it. For development
+only, a dirty or shortened run can use:
+
+```shell
+python .github/scripts/release_gate.py --allow-dirty --soak-seconds 5
+```
+
+Its status is `development_pass_not_release_candidate`, never release approval.
+A green gate is evidence about that candidate, not a guarantee of zero bugs.
+
+## Manual Validation
 
 Before approving publication, record an owner-run check on the **same commit**:
-snapshot, a recording of the requested duration, RTSP reception/shutdown and the
-entrance-bot integration. Do not run door-control commands as part of this gate.
-Any new code change invalidates that candidate's validation and requires a new
-gate run. A green gate reduces regressions; it is not proof of zero bugs.
+snapshot, a requested-duration recording, RTSP reception/shutdown, and relevant
+consumer integration. Do not send door-control commands as part of the gate.
+State whether testing was live, mocked, native-static, loopback, or installed
+artifact validation; do not substitute one for another.
 
-## Code
-
-- Run `python -m ruff check .`.
-- Run `python -m black --check .`.
-- Run `python -m mypy`.
-- Run `python -m mypy quii_helper --strict --no-incremental`.
-- Run `python -m pytest`.
-- Run `python -m pip check`.
-- Run package import smoke tests, including `from quii_helper import Camera`.
-- Run `go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config .gitleaks.toml --redact --verbose .`.
-- Verify any protocol changes against packet fixtures and native/original-client
-  behavior.
-- Keep RBUDP regressions green for large KCP frames with a window-obeying sender,
-  unknown connections, peer-word changes, malformed tails and error propagation.
-- Keep upper QUII tests green for invalid declared lengths, shared byte/stream
-  limits, valid fragmented/chained packets, and cleanup after decode failure.
-- Check camera-originated disconnects on incremental and legacy receive paths,
-  ignoring unrelated IDs/response flags and propagating failure to RTSP waiters.
-- Verify dotted output names remain distinct through the actual media writer.
-
-## Packaging
-
-- Verify `pyproject.toml` metadata.
-- Assign a new, unused version before publication. Do not upload a local
-  rebuild with the already released `0.1.0rc6` version.
-- In a clean source copy without real credentials/assets/media, install the
-  build tools with `python -m pip install build twine` and run
-  `python -m build --outdir data/package-check/dist`. The default command builds
-  an sdist first, then builds its wheel from that sdist.
-- Run `python -m twine check --strict` on both generated archives. This checks
-  metadata and README rendering without uploading either artifact.
-- Inspect archive members: the sdist must include documentation, examples,
-  tests, and `.env.example`; neither artifact may include real `.env` files,
-  extracted certificates/libraries, generated media, or virtual environments.
-- Install the wheel and sdist into separate fresh virtual environments and run
-  `pip check` plus import/configuration/logging smoke checks from outside the
-  source checkout. Confirm that imports use `site-packages`, not editable
-  source paths. Do not invoke camera/cloud operations as installation tests.
-- Verify `pip install -e ".[dev]"` in a clean virtual environment.
-- Confirm `quii_helper/py.typed` is included in package data.
-
-## Secrets
-
-- Confirm `.env`, `assets/*`, and `data/*` are not tracked.
-- Run a secret scanner such as `gitleaks`.
-- Review generated logs for credentials, tokens, IPs, and private media.
-
-## Legal
-
-- Confirm `LICENSE` and package metadata match the intended release terms.
-- Confirm the README explains that users must provide their own extracted
-  assets and credentials from software/devices they are authorized to use.
+For protocol changes, verify packet fixtures and original-client/native parity.
+Keep regression coverage for reordering/window limits, large/fragmented/chained
+messages, short tails, unknown connections, malformed data, disconnects, and
+failure propagation. Preserve output-name, resource-cleanup, and backpressure
+checks. Any later code change requires a new candidate/gate run.
 
 ## CI And PyPI Setup
 
-Before distributing a candidate, also verify the installed-package instructions
-without a checkout: the wheel intentionally excludes `examples` and the env
-template. JPEG/MP4 users need an external FFmpeg executable on `PATH`. Verify
-asset rejection tests for unsupported ELF/table profiles; do not claim support
-for arbitrary APK ABIs/builds without native inspection. RTSP backpressure and
-UDP receiver failures must remain covered by offline regression tests.
+Verify these external settings without weakening them to ship a release:
 
-The prepared version is `0.1.0`, with planned release tag `v0.1.0`. It has not
-been published. The previous `0.1.0rc6` is already on PyPI; its wheel/sdist
-installation checks passed, and all 140 entrance-bot tests passed against it
-in a fresh Windows Python 3.11 environment on 2026-10-22. This was offline
-consumer validation, not a deployment or a new ARM64/device check. See
-[Setup](docs/setup.md#installing-on-linux-arm64) for the precise scope.
+1. GitHub requires the aggregate **`release-gate`** result for `main`.
+2. Environment **`pypi`** requires a reviewer and limits deployment to release
+   tags. Protect release tags against movement/deletion. Environment approval
+   is a GitHub setting, not something YAML alone enforces.
+3. PyPI Trusted Publisher matches project `quii-helper`, owner `xaer981`,
+   repository `quii-helper`, workflow `publish.yml`, environment `pypi`.
+   Do not add a long-lived `PYPI_TOKEN` for this OIDC workflow.
 
-Updating metadata does not create a tag, GitHub release or PyPI upload. Freeze
-and run the full gate on the final `0.1.0` commit before requesting publication;
-manual validation must still be recorded separately. Do not replace any
-published version's artifacts with different source code.
+`ci.yml` runs on pushes/PRs and is reused by `publish.yml`. The aggregate gate
+requires all tests, scans, builds, install jobs, and soak checks to succeed;
+failed, cancelled, or skipped prerequisites cannot approve publication.
+Linux CI is x86_64, not ARM64. See [Compatibility](COMPATIBILITY.md#validation-scope).
 
-`ci.yml` runs on pushes and pull requests, and is reused by `publish.yml`:
+Build-only CI needs no PyPI credentials. It retains the checked archives as
+`python-distributions` for seven days. The protected publishing job uses those
+**exact tested archives**, without rebuilding, and adds provenance attestations.
 
-- Test/lint/type checks on Windows and Linux, Python 3.10 and 3.11.
-- Gitleaks history scan and actionlint workflow validation; no production
-  settings or device requests.
-- Build sdist, then wheel from that sdist; strict Twine checks, SPDX/license,
-  type marker, archive privacy and package-source parity checks.
-- Install wheel and sdist separately in clean Windows/Linux Python 3.10/3.11
-  environments outside the checkout; run the full suite against each installed
-  artifact, check dependencies and library isolation.
-- Run the 2-minute synthetic RTSP soak against the same checked wheel, then
-  require the aggregate `release-gate` job before publication approval.
-- Retain the checked archives as `python-distributions` for seven days.
+## Publication
 
-Linux CI is x86_64. Earlier ARM64 integration results do not replace testing a
-new release on ARM64. CI does not exercise camera/cloud/door commands.
+1. Merge the reviewed candidate into `main` and confirm green CI.
+2. Create the matching immutable `vX.Y.Z` release tag from that commit; replace
+   `X.Y.Z` with the new package version. RC tag normalization is supported too.
+3. Create GitHub release notes and choose final/pre-release status correctly.
+   A tag or GitHub release alone does **not** invoke PyPI publishing.
+4. When an upload is explicitly intended, dispatch **Publish to PyPI** against
+   that release tag, not `main`. For example, with the placeholder replaced:
+   `gh workflow run publish.yml --ref vX.Y.Z`.
+5. The workflow rejects branch refs, tags not belonging to `main`, and
+   tag/package-version mismatches. Review that run's gate results and artifacts
+   before the separate environment approval.
+6. Only the upload job receives `id-token: write`. It does not skip existing
+   files: investigate an interrupted/duplicate upload rather than replacing or
+   deleting a working release.
 
-For each publication, verify these external settings (not changed by CI).
-They were configured for the first `0.1.0rc6` upload; do not recreate them:
+## After Publication
 
-1. Verify the GitHub environment **`pypi`** in this repository. Require an
-   approving reviewer and restrict deployments to release tags. Protect release
-   tags with repository rules; do not permit tags to be moved after review.
-2. In PyPI, verify the existing Trusted Publisher:
-   project **`quii-helper`**, owner **`xaer981`**, repository **`quii-helper`**,
-   workflow **`publish.yml`**, environment **`pypi`**. Confirm project ownership
-   and that the new package version is unused.
-   Do not create or store a long-lived `PYPI_TOKEN` for this workflow.
-3. Merge reviewed source changes into `main`, confirm green CI, then create the
-   matching immutable release tag from that commit. Creating a tag or GitHub
-   release alone never invokes this publishing workflow.
-4. Only when an upload is explicitly intended, dispatch **Publish to PyPI**
-   against the release **tag**, not `main`:
-   `gh workflow run publish.yml --ref v0.1.0`. The workflow must already
-   exist on the default branch for manual dispatch to be available.
-5. The workflow rejects branches, tags not belonging to `main`, and tag/package
-   version mismatches. It reruns all CI gates, then waits for environment
-   approval. Review that run's artifacts before approving.
-6. Only the upload job gets `id-token: write`. It downloads the exact archives
-   tested in that run, does not rebuild them, and publishes with provenance
-   attestations. It does not skip already-existing files: investigate an
-   interrupted or duplicate upload rather than silently replacing artifacts.
-7. After a successful authorized upload, check the PyPI page and install
-   `quii-helper==0.1.0` in a fresh consumer environment. For final releases,
-   `python -m pip install --upgrade quii-helper` needs no `--pre`. Updating
-   entrance-bot is a separate deploy.
+- Confirm the publishing job succeeded and the expected wheel/sdist and version
+  exist in PyPI. Check the metadata/description, not only the GitHub release.
+- Install the exact new version in a fresh consumer environment. Check
+  `pip check`, imports from `site-packages`, configuration/logging isolation,
+  and artifact hashes. Do not load private settings or send device commands.
+- Verify ordinary `python -m pip install --upgrade quii-helper` resolves the
+  expected final release without `--pre`; allow for index propagation delay.
+- Review the rendered README on both GitHub and PyPI. Existing PyPI metadata
+  is not updated by a GitHub README edit or a replacement upload. Corrections
+  for PyPI require a new version; do not move tags or reuse distribution names.
+- Record the actual validation scope in Compatibility and close release notes
+  in CHANGELOG. Consumer updates and deployments remain separate operations.
 
-Environment approval is a GitHub setting, not something YAML enforces by
-itself. Do not run the publishing workflow until protection and the Trusted
-Publisher are configured. The build-only CI requires no PyPI credentials.
-
-References: [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/using-a-publisher/),
-[first project via a pending publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/),
-and [setuptools SPDX metadata](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html).
+References: [Trusted Publishing](https://docs.pypi.org/trusted-publishers/using-a-publisher/),
+[PyPI metadata](https://docs.pypi.org/api/json/), and
+[setuptools metadata](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html).

@@ -36,7 +36,7 @@ body:
       description: Include the public API call or example script used.
       placeholder: |
         1. Configure `.env` from the same app version.
-        2. Run `python examples/save_video.py`.
+        2. From the checkout root, run `python -m examples.save_video`.
         3. Observe ...
     validations:
       required: true

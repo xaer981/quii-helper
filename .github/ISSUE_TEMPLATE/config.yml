@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Setup and compatibility notes
-    url: https://github.com/xaer981/quii-helper#setup
+    url: https://github.com/xaer981/quii-helper/blob/main/docs/setup.md
     about: Read the setup guide before opening an issue.
   - name: Compatibility list
     url: https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md
