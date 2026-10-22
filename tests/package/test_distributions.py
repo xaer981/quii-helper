@@ -12,16 +12,25 @@ CHECKS = runpy.run_path(
         / ".github/scripts/check_distribution.py"
     )
 )
-VERSION = "0.1.0rc6"
-TAG = "v0.1.0-rc.6"
+VERSION = "0.1.0"
+TAG = "v0.1.0"
 
 
-@pytest.mark.parametrize("tag", [TAG, "v0.1.0rc6"])
-def test_release_tag_matches_normalized_package_version(tag: str) -> None:
-    CHECKS["check_tag"](tag, VERSION)
+@pytest.mark.parametrize(
+    ("tag", "version"),
+    [
+        (TAG, VERSION),
+        ("v0.1.0-rc.6", "0.1.0rc6"),
+        ("v0.1.0rc6", "0.1.0rc6"),
+    ],
+)
+def test_release_tag_matches_normalized_package_version(
+    tag: str, version: str
+) -> None:
+    CHECKS["check_tag"](tag, version)
 
 
-@pytest.mark.parametrize("tag", ["main", "0.1.0rc6", "v0.1.0-rc.5", "v0.1.0"])
+@pytest.mark.parametrize("tag", ["main", "0.1.0", "v0.1.0-rc.6", "v0.1.1"])
 def test_release_tag_mismatch_is_rejected(tag: str) -> None:
     with pytest.raises(ValueError):
         CHECKS["check_tag"](tag, VERSION)

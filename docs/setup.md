@@ -9,10 +9,18 @@ These values are intentionally not bundled with the project because they can dif
 
 ## Using An Installed Package
 
-Use Python 3.10 or newer and a virtual environment. Install the wheel supplied
-for your release with `python -m pip install /path/to/quii_helper.whl`, or an
-exact version from PyPI **after that version has been published**. The prepared
-`0.1.0rc6` candidate has not been published by these changes.
+Use Python 3.10 or newer and a virtual environment. The currently published
+release is [0.1.0rc6](https://pypi.org/project/quii-helper/0.1.0rc6/):
+
+```shell
+python -m pip install "quii-helper==0.1.0rc6"
+```
+
+Version `0.1.0` is prepared in this checkout but is **not published yet**. After
+its publication, `python -m pip install quii-helper` installs the final release;
+use `python -m pip install --upgrade quii-helper` to replace an installed RC.
+No `--pre` is needed for final releases. To test an unpublished build instead,
+install its wheel with `python -m pip install /path/to/quii_helper.whl`.
 
 The wheel installs `quii_helper`, not the repository's `examples/`, `docs/`, or
 `.env.example`. Create a separate application directory, download the
@@ -78,8 +86,9 @@ transitively rather than imposed as an independent application dependency.
 Embedding applications should install a built wheel or an exact published
 version, not copy the source tree into their handlers. Local CGI door control
 with an explicit password mode requires neither native APK assets nor FFmpeg.
-The `entrance-bot` integration uses a local wheel until a release containing
-these library changes is available; deployment is a separate operation.
+The published `0.1.0rc6` package contains these library changes. Updating
+entrance-bot's dependency and deploying it are separate operations; neither
+happens when this package is installed elsewhere.
 
 On 2026-10-20, installation and `pip check` passed in both entrance-bot ARM64
 images using Python 3.11.17 under QEMU. Each image also passed 11 mocked
@@ -92,8 +101,8 @@ physical Raspberry Pi ARM64. On 2026-10-21, its integration suite passed 140
 tests in an isolated container on that device with networking disabled and
 fake door openers. This verifies that integration on physical ARM64, not live
 preview, FFmpeg rendering, or RTSP capture there. No real door command was
-sent by the validation tests. A new published version is still required before
-replacing entrance-bot's local wheel dependency.
+sent by the validation tests. Those ARM64 checks used a local build, not the
+subsequently published PyPI package.
 
 On 2026-10-21, wheel and sdist installation checks also passed in fresh Windows
 Python 3.11 and Linux x86_64 Python 3.10 environments outside the source tree.
@@ -102,8 +111,19 @@ local door adapter; they did not connect to a camera or log into the cloud.
 The sdist includes documentation, examples, tests, and the empty `.env.example`.
 Neither artifact includes extracted assets or runtime data. Local validation
 artifacts from that initial check used `0.1.0rc5`; do not publish them as a
-replacement for the already released version. The next prepared candidate is
-`0.1.0rc6` (future Git tag `v0.1.0-rc.6`), not yet published by this preparation.
+replacement for the already released version.
+
+On 2026-10-22, all 140 entrance-bot tests (commit `40680ee`) passed with
+`quii-helper==0.1.0rc6` downloaded from PyPI into a fresh Windows Python 3.11
+environment alongside the consumer's pinned dependencies. `pip check` passed;
+imports came from `site-packages`, not the library checkout. Test execution
+forbade non-loopback network access and private `.env` reads and used fake door
+openers. This proves offline consumer compatibility, not live device behavior
+or installation of that exact PyPI artifact on ARM64. The consumer repository
+still references its local wheel; it was not modified or deployed by this check.
+
+The next prepared version is `0.1.0`, with planned Git tag `v0.1.0`. Preparation
+does not publish it; do not reuse any already published version for a new build.
 See [Release Checklist](../RELEASE_CHECKLIST.md) for CI and PyPI setup.
 
 ## Required Assets

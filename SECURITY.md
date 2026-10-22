@@ -23,5 +23,8 @@ credentials in public issues.
 
 ## Supported Versions
 
-No stable public release exists yet. Treat the current codebase as pre-`0.1.0`
-development software.
+Version `0.1.0` is the first final release being prepared; until it is
+published, the latest public package remains `0.1.0rc6`. After publication,
+security fixes will target the latest `0.1.x` release; older release candidates
+will not receive separate backports. The API remains pre-`1.0`, and experimental
+features and compatibility limits are documented explicitly.
