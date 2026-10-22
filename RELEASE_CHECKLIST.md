@@ -75,7 +75,7 @@ gate run. A green gate reduces regressions; it is not proof of zero bugs.
 
 - Verify `pyproject.toml` metadata.
 - Assign a new, unused version before publication. Do not upload a local
-  rebuild with the already released `0.1.0rc5` version.
+  rebuild with the already released `0.1.0rc6` version.
 - In a clean source copy without real credentials/assets/media, install the
   build tools with `python -m pip install build twine` and run
   `python -m build --outdir data/package-check/dist`. The default command builds
@@ -113,10 +113,17 @@ asset rejection tests for unsupported ELF/table profiles; do not claim support
 for arbitrary APK ABIs/builds without native inspection. RTSP backpressure and
 UDP receiver failures must remain covered by offline regression tests.
 
-The prepared version is `0.1.0rc6`, with release tag `v0.1.0-rc.6`. It remains
-a release candidate because the library configuration changes need consumer
-validation. Updating metadata does not create a tag, GitHub release or PyPI
-upload. Do not rebuild the published `0.1.0rc5` with different source code.
+The prepared version is `0.1.0`, with planned release tag `v0.1.0`. It has not
+been published. The previous `0.1.0rc6` is already on PyPI; its wheel/sdist
+installation checks passed, and all 140 entrance-bot tests passed against it
+in a fresh Windows Python 3.11 environment on 2026-10-22. This was offline
+consumer validation, not a deployment or a new ARM64/device check. See
+[Setup](docs/setup.md#installing-on-linux-arm64) for the precise scope.
+
+Updating metadata does not create a tag, GitHub release or PyPI upload. Freeze
+and run the full gate on the final `0.1.0` commit before requesting publication;
+manual validation must still be recorded separately. Do not replace any
+published version's artifacts with different source code.
 
 `ci.yml` runs on pushes and pull requests, and is reused by `publish.yml`:
 
@@ -135,22 +142,23 @@ upload. Do not rebuild the published `0.1.0rc5` with different source code.
 Linux CI is x86_64. Earlier ARM64 integration results do not replace testing a
 new release on ARM64. CI does not exercise camera/cloud/door commands.
 
-Before the first PyPI upload, configure these externally (not done by CI):
+For each publication, verify these external settings (not changed by CI).
+They were configured for the first `0.1.0rc6` upload; do not recreate them:
 
-1. Create the GitHub environment **`pypi`** in this repository. Require an
+1. Verify the GitHub environment **`pypi`** in this repository. Require an
    approving reviewer and restrict deployments to release tags. Protect release
    tags with repository rules; do not permit tags to be moved after review.
-2. In PyPI, add a Trusted Publisher (or a pending publisher for a new project):
+2. In PyPI, verify the existing Trusted Publisher:
    project **`quii-helper`**, owner **`xaer981`**, repository **`quii-helper`**,
-   workflow **`publish.yml`**, environment **`pypi`**. Confirm project-name
-   availability/ownership in PyPI; a pending publisher does not reserve a name.
+   workflow **`publish.yml`**, environment **`pypi`**. Confirm project ownership
+   and that the new package version is unused.
    Do not create or store a long-lived `PYPI_TOKEN` for this workflow.
 3. Merge reviewed source changes into `main`, confirm green CI, then create the
    matching immutable release tag from that commit. Creating a tag or GitHub
    release alone never invokes this publishing workflow.
 4. Only when an upload is explicitly intended, dispatch **Publish to PyPI**
    against the release **tag**, not `main`:
-   `gh workflow run publish.yml --ref v0.1.0-rc.6`. The workflow must already
+   `gh workflow run publish.yml --ref v0.1.0`. The workflow must already
    exist on the default branch for manual dispatch to be available.
 5. The workflow rejects branches, tags not belonging to `main`, and tag/package
    version mismatches. It reruns all CI gates, then waits for environment
@@ -160,8 +168,9 @@ Before the first PyPI upload, configure these externally (not done by CI):
    attestations. It does not skip already-existing files: investigate an
    interrupted or duplicate upload rather than silently replacing artifacts.
 7. After a successful authorized upload, check the PyPI page and install
-   `quii-helper==0.1.0rc6` in a fresh consumer environment. Pre-releases require
-   an explicit version or `--pre`. Updating entrance-bot is a separate deploy.
+   `quii-helper==0.1.0` in a fresh consumer environment. For final releases,
+   `python -m pip install --upgrade quii-helper` needs no `--pre`. Updating
+   entrance-bot is a separate deploy.
 
 Environment approval is a GitHub setting, not something YAML enforces by
 itself. Do not run the publishing workflow until protection and the Trusted

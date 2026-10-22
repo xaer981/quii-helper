@@ -7,7 +7,20 @@ being stabilized.
 
 ## Unreleased
 
-## 0.1.0-rc.6 - Unreleased
+## 0.1.0 - Unreleased
+
+- Prepare the first final release with package version `0.1.0` and planned tag
+  `v0.1.0`. This preparation does not create a tag, release, or PyPI upload.
+- Validate entrance-bot commit `40680ee` with the published PyPI `0.1.0rc6`
+  package in a fresh Windows Python 3.11 environment: dependencies are
+  compatible and all 140 integration tests pass using synthetic settings,
+  loopback-only networking and fake door openers. The consumer repository and
+  deployed services are unchanged.
+- Update installed-package setup, release instructions and version-policy
+  documentation. Final-release tag checks retain pre-release normalization
+  coverage. Runtime code, protocol behavior and public APIs are unchanged.
+
+## 0.1.0-rc.6 - 2026-10-22
 
 - Normalize expected paths in installed-package smoke checks, so Windows
   short-path aliases do not cause false installation failures. Runtime path
@@ -97,8 +110,8 @@ being stabilized.
   capture durations, and reserve automatic output names atomically. Ignore
   virtual environments, private `.env.*` variants and build artifacts in Git.
 
-- Prepared package version `0.1.0rc6`; no tag or publication is implied by this
-  version change. Replaced legacy license metadata with the SPDX `MIT`
+- Published package version `0.1.0rc6` on PyPI with GitHub pre-release tag
+  `v0.1.0-rc.6`. Replaced legacy license metadata with the SPDX `MIT`
   expression and an explicit license file, using setuptools 77.0.3 or newer.
 - Expanded CI to Windows/Linux on Python 3.10/3.11. Build wheel from sdist,
   validate metadata and archive contents, then install both distributions in

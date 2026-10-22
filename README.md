@@ -52,15 +52,17 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-For library use, install the published pre-release from
+This checkout prepares the first final version, `0.1.0`; it has **not** been
+published yet. For library use today, install the published pre-release from
 [PyPI](https://pypi.org/project/quii-helper/0.1.0rc6/):
 
 ```shell
 python -m pip install "quii-helper==0.1.0rc6"
 ```
 
-To install the latest available version, including pre-releases, use
-`python -m pip install --upgrade --pre quii-helper`.
+After `0.1.0` is published, install or upgrade to the latest final release with
+`python -m pip install --upgrade quii-helper`, without `--pre`.
+For now, use the explicit `0.1.0rc6` version above.
 No repository checkout is needed for library use.
 The wheel does **not** include `examples` or `.env.example`; use the
 [installed-package setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-an-installed-package)
