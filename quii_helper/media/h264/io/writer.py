@@ -3,6 +3,7 @@ from typing import Any
 
 from quii_helper.io.paths import DATA_DIR
 from quii_helper.media.frames.assembler import (
+    AssembledH264Stream,
     assemble_h264_stream_from_messages,
 )
 from quii_helper.media.h264.core.analysis import analyze_h264_annexb_stream
@@ -31,11 +32,33 @@ def write_h264_stream(
     keep_raw_h264: bool = False,
     target_duration_seconds: float | None = None,
 ) -> MediaArtifactSummary:
+    return write_assembled_h264_stream(
+        base_name,
+        assemble_h264_stream_from_messages(messages),
+        output_dir=output_dir,
+        render_snapshot=render_snapshot,
+        render_video=render_video,
+        keep_raw_h264=keep_raw_h264,
+        target_duration_seconds=target_duration_seconds,
+    )
+
+
+def write_assembled_h264_stream(
+    base_name: str | Path,
+    assembled_stream: AssembledH264Stream,
+    *,
+    output_dir: Path = DATA_DIR,
+    render_snapshot: bool = True,
+    render_video: bool = True,
+    keep_raw_h264: bool = False,
+    target_duration_seconds: float | None = None,
+    input_fps: float | None = None,
+) -> MediaArtifactSummary:
+    """Render assembled access units; explicit camera FPS overrides retiming."""
     stream_path, mp4_path, snapshot_path = h264_output_paths(
         base_name,
         output_dir=output_dir,
     )
-    assembled_stream = assemble_h264_stream_from_messages(messages)
     summary = assembled_stream.summary
 
     if not assembled_stream.has_access_units:
@@ -57,10 +80,11 @@ def write_h264_stream(
     mp4_error = ""
     ffmpeg_skipped_reason = ""
     if render_video:
-        input_fps = input_fps_for_target_duration(
-            frame_count=int(summary.get("assembled_units", 0)),
-            target_duration_seconds=target_duration_seconds,
-        )
+        if input_fps is None:
+            input_fps = input_fps_for_target_duration(
+                frame_count=int(summary.get("assembled_units", 0)),
+                target_duration_seconds=target_duration_seconds,
+            )
         mp4_ok, mp4_error, ffmpeg_skipped_reason = write_h264_mp4_if_decodable(
             stream_path,
             mp4_path,

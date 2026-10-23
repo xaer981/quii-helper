@@ -5,11 +5,16 @@
 
 ## Start Here
 
+Start with [Setup](setup.md): install the package, obtain and save a stream
+key, then connect locally. LAN-only is the default; cloud operations require
+explicit opt-in. Use the [API Reference](api.md) for individual methods.
+
 | Your goal | Guide |
 | --- | --- |
-| First installation | [Install the package](setup.md#using-an-installed-package), then [prepare assets](setup.md#required-assets). |
+| First installation | [Install from PyPI](setup.md#using-an-installed-package) and [choose operation prerequisites](setup.md#what-your-operation-needs). |
 | Configure an existing application | [Environment settings](setup.md#environment-settings) and [library configuration](api.md#library-configuration). |
 | Capture an image or video | [Capture methods](api.md#capture-methods). |
+| Obtain a stream key, then play locally | [First-run bootstrap and later local starts](setup.md#stream-key-bootstrap-and-local-reuse), [persistence API](api.md#stream-key-bootstrap-and-persistence). |
 | Watch a live stream in VLC | [RTSP streaming](api.md#rtsp-streaming). |
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
 | Read incoming-call history | [Incoming call history](api.md#incoming-call-history-experimental); this is not a live subscription. |
@@ -24,10 +29,4 @@
 - [Changelog](../CHANGELOG.md): released changes and migration notes.
 - [Security Policy](../SECURITY.md): sensitive material and vulnerability reporting.
 
-Documentation follows the current source tree. For a pinned package version,
-use the files at its matching Git tag, such as
-[`v0.1.1`](https://github.com/xaer981/quii-helper/tree/v0.1.1).
-Published PyPI descriptions are snapshots of the README at build time, not
-live copies of GitHub `main`.
-Version `0.1.1` includes the corrected guides. Runtime behavior and public APIs
-are unchanged from `0.1.0`; older descriptions may still mention the preceding RC.
+For a pinned package version, use the documentation at its matching Git tag.

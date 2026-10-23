@@ -11,7 +11,7 @@ from urllib.parse import unquote, urlsplit
 import black
 import pytest
 
-from quii_helper import Camera
+from quii_helper import AutonomousConfig, Camera, CameraStreamCredentials
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = sorted(
@@ -100,6 +100,69 @@ def test_readme_links_work_outside_a_checkout() -> None:
     assert all(urlsplit(url).scheme == "https" for url in LINK.findall(text))
 
 
+def test_readme_quick_start_works_without_repository_examples() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = text.split("## Quick Start", 1)[1].split(
+        "## RTSP Streaming", 1
+    )[0]
+    assert "python -m pip install quii-helper" in quick_start
+    assert "fetch_stream_credentials()" in quick_start
+    assert "CameraStreamCredentials.load(" in quick_start
+    assert "python -m examples." not in quick_start
+    assert "git clone" not in quick_start
+
+
+def test_all_runnable_examples_are_listed_in_api_guide() -> None:
+    text = (ROOT / "docs/api.md").read_text(encoding="utf-8")
+    for example in (ROOT / "examples").glob("*.py"):
+        if example.stem != "__init__":
+            assert f"python -m examples.{example.stem}" in text
+
+
+@pytest.mark.parametrize("document", ["README.md", "docs/api.md"])
+def test_documented_saved_key_rtsp_stays_lan_with_cloud_settings(
+    document: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CAMERA_CONNECTION_MODE", "cloud")
+    saved = CameraStreamCredentials(
+        "synthetic-device", "K" * 32, "synthetic-auth"
+    )
+    config = AutonomousConfig(
+        connection_mode="cloud", device_host="192.0.2.10"
+    )
+    blocks = PYTHON_BLOCK.findall(
+        (ROOT / document).read_text(encoding="utf-8")
+    )
+    source = next(
+        block
+        for block in blocks
+        if "CameraStreamCredentials.load(" in block
+        and "camera.serve_rtsp(" in block
+    )
+    with (
+        patch("quii_helper.load_config", return_value=config),
+        patch("quii_helper.CameraStreamCredentials.load", return_value=saved),
+        patch.object(Camera, "serve_rtsp", autospec=True) as serve,
+        patch.object(
+            Camera,
+            "fetch_stream_credentials",
+            side_effect=AssertionError("bootstrap forbidden"),
+        ),
+        patch(
+            "quii_helper.camera.connection.session.fetch_runtime_credentials",
+            side_effect=AssertionError("cloud forbidden"),
+        ),
+        patch("builtins.print"),
+    ):
+        exec(compile(source, document, "exec"), {})
+    camera = serve.call_args.args[0]
+    assert camera.config.connection_mode == "lan"
+    assert camera.config.stream_key == saved.stream_key
+    assert camera.config.auth_code == saved.auth_code
+    assert camera.config.device_id == saved.device_id
+    assert config.connection_mode == "cloud"
+
+
 def test_api_method_tables_match_camera_signatures() -> None:
     text = (ROOT / "docs/api.md").read_text(encoding="utf-8")
     tables = re.findall(
@@ -159,6 +222,7 @@ def test_python_examples_use_mocked_public_api(
     blocks = PYTHON_BLOCK.findall(document.read_text(encoding="utf-8"))
     with (
         patch("quii_helper.Camera", autospec=True) as camera_cls,
+        patch("quii_helper.CameraStreamCredentials", autospec=True),
         patch("quii_helper.load_config", return_value=sentinel.config),
         patch(
             "dotenv.dotenv_values",

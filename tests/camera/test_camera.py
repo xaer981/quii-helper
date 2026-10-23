@@ -287,7 +287,7 @@ class CameraLocalValidationTests:
     def test_get_device_shadow_info_delegates_with_cached_credentials(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        camera = Camera(device_id="device-1")
+        camera = Camera(device_id="device-1", connection_mode="cloud")
         credentials = RuntimeCredentials(
             session_id="session-id",
             dynamic_password="dynamic-password",
@@ -320,7 +320,7 @@ class CameraLocalValidationTests:
     def test_get_iot_command_support_delegates_with_cached_credentials(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        camera = Camera(device_id="device-1")
+        camera = Camera(device_id="device-1", connection_mode="cloud")
         credentials = RuntimeCredentials(
             session_id="session-id",
             dynamic_password="dynamic-password",

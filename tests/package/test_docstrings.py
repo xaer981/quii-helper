@@ -110,6 +110,7 @@ from quii_helper import (
     CameraDeviceVoiceMessageInfo,
     CameraDeviceWifiListInfo,
     CameraDoorOpenResult,
+    CameraStreamCredentials,
     LanDeviceCandidate,
 )
 from quii_helper.camera.outputs.results import CameraCaptureResult
@@ -131,6 +132,10 @@ DOCUMENTED_OBJECTS = (
     Camera.capture,
     Camera.discover_lan_devices,
     Camera.get_device_info,
+    Camera.fetch_stream_credentials,
+    CameraStreamCredentials,
+    CameraStreamCredentials.save,
+    CameraStreamCredentials.load,
     Camera.get_device_shadow_info,
     Camera.get_alarm_channel_info,
     Camera.get_alarm_input_info,

@@ -3,6 +3,7 @@
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from quii_helper.camera.connection.credentials import CameraStreamCredentials
 from quii_helper.camera.connection.session import (
     CameraConnector,
     CameraPreviewSession,
@@ -184,6 +185,7 @@ from quii_helper.camera.outputs.results import (
     CameraCaptureResult,
 )
 from quii_helper.camera.runtime.capture import capture_preview_summary
+from quii_helper.camera.runtime.lan_capture import capture_lan_summary
 from quii_helper.camera.settings.init_state import camera_config_kwargs
 from quii_helper.camera.settings.options import (
     resolve_camera_config,
@@ -211,6 +213,7 @@ from quii_helper.config import (
     RuntimeCredentials,
     load_config,
 )
+from quii_helper.config.connection import require_cloud_connection
 from quii_helper.device.control import (
     CameraDoorOpenResult,
     UnlockPasswordMode,
@@ -230,7 +233,12 @@ from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
     PreviewCaptureSettings,
 )
-from quii_helper.support.errors import ConfigurationError, QuiiHelperError
+from quii_helper.protocols.tcp.live.session import validate_lan_config
+from quii_helper.support.errors import (
+    ConfigurationError,
+    QuiiConnectionError,
+    QuiiHelperError,
+)
 from quii_helper.support.log import logger
 
 EmitCallback = Callable[[object], None]
@@ -365,7 +373,7 @@ class Camera:
     """User-facing camera client.
 
     `Camera` is the stable entrypoint for application code. It resolves
-    runtime credentials, opens the device preview session, receives media
+    supplied LAN credentials by default, opens the preview session, receives media
     packets, and exposes high-level operations for snapshots, recordings,
     RTSP streaming, device inspection, and explicit door-opening commands.
 
@@ -413,6 +421,9 @@ class Camera:
         data_dir: str | Path | None = None,
         emit: EmitCallback | None = None,
         status: StatusCallback | None = None,
+        connection_mode: str | None = None,
+        stream_port: int | None = None,
+        stream_key: str | None = None,
     ) -> None:
         """Create a camera client.
 
@@ -423,9 +434,10 @@ class Camera:
             cloud_username: Alias for `cloud_account`.
             cloud_account: Cloud account/login used for runtime credentials.
             cloud_password: Cloud account password.
-            device_host: Camera LAN IP address or hostname used by local
-                `/tdkcgi` HTTP methods.
-            auth_code: Device auth code used by local `/tdkcgi` HTTP methods.
+            device_host: Explicit camera IP for LAN TCP playback; local
+                `/tdkcgi` HTTP methods also accept a hostname.
+            auth_code: Device auth code for LAN TCP and local `/tdkcgi`,
+                separate from cloud and door passwords.
             unlock_password: Door-opening password. Defaults to
                 configured `UNLOCK_PASSWORD`, separately from `auth_code`.
             client_id: Client UUID sent to cloud, UST, and MQTT services.
@@ -459,6 +471,11 @@ class Camera:
                 Defaults to `./data`; relative paths are anchored at construction.
             emit: Callback for structured debug summaries.
             status: Callback for user-facing status messages.
+            connection_mode: 'lan' (default) disables all cloud access.
+                Use 'cloud' explicitly for the existing cloud/P2P preview.
+            stream_port: Direct LAN TCP port, default 34567.
+            stream_key: Saved 32-byte UTF-8 AES key for direct LAN playback.
+                Never fetched or refreshed automatically.
 
         Raises:
             ValueError: If mutually exclusive stream selectors are supplied or
@@ -506,7 +523,8 @@ class Camera:
                 should end in `.mp4`. When omitted, files are written under
                 `data_dir` with a timestamped name.
             save_diagnostic_artifacts: Overrides diagnostic artifact saving for
-                this capture only.
+                this capture only in cloud mode. LAN capture returns statistics
+                but does not write packet/sample diagnostics.
             stop_when_decodable: Overrides whether capture may stop as soon as
                 enough H.264 context is available.
             render_snapshot: Whether to render a JPEG snapshot.
@@ -518,9 +536,12 @@ class Camera:
 
         Raises:
             ValueError: If `output_path` has an incompatible suffix.
-            CameraCaptureError: Not raised directly by this method, but can be
-                raised by `CameraCaptureResult.require_snapshot()` or
-                `CameraCaptureResult.require_video()`.
+            ConfigurationError: Required connection settings are invalid.
+            QuiiConnectionError: Connection or media reception failed.
+            CameraCaptureError: LAN recording exceeds its buffer budget.
+                Artifact render failures are reported in the result; its
+                `require_snapshot()` / `require_video()` methods raise if the
+                requested artifact was not produced.
         """
         request = resolve_capture_request(
             self.preview_settings,
@@ -571,6 +592,53 @@ class Camera:
             cloud_device=cloud_device,
         )
         return self._device_info
+
+    def fetch_stream_credentials(self) -> CameraStreamCredentials:
+        """Fetch a fresh stream key and matching auth code through cloud login.
+
+        Requires explicit `connection_mode="cloud"`, account/device/app settings,
+        and the configured TLS policy. Always performs login + get-device-token;
+        cached metadata credentials are not reused. No preview, discovery,
+        push registration, local device request or door command is sent.
+        This method does not change configuration or save a file automatically.
+
+        Returns:
+            Minimal `CameraStreamCredentials`. Call `save(path)` explicitly,
+            then load the file and pass its fields to a separate LAN Camera.
+
+        Raises:
+            ConfigurationError: Cloud mode was not explicitly selected or
+                required account/app configuration is missing.
+            QuiiConnectionError: Cloud response rejects the query, identifies
+                another device, or lacks a valid LAN key/auth pair.
+            OSError: Cloud network or TLS access failed.
+        """
+        require_cloud_connection(
+            self.config.connection_mode, operation="fetch_stream_credentials"
+        )
+        self.status("Fetching streaming credentials from cloud")
+        credentials = self.connector.fetch_credentials()
+        token = credentials.raw.get("token", {})
+        if isinstance(token, dict) and token.get("device_id") not in (
+            None,
+            "",
+            self.config.device_id,
+        ):
+            raise QuiiConnectionError(
+                "cloud streaming credentials identify a different device"
+            )
+        try:
+            result = CameraStreamCredentials(
+                device_id=self.config.device_id,
+                stream_key=credentials.data_encode_key,
+                auth_code=credentials.auth_code,
+            )
+        except ConfigurationError:
+            raise QuiiConnectionError(
+                "cloud did not return a valid LAN stream key/auth pair"
+            ) from None
+        self.status("Streaming credentials received")
+        return result
 
     def get_device_shadow_info(self) -> CameraDeviceShadowInfo:
         """Fetch read-only cloud shadow status for this camera.
@@ -628,6 +696,9 @@ class Camera:
         Tokenless login acceptance and history delivery without the Android
         app require server/device testing.
         """
+        require_cloud_connection(
+            self.config.connection_mode, operation="get_call_events"
+        )
         return fetch_call_events(
             self.config,
             page=page,
@@ -709,6 +780,9 @@ class Camera:
         )
 
     def _fetch_runtime_credentials(self) -> RuntimeCredentials:
+        require_cloud_connection(
+            self.config.connection_mode, operation="cloud metadata"
+        )
         if self._runtime_credentials is None:
             self._runtime_credentials = self.connector.fetch_credentials()
         return self._runtime_credentials
@@ -3311,6 +3385,8 @@ class Camera:
     ) -> Path:
         """Capture one JPEG snapshot.
 
+        Uses supplied LAN credentials by default, without cloud fallback.
+
         Args:
             timeout_seconds: Maximum time to wait for a decodable frame.
             output_path: Optional `.jpg` output path. When omitted, a
@@ -3339,6 +3415,9 @@ class Camera:
         output_path: str | Path | None = None,
     ) -> Path:
         """Record an MP4 video for the requested capture window.
+
+        LAN uses the camera's FPS, not a stretched collection window. Startup
+        and rendering add time; sparse delivery produces a shorter video.
 
         Args:
             duration_seconds: Desired capture duration in seconds.
@@ -3390,6 +3469,7 @@ class Camera:
         The returned handle owns both the RTSP server and the background camera
         packet producer. Call `close()` when the stream is no longer needed, or
         use the returned object as a context manager.
+        The default LAN source uses only the supplied IP/auth code/stream key.
 
         Example:
             ```python
@@ -3408,6 +3488,8 @@ class Camera:
             Started `CameraRtspStream` handle. The client URL is available as
             `handle.url`.
         """
+        if self.config.connection_mode == "lan":
+            validate_lan_config(self.config)
         stream = CameraRtspStream(
             connector=self.connector,
             preview_settings=self.preview_settings,
@@ -3417,6 +3499,7 @@ class Camera:
             host=host,
             port=port,
             path=path,
+            connection_mode=self.config.connection_mode,
         )
         return stream.start()
 
@@ -3428,7 +3511,12 @@ class Camera:
         render_snapshot: bool,
         render_video: bool,
     ) -> CaptureSummary:
-        return capture_preview_summary(
+        capture_summary = (
+            capture_lan_summary
+            if self.config.connection_mode == "lan"
+            else capture_preview_summary
+        )
+        return capture_summary(
             connector=self.connector,
             settings=settings,
             output_base=output_base,

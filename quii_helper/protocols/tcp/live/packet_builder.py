@@ -25,11 +25,10 @@ class QuiiLiveOpenPacketBuilder:
             self.password,
             self.path,
             timestamp_ms=(
-                int(time.time() * 1000)
-                if timestamp_ms is None
-                else timestamp_ms
+                int(time.time()) if timestamp_ms is None else timestamp_ms
             ),
             play_param=play_param,
+            ext_len_low=1,
             stream_flag=stream_flag,
             inner=self.use_inner,
             crypto_mode=crypto_mode,

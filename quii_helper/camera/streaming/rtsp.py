@@ -16,6 +16,7 @@ from quii_helper.preview.pipeline.stream import TunnelPacketStream
 from quii_helper.preview.processing.packets.processor import (
     PreviewPacketProcessor,
 )
+from quii_helper.protocols.tcp.live.session import LanTcpSession
 from quii_helper.streaming.h264 import H264LiveAssembler
 from quii_helper.streaming.rtsp import RtspH264Server
 
@@ -47,6 +48,7 @@ class CameraRtspStream:
         host: Interface bound by the RTSP server.
         port: TCP port bound by the RTSP server.
         path: RTSP path exposed by the server.
+        connection_mode: Explicit source selection; LAN never fetches credentials.
     """
 
     connector: Any
@@ -57,13 +59,14 @@ class CameraRtspStream:
     host: str = "127.0.0.1"
     port: int = 8554
     path: str = "/live"
+    connection_mode: str = "cloud"
     server: RtspH264Server = field(init=False)
     assembler: H264LiveAssembler = field(init=False)
     _stop_event: threading.Event = field(
         default_factory=threading.Event, init=False, repr=False
     )
     _thread: threading.Thread | None = field(default=None, init=False)
-    _packet_stream: TunnelPacketStream | None = field(
+    _packet_stream: TunnelPacketStream | LanTcpSession | None = field(
         default=None, init=False, repr=False
     )
     _error: BaseException | None = field(default=None, init=False, repr=False)
@@ -114,7 +117,10 @@ class CameraRtspStream:
             self.status("Starting RTSP server")
             self._error = None
             self.server.start()
-            self.assembler = H264LiveAssembler(sink=self.server.publish)
+            self.assembler = H264LiveAssembler(
+                sink=self.server.publish,
+                wait_for_keyframe=self.connection_mode == "lan",
+            )
             self._ready_announced = False
             self._stop_event.clear()
             self._thread = threading.Thread(
@@ -201,6 +207,9 @@ class CameraRtspStream:
         try:
             if self._stop_event.is_set():
                 return
+            if self.connection_mode == "lan":
+                self._run_lan_preview()
+                return
             self.status("Fetching runtime credentials")
             if self._stop_event.is_set():
                 return
@@ -273,7 +282,7 @@ class CameraRtspStream:
             store_media_messages=False,
         )
         packet_stream = self._packet_stream
-        if packet_stream is None:
+        if not isinstance(packet_stream, TunnelPacketStream):
             return
         while not self._stop_event.is_set():
             for packet in packet_stream.live_packets(
@@ -284,6 +293,28 @@ class CameraRtspStream:
                 if self._stop_event.is_set():
                     break
                 processor.process_packet(packet, phase="live")
+
+    def _run_lan_preview(self) -> None:
+        self.status("Opening LAN preview session")
+        with self._lifecycle_lock:
+            if self._stop_event.is_set():
+                return
+            session = self.connector.create_lan_session()
+            self._packet_stream = session
+        # Register before opening so close() can interrupt setup/receive too.
+        with session:
+            if self._stop_event.is_set():
+                return
+            self.status("Connected")
+            self.status("Receiving media packets")
+            while not self._stop_event.is_set():
+                try:
+                    decoded = session.recv_message(
+                        timeout=STREAM_PACKET_TIMEOUT_SECONDS
+                    )
+                except TimeoutError:
+                    continue
+                self._feed_assembler_message(decoded)
 
     def _feed_assembler_message(self, decoded: DecodedQuiiMessage) -> None:
         if self._stop_event.is_set():

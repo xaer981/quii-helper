@@ -8,7 +8,7 @@ findings below refer to the inspected app builds, not every vendor release.
 
 ## Contents
 
-- [Connection flow](#connection-flow), [media](#media-capture), and [RTSP](#rtsp-streaming).
+- [Connection flow](#connection-flow), [LAN TCP](#lan-tcp-session), [media](#media-capture), and [RTSP](#rtsp-streaming).
 - [Runtime limits](#runtime-limits-and-lifecycle).
 - [Cloud history](#cloud-incoming-call-history) and [local device APIs](#local-device-apis).
 - [Receive parity](#receive-buffer-parity) and [failure/backpressure](#receiver-failure-and-backpressure).
@@ -23,7 +23,7 @@ and platform validation are summarized in [Compatibility](../COMPATIBILITY.md#va
 
 ## Connection Flow
 
-The high-level preview flow is:
+The cloud/P2P preview flow, explicitly selected with `connection_mode="cloud"`, is:
 
 1. Fetch runtime credentials from the cloud.
 2. Ask the cloud for P2P/LAN candidates.
@@ -32,6 +32,63 @@ The high-level preview flow is:
 5. Send QUII setup/play commands.
 6. Collect media packets.
 7. Decode H.264 frames and optionally render JPEG/MP4/RTSP output.
+
+### LAN TCP Session
+
+LAN-only is the default configuration policy. The internal
+`LanTcpSession` connects only to the supplied IP/TCP port, sends setup then
+encrypted play, and yields normalized decoded messages to Camera capture/RTSP.
+The existing cloud RBUDP pipeline is not used in this branch. There is no implicit
+key acquisition, cache-file lookup, cloud login, service discovery or fallback.
+
+The implementation was checked against `liblive_player.so` via GhidraMCP:
+
+| Address | Native behavior used by LAN TCP |
+| --- | --- |
+| `00479814` | Setup status byte 9; command crypto mode byte 10. |
+| `0047c0fc` | Live defaults: header flag word at 13 is 1; stream flag is 0. |
+| `0047d898`, `007f0cc4` | Play timestamp is time_t in seconds; username/password/path body, SHA and separate header/body encryption. |
+| `00479d98` | Command SHA covers header only, except type `0xfe` also covers its declared body. |
+| `0047e198` | Play status byte 11; byte 12 equal to 1 marks active play. |
+| `0047af70`, `0047b1ec` | Stateful media receive; 32-bit size at 11, encrypted command prefix at 9, media offset at 16. |
+| `0047b1ec` | Suppress completed frames until the first `FrameIsKey()` packet. |
+| `007dc394` | `CPacket::FrameGetFPS()` reads CPacket byte 15 divided by 4.0. LAN MP4 uses this rate, not the requested capture window. |
+| `00479020` | Keepalive type 0, empty body, zero play flags, SHA and separate encryption. |
+| `0047b914`, `0047b694` | Separate media encryption can use a third key; it must not be guessed from the command key. |
+
+The initial supported profile is AES-256 command encryption, SHA256 and media
+flag 15 equal to zero, matching the successful device probes. Other profiles
+are rejected before media is delivered. A 5 MiB payload cap is host policy,
+not a native protocol constant. Partial headers/bodies survive read timeouts;
+invalid packets, rejected play, SHA failures and EOF close the session.
+One receive timeout covers header and body together, preserving partial bytes.
+LAN recording collects at most 256 MiB of H.264 payload and fails explicitly on
+overflow; this is not a process RSS limit. RTSP retains only bounded assembler
+state/history and the server's bounded per-viewer queues, not a recording buffer.
+Existing cloud rendering/retiming remains unchanged. Explicit
+`Camera.fetch_stream_credentials()` reuses the existing cloud `login` +
+`get-device-token` flow and maps `data_encode_key` / `auth_code` into the minimal
+`CameraStreamCredentials` model. It introduces no new wire commands or
+authentication encoding rules. JSON persistence contains only schema version,
+device id and that key/auth pair, never the cloud session or dynamic password.
+The application loads that file explicitly before constructing a LAN client;
+no bootstrap, file lookup, fallback or renewal occurs inside LAN playback.
+Implementation initially used native inspection and offline fixtures only.
+An authorized physical Raspberry Pi check on 2026-10-23 then exercised the
+candidate's real Camera API: capture and RTSP with a key aged 9167 seconds,
+explicit cloud fetch/save/load followed by LAN RTSP, and a fresh saved-file
+reconnect without cloud account settings or requests. The refreshed pair
+matched the old stream key and native-encoded auth code. All four media samples
+decoded without FFmpeg errors. The cloud probe alone used a temporarily
+authorized TLS bypass; LAN TCP itself does not use HTTPS or APK assets.
+
+During LAN phases, a process audit guard permitted only camera TCP and the
+loopback RTSP client, rejecting cloud HTTP and external DNS. This proves the
+observed client's behavior, not OS-level isolation or camera-WAN independence.
+RTSP contexts stopped their workers and listeners. No production service or
+device setting was changed. The observed two-hour key reuse is a lower bound,
+not a TTL, rotation/reboot guarantee or visual-quality certification. See
+[Compatibility](../COMPATIBILITY.md#validation-scope) for the exact scope.
 
 ## Media Capture
 
@@ -185,7 +242,8 @@ Base64 `transparent_basedata`. `QvDeviceAbility.initData` skips two header bytes
 `CameraDeviceInfo.supports_sha256_password` exposes this as a tri-state flag.
 
 `password_mode="auto"` uses cached device metadata/runtime credentials first,
-then a read-only cloud metadata lookup when needed. Explicit `"plain"` and
+then a read-only cloud metadata lookup when needed **only in explicit cloud
+mode**. Default LAN mode rejects unknown capability before sending. Explicit `"plain"` and
 `"sha256"` modes skip discovery. The `sha256` mode preserves the vendor's
 already-encoded-password rule, matching the existing entrance-bot integration.
 Unlike the original client's default-false bitmap for missing/invalid data,
@@ -383,7 +441,7 @@ Important package areas:
 | `quii_helper/camera/` | Public camera API and high-level orchestration. |
 | `quii_helper/cloud/` | Cloud authentication and runtime credential APIs. |
 | `quii_helper/device/` | Local device APIs, response models, and explicit control commands. |
-| `quii_helper/protocols/` | RBUDP/QUII protocol implementation. |
+| `quii_helper/protocols/` | Native LAN TCP, cloud/P2P RBUDP, QUII codecs and wire formats. |
 | `quii_helper/media/` | Media decoding, frame extraction, and rendering. |
 | `quii_helper/streaming/` | RTSP streaming implementation. |
 | `quii_helper/config/` | Settings and `.env` loading. |

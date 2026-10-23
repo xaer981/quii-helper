@@ -27,6 +27,9 @@ _SETTING_EXPORTS = {
     "P2P_SO_PATHS": "p2p_so_paths",
     "CAMERA_CHANNEL": "camera_channel",
     "CAMERA_STREAM": "camera_stream",
+    "CAMERA_CONNECTION_MODE": "camera_connection_mode",
+    "CAMERA_STREAM_PORT": "camera_stream_port",
+    "STREAM_KEY": "stream_key",
     "TLS_VERIFY": "tls_verify",
 }
 

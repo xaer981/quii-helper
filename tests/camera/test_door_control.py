@@ -156,7 +156,7 @@ def test_auto_mode_reads_capability_before_command(
 def test_auto_mode_reuses_metadata_from_previous_read(
     monkeypatch: pytest.MonkeyPatch, support: bool
 ) -> None:
-    camera = _camera()
+    camera = _camera(CAMERA_CONNECTION_MODE="cloud")
     fetch = MagicMock(return_value=_credentials(support))
     device_list = MagicMock(return_value=[])
     sender = MagicMock(return_value=CameraDoorOpenResult(0, 2, 1))

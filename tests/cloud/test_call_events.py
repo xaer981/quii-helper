@@ -520,6 +520,7 @@ def test_transport_errors_are_domain_errors(
 def test_camera_facade_never_opens_preview_or_fetches_device_token(
     config: AutonomousConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    config = replace(config, connection_mode="cloud")
     camera = Camera(config)
     camera.connector = Mock()
     fetch = Mock(return_value=CameraCallEventPage([], "0", 0, 0))
@@ -596,7 +597,9 @@ def test_example_only_reads_history(
         Mock(side_effect=AssertionError("unexpected .env read")),
     )
     runpy.run_module("examples.call_events", run_name="__main__")
-    factory.assert_called_once_with(config=load.return_value)
+    factory.assert_called_once_with(
+        config=load.return_value, connection_mode="cloud"
+    )
     load.assert_called_once_with()
     configure.assert_called_once_with(replace_existing=True)
     assert [call[0] for call in camera.mock_calls] == ["get_call_events"]

@@ -19,13 +19,13 @@ class _FakeRtspAssembler:
 
 class CameraRtspApiTests:
     def test_serve_rtsp_defaults_to_loopback(self) -> None:
-        camera = Camera()
+        camera = Camera(connection_mode="cloud")
         with patch("quii_helper.camera.api.CameraRtspStream") as stream_cls:
             camera.serve_rtsp()
         assert stream_cls.call_args.kwargs["host"] == "127.0.0.1"
 
     def test_serve_rtsp_builds_and_starts_stream(self) -> None:
-        camera = Camera()
+        camera = Camera(connection_mode="cloud")
 
         with patch("quii_helper.camera.api.CameraRtspStream") as stream_cls:
             stream = stream_cls.return_value

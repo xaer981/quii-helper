@@ -5,7 +5,7 @@
 ## Supported Versions
 
 `0.1.0` is the first published final release. Security fixes target the latest
-`0.1.x` release; older release candidates do not receive separate backports.
+`0.2.x` release; older versions do not receive separate backports.
 The API remains pre-`1.0`, with experimental features and compatibility limits
 documented explicitly. See the [Changelog](CHANGELOG.md).
 
@@ -15,6 +15,9 @@ Users supply credentials and APK assets from software/devices they are
 authorized to use. Never share real `.env` files, asset contents, extracted
 certificates/private keys/native libraries, account tokens, raw traffic, or
 camera media in issues, pull requests, fixtures, or release archives.
+Saved stream-credential JSON is also sensitive: it holds a reusable key/auth
+pair in plaintext, not an encrypted vault. Keep it in a private ignored
+directory (`0600` on Unix; restrict the containing Windows folder ACL).
 
 Git ignores `.env` variants, `assets/*`, `data/*`, and generated media/logs.
 The empty `.env.example` and `.gitkeep` files are intentional exceptions.
@@ -25,6 +28,9 @@ a scanner and rotate affected credentials after an exposure.
 
 - RTSP has no authentication or TLS. Its default listener is loopback-only;
   restrict any explicit LAN listener and never expose it publicly.
+- LAN-only is the default: no cloud login, automatic
+  key renewal or P2P fallback. Bootstrap is a separate explicit cloud operation.
+  This policy does not block the camera's own WAN traffic or establish a key TTL.
 - TLS verification is enabled by default in the library and examples. An
   explicit bypass weakens authenticity; the current `quii_helper.main` entry
   point contains such an override. See [TLS guidance](docs/setup.md#cloud-region-and-auth-url).

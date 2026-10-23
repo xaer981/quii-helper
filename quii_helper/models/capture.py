@@ -42,7 +42,7 @@ class MediaFrameSummary(TypedDict, total=False):
     frame_len: int
     frame_stamp: int
     codec: int
-    fps: int
+    fps: float
     width: int
     height: int
     nal_offset: int

@@ -5,7 +5,59 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.2.0 - 2026-10-23
+
+### Changed
+
+- **Breaking:** `Camera` defaults to LAN-only playback. Supply the camera IP
+  and a saved stream key/auth pair for snapshots, recording and RTSP. No cloud
+  login, automatic key renewal or P2P fallback occurs in this mode.
+- To retain the `0.1.x` cloud/P2P behavior, explicitly pass
+  `connection_mode="cloud"` or set `CAMERA_CONNECTION_MODE=cloud`. Cloud
+  metadata/history methods and key bootstrap also require this opt-in.
+- Local CGI methods still work without a stream key. Door `password_mode="auto"`
+  cannot look up an unknown capability through cloud in LAN mode; select cloud
+  mode for that lookup or a verified explicit password mode.
+- LAN recording uses the camera's FPS, without stretching sparse frames to the
+  collection window. Recording payload is limited to 256 MiB with explicit
+  failure; RTSP does not retain a recording buffer.
+
+### Added
+
+- Direct TCP media transport for the native-checked AES-256/SHA256 profile
+  without separate media encryption. Preserve partial reads across timeouts,
+  validate packet lengths/digests and reject unsupported profiles explicitly.
+- `STREAM_KEY` and `CAMERA_STREAM_PORT` settings; LAN playback needs no cloud
+  account or extracted APK assets when credentials are supplied.
+- Explicit cloud-only `Camera.fetch_stream_credentials()` and public
+  `CameraStreamCredentials.save()` / `load()`. Atomically persist only device id,
+  stream key and matching auth code, never cloud passwords or sessions. Secret
+  fields are hidden from representations and redacted from diagnostics.
+- `examples.cloud_key_rtsp` for cloud fetch/save followed by LAN RTSP, and
+  `examples.lan_rtsp` for later saved-file starts without cloud requests.
+- Offline regressions for LAN policy, synthetic TCP media, credential storage,
+  cancellation, failure propagation and documentation examples.
+
+### Fixed
+
+- Direct TCP play now uses native seconds timestamps and default play flags.
+- LAN capture/RTSP suppresses frames before the first keyframe and releases
+  startup/receive sockets on shutdown. Existing RBUDP behavior and runtime
+  dependencies are unchanged.
+
+### Documentation And Validation
+
+- Simplify the PyPI quick start: obtain/save a key explicitly, then reuse it
+  locally. Align setup, API, security and compatibility guides with that flow.
+- Physical Raspberry Pi checks on Tantos Marilyn Wi-Fi s verified saved-key
+  capture/RTSP, cloud bootstrap/save/load, and independent LAN reconnect without
+  client cloud requests. A cached key worked after more than two hours; saved
+  media decoded without FFmpeg errors. The cloud probe used an explicitly
+  authorized temporary TLS bypass; no settings were changed or door commands sent.
+- Key lifetime, reboot/rotation persistence, camera-WAN isolation and Vimar
+  compatibility remain unverified. This work relates to
+  [issue #5](https://github.com/xaer981/quii-helper/issues/5) without
+  claiming fully cloud-free key acquisition or support for that device.
 
 ## 0.1.1 - 2026-10-23
 

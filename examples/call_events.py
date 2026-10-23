@@ -11,7 +11,9 @@ from quii_helper.support.log import configure_logging
 def main() -> None:
     """Print the first history page, omitting private resource URLs."""
     configure_logging(replace_existing=True)
-    page = Camera(config=load_config()).get_call_events()
+    page = Camera(
+        config=load_config(), connection_mode="cloud"
+    ).get_call_events()
     print(
         f"Incoming calls: {len(page.events)}; "
         f"total: {page.total_count}; unread: {page.unread_count}"

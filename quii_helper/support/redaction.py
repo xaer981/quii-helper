@@ -19,6 +19,8 @@ _SENSITIVE_KEYS = {
     "cookie",
     "data-encode-key",
     "data_encode_key",
+    "stream-key",
+    "stream_key",
     "dynamic-password",
     "dynamic_password",
     "password",
