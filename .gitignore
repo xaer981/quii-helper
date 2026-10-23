@@ -30,3 +30,7 @@ data/*
 *.log
 gitleaks-*.json
 gitleaks-*.sarif
+
+# Minimal LAN secrets saved explicitly by the stream-key bootstrap example.
+stream_credentials.json
+.stream_credentials.json.*

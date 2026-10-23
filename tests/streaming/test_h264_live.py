@@ -17,6 +17,20 @@ def _cpacket(bitstream: bytes, *, frame_tag: int = 0xE1) -> bytes:
 
 
 class H264LiveAssemblerTests:
+    def test_native_keyframe_gate_preserves_partial_frame_state(self) -> None:
+        assembler = H264LiveAssembler(wait_for_keyframe=True)
+        emitted = []
+        assembler.sink = emitted.append
+        pframe = _cpacket(b"\x00\x00\x01\x41p", frame_tag=0xE0)
+        keyframe = _cpacket(b"\x00\x00\x01\x65idr")
+        for chunk in (pframe, keyframe[:7], keyframe[7:], pframe):
+            assembler.feed_message(
+                {"header": SimpleNamespace(packet_type=0xA0), "payload": chunk}
+            )
+        assert emitted == [b"\x00\x00\x01\x65idr", b"\x00\x00\x01\x41p"]
+        assert assembler.frame_count == 2
+        assert not assembler.wait_for_keyframe
+
     def test_frame_history_is_bounded_but_total_count_is_not(self) -> None:
         assembler = H264LiveAssembler()
         decoded = {

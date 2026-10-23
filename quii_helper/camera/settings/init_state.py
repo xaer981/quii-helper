@@ -2,6 +2,9 @@ from collections.abc import Mapping
 from typing import Any
 
 CAMERA_CONFIG_KWARG_NAMES = (
+    "connection_mode",
+    "stream_port",
+    "stream_key",
     "device_id",
     "cloud_username",
     "cloud_account",

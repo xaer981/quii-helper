@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from quii_helper.media.frames.assembler_state import (
+    KEY_FRAME_TAGS,
     MEDIA_PACKET_TYPES,
     access_unit_from_frame,
     frame_info_from_parsed_frame,
@@ -23,6 +24,7 @@ class H264LiveAssembler:
     )
     frame_count: int = 0
     access_unit_count: int = 0
+    wait_for_keyframe: bool = False
 
     def feed_message(self, decoded: Mapping[str, Any]) -> list[bytes]:
         header = decoded.get("header")
@@ -35,6 +37,10 @@ class H264LiveAssembler:
 
         access_units = []
         for frame in self.packer.feed(payload):
+            if self.wait_for_keyframe:
+                if frame["frame_tag"] not in KEY_FRAME_TAGS:
+                    continue
+                self.wait_for_keyframe = False
             self.frame_count += 1
             self.frame_info.append(frame_info_from_parsed_frame(frame))
             access_unit = access_unit_from_frame(frame)

@@ -5,9 +5,38 @@
 `Camera` is the public entry point. The API is synchronous; importing the
 package or constructing a camera does not connect to a device.
 
+## Connection Modes
+
+`connection_mode="lan"` is the default, including when cloud credentials
+are present in the environment. It never fetches or renews credentials and has
+no cloud/P2P/relay fallback. Cloud metadata/history methods reject this mode
+before I/O. Local CGI methods remain available without a stream key; door
+`password_mode="auto"` cannot perform a cloud capability lookup in this mode.
+
+LAN `capture()`, `snapshot()`, `save_video()`, `record()` and `serve_rtsp()` use
+the direct TCP session and shared CFrame/H.264 components. Invalid LAN settings
+fail before connecting (and before RTSP binds a listener). Invalid keys,
+unsupported profiles and connection failures never trigger a cloud fallback.
+Select `connection_mode="cloud"` explicitly for the cloud/P2P pipeline.
+
+LAN TCP requires an explicit IP, port (default `34567`), `auth_code` and a
+saved `stream_key` containing exactly 32 UTF-8 bytes. The key is not hex/base64
+decoded, silently padded, fetched through CGI, or loaded implicitly from a file.
+AUTH_CODE may be raw or already encoded according to the native client rule.
+No cloud account, device id, APK assets or TLS bypass is needed for TCP itself.
+Initially only AES-256/SHA256 with media flag 15 equal to zero is supported.
+Other profiles fail explicitly; key lifetime and reboot persistence are unknown.
+
+Use the separate [cloud bootstrap API](#stream-key-bootstrap-and-persistence)
+to obtain/save the key explicitly, then create a LAN Camera with the loaded
+key/auth pair. The LAN client itself never contacts cloud, discovers a saved
+file, changes `.env`, or renews expired credentials.
+
 ## Contents
 
 - [Constructor](#constructor) and [configuration](#library-configuration).
+- [Connection modes](#connection-modes), including direct LAN playback.
+- [Stream-key bootstrap and persistence](#stream-key-bootstrap-and-persistence).
 - [Capture](#capture-methods), [RTSP](#rtsp-streaming), and [logging](#logging).
 - [Cloud queries](#cloud-read-only-methods) and [call history](#incoming-call-history-experimental).
 - [LAN discovery](#lan-discovery) and [local inspection](#local-device-read-only-methods).
@@ -31,11 +60,14 @@ for this camera; the supplied configuration is copied.
 
 | Parameter | Meaning |
 | --- | --- |
+| `connection_mode` | `"lan"` by default; `"cloud"` is explicit opt-in to cloud/P2P operations. |
+| `stream_port` | Native LAN TCP port; default `34567`, not the CGI HTTP port. |
+| `stream_key` | Saved 32-byte UTF-8 LAN stream key; secret, hidden in config representations and diagnostics. |
 | `device_id` | Device identifier; `DEVICE_ID` in environment-backed configuration. |
 | `cloud_account`, `cloud_username` | Cloud login; `cloud_username` is an alias. |
 | `cloud_password` | Cloud account password. |
-| `device_host` | Explicit LAN host/IP for local CGI methods. Not discovered implicitly. |
-| `auth_code` | Local CGI authentication code, separate from the opening password. |
+| `device_host` | Explicit IP for LAN TCP; LAN host/IP for local CGI methods. Not discovered implicitly. |
+| `auth_code` | LAN TCP/CGI authentication code, separate from the opening password. |
 | `unlock_password` | Door-opening password used only by explicit `open_door()` calls. |
 | `channel` | Video-panel channel; base default `1`. |
 | `stream` | Numeric stream id; base default `2`. |
@@ -152,6 +184,16 @@ call including connection and rendering. `save_video()` disables early stopping;
 the requested duration is a collection target, not a guarantee of frame count,
 delivery quality, or an exact wall-clock return time.
 
+LAN MP4 uses the first accepted video frame's FPS (or FFmpeg's H.264 timing
+when it is zero); sparse frames are **not stretched** to the collection window.
+Frames before the first keyframe are suppressed like the native player.
+Recording buffers up to 256 MiB of H.264 payload, then raises
+`CameraCaptureError` instead of returning a silently shortened clip. Use shorter
+recordings or RTSP for long-running viewing. Variable-FPS preservation is not
+implemented. The budget is payload size, not a bound on total process RSS.
+RBUDP message limits, post-capture drain and sample-file diagnostics are not
+used in LAN mode; its summary includes TCP, CFrame and NAL statistics instead.
+
 ### Capture Settings And Results
 
 | `capture()` argument | Default and purpose |
@@ -213,6 +255,9 @@ unit, if library logging is enabled. A producer failure closes the listener;
 there is no automatic camera reconnect. An in-flight cloud/connection call can
 finish only at its own timeout during shutdown; subsequent startup stages are
 cancelled and overlapping restarts are rejected while the producer is stopping.
+For LAN, closing the stream also shuts down its TCP socket during setup or
+receive; a still-running connect must return at its configured timeout. Each
+restart creates a fresh session; a closed session is not reused.
 
 Slow viewers are disconnected rather than blocking the producer. This is a
 best-effort stream, not lossless recording. See
@@ -250,6 +295,9 @@ logs before sharing them.
 
 ## Cloud Read-Only Methods
 
+These operations require an explicitly selected `connection_mode="cloud"`;
+the default LAN-only client rejects them without network access.
+
 These methods use cloud/app services, not the camera's LAN CGI endpoint.
 They do not open a preview or send opening commands.
 
@@ -259,14 +307,109 @@ They do not open a preview or send opening commands.
 | `get_device_shadow_info()` | `CameraDeviceShadowInfo` | Cloud shadow/device state where supported. |
 | `get_iot_command_support()` | `CameraIotCommandSupportInfo` | Command-support metadata, not command execution. |
 | `get_call_events(...)` | `CameraCallEventPage` | Experimental incoming-call journal history. |
+| `fetch_stream_credentials()` | `CameraStreamCredentials` | Fresh cloud login + device-token query; return a minimal key/auth pair for explicit LAN playback. |
 
 Sparse fields in `CameraDeviceInfo` do not necessarily mean parsing failed.
 `supports_sha256_password` is `True`, `False`, or `None` when capability data
 is missing/invalid. Do not log raw credentials or basedata publicly.
 
+### Stream-Key Bootstrap And Persistence
+
+`Camera.fetch_stream_credentials()` is a deliberate cloud operation, rejected
+in default LAN mode before I/O. It always performs a fresh `login` and
+`get-device-token`, not a cached metadata lookup. It honors configured TLS
+verification; it does not silently disable TLS, discover P2P services, register
+push notifications, open a preview or send device/door commands. The existing
+cloud account/device/app settings and auth URL are required; with those values
+already configured, this flow does not read APK assets. The shared config
+validator still requires `CLOUD_SERVICE_URL`, even though no discovery query
+is sent here.
+
+`CameraStreamCredentials` contains `device_id`, secret `stream_key` and secret
+`auth_code`. The last two are hidden from `repr`, but can be accessed explicitly
+for application use. The returned auth code comes from the same cloud response
+as the key, **not** from an older `.env` value. Raw/encoded auth code handling
+matches the existing LAN session. This API is distinct from the local CGI
+`get_stream_key_info()` query, which depends on firmware support.
+
+| Credential operation | Effect |
+| --- | --- |
+| `credentials.save(path)` | Write minimal versioned JSON atomically; create parent directories and replace an existing file. Return its absolute `Path`. |
+| `CameraStreamCredentials.load(path)` | Read and validate that file (up to 4 KiB); perform no network request or refresh. |
+
+Acquire and save credentials without starting a preview:
+
+```python
+from pathlib import Path
+
+from quii_helper import Camera, load_config
+
+config = load_config()
+cloud_camera = Camera(config=config, connection_mode="cloud")
+credentials = cloud_camera.fetch_stream_credentials()
+saved_path = credentials.save(Path("data/stream_credentials.json"))
+```
+
+This step needs cloud access. The later LAN application can run separately,
+without a cloud account or environment configuration:
+
+```python
+from quii_helper import AutonomousConfig, Camera, CameraStreamCredentials
+
+saved = CameraStreamCredentials.load("data/stream_credentials.json")
+camera = Camera(
+    config=AutonomousConfig(
+        device_host="192.0.2.10",
+        device_id=saved.device_id,
+        stream_key=saved.stream_key,
+        auth_code=saved.auth_code,
+        channel=1,
+        stream=2,
+    )
+)
+with camera.serve_rtsp(port=8554) as session:
+    session.wait()
+```
+
+Use the correct camera IP/channel/stream for the device identified by
+`saved.device_id`; the file does not discover the camera's current address.
+`AutonomousConfig` defaults to LAN and reads neither process values nor `.env`.
+To use `.env` for the local IP/channel/stream instead, use `config=load_config()`
+and explicitly pass `connection_mode="lan"` and the loaded key/auth fields.
+The same LAN Camera can call `snapshot()` or `save_video(15)` instead of
+`serve_rtsp()`. JPEG/MP4 needs FFmpeg; RTSP does not.
+
+In a checkout, `python -m examples.cloud_key_rtsp` performs the mixed first-run
+flow. For later starts, `python -m examples.lan_rtsp` loads the saved JSON and
+forces LAN mode, honoring the configured camera IP/channel/stream. The usual
+`examples.serve_rtsp` / `snapshot` / `save_video` scripts instead read the
+key/auth pair from configuration, not this file. None implicitly searches for
+a saved file or fetches a missing key.
+
+On the tested Tantos/Pi, a fresh cloud fetch returned the same key/encoded-auth
+pair as the older cache, and independent LAN sessions worked without cloud
+requests. This is observed behavior, not an immutability/rotation guarantee.
+The saved key's lifetime, reboot persistence and the effect of fetching another
+key on existing sessions are unknown. A load/playback failure must not cause an
+automatic cloud login. Call the bootstrap API again only explicitly.
+LAN-only applies to this client; the camera's own WAN access was not blocked
+in these tests. See [Validation Scope](../COMPATIBILITY.md#validation-scope).
+
+**Storage:** JSON is plaintext, not encryption or a credential vault. No cloud
+password, session id, dynamic password or raw response is written. New files
+have Unix owner-only permissions (`0600`); Windows uses the containing folder's
+ACL, which the application owner must restrict. Keep files in an ignored private
+directory, do not share them or serialize the fields into diagnostics. The
+standard `stream_credentials.json` name is also ignored by this repository.
+Missing/unreadable files raise `OSError`; invalid schema/values/size raise
+`ConfigurationError`. A failed save does not replace the previous file.
+
 ### Incoming Call History (Experimental)
 
 ```python
+from quii_helper import Camera, load_config
+
+camera = Camera(config=load_config(), connection_mode="cloud")
 page = camera.get_call_events(page_size=15)
 for event in page.events:
     print(event.record_id, event.alarm_id, event.time, event.channel)
@@ -359,7 +502,7 @@ is not a single lightweight request.
 | `get_system_general_info()` | `CameraDeviceGeneralInfo` | General system settings. |
 | `get_system_capabilities()` | `CameraDeviceCapabilitiesInfo` | Reported capabilities. |
 | `get_qr_code_info()` | `CameraDeviceQrCodeInfo` | QR/binding data; potentially sensitive. |
-| `get_stream_key_info()` | `CameraDeviceStreamKeyInfo` | Stream key data; potentially sensitive. |
+| `get_stream_key_info()` | `CameraDeviceStreamKeyInfo` | Firmware-dependent local `get.device.streamkey` response; not a guaranteed alternative to cloud bootstrap. Potentially sensitive. |
 
 ### Network And Storage
 
@@ -479,7 +622,7 @@ continues to encode `AUTH_CODE` in both modes.
 | `channel` | `None`; use the camera channel, sent as native `door`. |
 | `lock_number` | `1`; positive lock/relay number. |
 | `unlock_password` | `None`; use the camera's opening password. Accepts plain text or a vendor-encoded value. |
-| `password_mode` | `"auto"`; cached capability or a read-only cloud metadata lookup. Explicit `"plain"` / `"sha256"` skips that lookup. |
+| `password_mode` | `"auto"`; cached capability or, in explicit cloud mode only, a read-only cloud metadata lookup. Explicit `"plain"` / `"sha256"` skips that lookup. |
 | `port`, `scheme` | `80`, `"http"`; local CGI address, not native port `34567`. |
 | `auth_code` | `None`; use the camera's CGI authentication code. |
 | `verify_tls` | `None`; follow camera configuration for HTTPS CGI. |
@@ -490,7 +633,7 @@ continues to encode `AUTH_CODE` in both modes.
 ```python
 from quii_helper import Camera, load_config
 
-camera = Camera(config=load_config())
+camera = Camera(config=load_config(), connection_mode="cloud")
 result = camera.open_door(lock_number=1, password_mode="auto")
 print(result.accepted, result.error, result.message)
 ```
@@ -500,7 +643,10 @@ It means the device acknowledged the command, not that the door physically
 moved. Error descriptions are command-specific.
 
 Unknown capability in `auto` mode raises `ConfigurationError` **before** an
-opening command. Choose an explicit mode only after verifying the device's
+opening command. The example permits the cloud capability query deliberately;
+it does not start a preview. A default LAN-only Camera never performs that
+lookup and needs known capability or a verified explicit password mode.
+Choose an explicit mode only after verifying the device's
 requirements. There is no automatic retry, redirect, alternate-format attempt,
 or cloud IoT unlock fallback. After transport/response failure, the physical
 outcome can be unknown: do not retry automatically.
@@ -564,10 +710,14 @@ from its root after installation/configuration:
 | `python -m examples.snapshot` | Capture one JPEG. |
 | `python -m examples.save_video` | Record the example's default 30-second collection window. |
 | `python -m examples.serve_rtsp` | Serve RTSP on localhost port `8554`. |
+| `python -m examples.cloud_key_rtsp` | Explicit cloud login/key fetch, save/reload `data/stream_credentials.json`, then serve LAN-only RTSP. Each run contacts cloud first. |
+| `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until
 `Ctrl+C`, without opening a door. It currently forces `stream_quality="high"`,
 `live_newcn=True`, and **`tls_verify=False`**, overriding `.env` for those
-options. Prefer the API example or `examples.serve_rtsp` when configured TLS
-verification must be respected.
+options, but does not select cloud mode or load a saved JSON automatically.
+For saved-file LAN starts use `examples.lan_rtsp`; for environment-supplied
+keys and configured TLS policy use `examples.serve_rtsp`. The main entry point's
+TLS override is unrelated to native LAN TCP, which does not use HTTPS.

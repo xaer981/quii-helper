@@ -21,9 +21,11 @@ information, and explicitly open a connected door.
 
 | Feature | What you can do |
 | --- | --- |
+| LAN-only playback (default) | Connect by IP with a saved key/auth pair, without client-side cloud requests or fallback. |
 | Snapshots | Capture a JPEG with `Camera.snapshot()`. |
 | Recording | Save an MP4 clip with `Camera.save_video()`. |
 | RTSP | Forward the live H.264 preview to a player such as VLC. |
+| Stream-key bootstrap | Explicitly fetch/save a cloud key/auth pair, then reuse it for LAN-only playback. |
 | Device inspection | Read supported cloud and local device information. |
 | LAN discovery | Find devices exposing Qualvision-compatible services. |
 | Call history | Read incoming-call cloud history with experimental `get_call_events()`. |
@@ -38,6 +40,8 @@ that video capture is unsupported.
 The tested device is **Tantos Marilyn Wi-Fi s**, used with **vHome 2.2**:
 snapshots, MP4 capture, RTSP, door opening in `auto` mode, and incoming-call
 history on the tested account/backend.
+LAN playback and cloud-key bootstrap were also checked on a physical Raspberry
+Pi (Linux ARM64). See the compatibility guide for validation scope and limits.
 
 Related devices may return the HTTP header `Server: Qualvision -HTTPServer`
 or expose TCP port `34567`. These are discovery hints, not proof of support.
@@ -54,44 +58,70 @@ Use Python **3.10 or newer**, preferably in a virtual environment:
 python -m pip install quii-helper
 ```
 
-To upgrade an existing installation, use
-`python -m pip install --upgrade quii-helper`. No `--pre` is needed.
+To upgrade, use `python -m pip install --upgrade quii-helper`.
 
 ### 2. Configure Your Application
 
-**Installing the package is not the complete camera setup.** Preview/RTSP
-requires app-specific settings and assets extracted from an Android APK you
-are authorized to use. The verified native asset is from **vHome 2.2,
-arm64-v8a**, even when Python runs on Windows or Linux x86_64.
+`Camera` defaults to LAN-only playback: use the camera's IP and a saved
+stream key/auth pair, with **no cloud requests or automatic fallback**.
 
-Follow [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md)
-to prepare an application directory:
+Prepare an application directory:
 
 ```text
 my-camera-app/
   app.py
   .env
-  assets/
-    ca.pem
-    client.pem
-    client.txt
-    libqv-p2p-v2.so
-  data/                 # Generated output; created when needed.
+  data/
+    stream_credentials.json  # Saved explicitly; keep private.
 ```
 
-The wheel does not include `.env.example` or the repository's `examples/`.
-The setup guide explains both installed-package and checkout workflows.
-JPEG/MP4 output also needs the external **FFmpeg executable** on `PATH`;
-RTSP does not. Verify it with `ffmpeg -version`.
+Set the local settings in `.env`, replacing the example IP:
 
-### 3. Capture Media
+```dotenv
+CAMERA_DEVICE_HOST=192.0.2.10
+CAMERA_CHANNEL=1
+CAMERA_STREAM=2
+```
 
-Run this from the directory containing your configured `.env` and `assets/`:
+To obtain the key, also fill the cloud account/app/region values described in
+[Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md)
+using your account and authorized Android app. Later local playback needs
+neither a cloud account nor APK assets. JPEG/MP4 output additionally needs
+**FFmpeg** on `PATH`; RTSP does not.
+
+### 3. Get And Save A Key Explicitly
+
+Run once from your application directory after configuring the cloud settings.
+Skip this step if you already have a saved credential file:
 
 ```python
 from quii_helper import Camera, load_config
 
-camera = Camera(config=load_config())
+cloud_camera = Camera(config=load_config(), connection_mode="cloud")
+credentials = cloud_camera.fetch_stream_credentials()
+credentials.save("data/stream_credentials.json")
+```
+
+This contacts cloud and saves a matching key/auth pair without starting a
+preview or changing `.env`. Reuse that file for subsequent local connections;
+the library never fetches or renews it automatically.
+
+### 4. Capture Locally With The Saved Key
+
+Run from the directory containing `.env` (camera IP/channel/stream) and the
+saved JSON. No cloud account or assets are needed for this phase:
+
+```python
+from quii_helper import Camera, CameraStreamCredentials, load_config
+
+saved = CameraStreamCredentials.load("data/stream_credentials.json")
+camera = Camera(
+    config=load_config(),
+    connection_mode="lan",
+    device_id=saved.device_id,
+    stream_key=saved.stream_key,
+    auth_code=saved.auth_code,
+)
 
 print(camera.snapshot())
 print(camera.save_video(duration_seconds=15))
@@ -104,10 +134,19 @@ for timeouts, output paths, and capture results.
 
 ## RTSP Streaming 📡
 
-```python
-from quii_helper import Camera, load_config
+Use the same saved file for a local live stream:
 
-camera = Camera(config=load_config())
+```python
+from quii_helper import Camera, CameraStreamCredentials, load_config
+
+saved = CameraStreamCredentials.load("data/stream_credentials.json")
+camera = Camera(
+    config=load_config(),
+    connection_mode="lan",
+    device_id=saved.device_id,
+    stream_key=saved.stream_key,
+    auth_code=saved.auth_code,
+)
 
 try:
     with camera.serve_rtsp(port=8554) as session:
@@ -125,10 +164,16 @@ For a trusted LAN, pass `host="0.0.0.0"` and connect to the server's LAN IP,
 not `0.0.0.0`. **There is no RTSP authentication or TLS.** Restrict access
 with a firewall/VPN and never expose this port publicly.
 
+Prefer runnable scripts? A [checkout](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-a-checkout)
+includes `examples.cloud_key_rtsp` (fetch/save, then RTSP) and
+`examples.lan_rtsp` (reuse the saved file, no cloud requests). Run them with
+`python -m examples.<name>` from the repository root; they are not installed by pip.
+
 ## Documentation 📚
 
 | I want to... | Read |
 | --- | --- |
+| Get a key, save it, then view locally | [Key Bootstrap And Reuse](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#stream-key-bootstrap-and-local-reuse) |
 | Set up an account, assets, and `.env` | [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md) |
 | Find methods, parameters, results, and errors | [Camera API Reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md) |
 | Read call history | [Incoming Call History](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental) |
@@ -137,16 +182,19 @@ with a firewall/VPN and never expose this port publicly.
 | Check platforms or report a device | [Compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md) |
 | Contribute or understand internals | [Contributing](https://github.com/xaer981/quii-helper/blob/main/CONTRIBUTING.md), [Protocol Notes](https://github.com/xaer981/quii-helper/blob/main/docs/protocol-notes.md) |
 
-Library imports do not read `.env` or reconfigure application logging.
-Use `load_config()` to opt into file loading. Console examples honor
-`LOG_LEVEL=info` or `LOG_LEVEL=debug`; embedding applications enable logging
-explicitly. See [Configuration](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#library-configuration)
-and [Logging](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#logging).
+Library imports do not read `.env` or change application logging. Use
+`load_config()` for file loading and see
+[Logging](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#logging)
+to enable progress messages or diagnostics.
 
 ## Safety And Limitations 🔒
 
 - Use only devices, accounts, and APKs you own or are authorized to access.
 - Never share `.env`, extracted assets, private keys, raw logs, or camera media.
+- Saved stream-credential JSON is also a secret: plaintext, not an encrypted
+  vault. Keep it private and outside version control.
+- LAN-only describes the client's network behavior, not the camera's own
+  Internet access. Key lifetime and reboot persistence remain unknown.
 - Keep TLS verification enabled. For vendor certificate failures, see the
   [TLS guidance](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-region-and-auth-url).
 - Local CGI methods need an explicit camera LAN host and authentication code;

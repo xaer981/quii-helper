@@ -9,6 +9,7 @@ from quii_helper.config import AutonomousConfig, RuntimeCredentials
 
 def _config() -> AutonomousConfig:
     return AutonomousConfig(
+        connection_mode="cloud",
         device_id="device-config",
         cloud_account="account",
         cloud_password="password",

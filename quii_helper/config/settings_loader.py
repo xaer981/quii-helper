@@ -6,6 +6,7 @@ from threading import Lock
 
 from dotenv import dotenv_values
 
+from quii_helper.config.connection import validate_connection_options
 from quii_helper.support.errors import ConfigurationError
 
 _DEFAULT_SETTINGS: "EnvironmentSettings | None" = None
@@ -40,6 +41,9 @@ class EnvironmentSettings:
     camera_stream: int
     tls_verify: bool
     unlock_password: str = field(default="", repr=False)
+    camera_connection_mode: str = "lan"
+    camera_stream_port: int = 34567
+    stream_key: str = field(default="", repr=False)
 
 
 class SettingsLoader:
@@ -78,6 +82,9 @@ class SettingsLoader:
             assets_dir = self.project_root / assets_dir
         assets_dir = assets_dir.resolve()
         native_lib_dir = assets_dir / "lib"
+        mode = self.getenv("CAMERA_CONNECTION_MODE", default="lan")
+        port = self.getenv_int("CAMERA_STREAM_PORT", default=34567)
+        validate_connection_options(mode, port)
         return EnvironmentSettings(
             project_root=self.project_root,
             default_assets_dir=assets_dir,
@@ -89,6 +96,9 @@ class SettingsLoader:
             auth_code=self.getenv("AUTH_CODE"),
             device_password=self.getenv("DEVICE_PASSWORD"),
             unlock_password=self.getenv("UNLOCK_PASSWORD"),
+            camera_connection_mode=mode,
+            camera_stream_port=port,
+            stream_key=self.getenv("STREAM_KEY"),
             cloud_client_uuid=self.getenv("CLOUD_CLIENT_UUID"),
             log_level=self.getenv("LOG_LEVEL", default="INFO"),
             cloud_auth_version=self.getenv("CLOUD_AUTH_VERSION"),

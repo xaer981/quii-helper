@@ -44,6 +44,9 @@ def resolve_camera_config(
     unlock_password: str | None = None,
     assets_dir: str | Path | None = None,
     auth_version: str | None = None,
+    connection_mode: str | None = None,
+    stream_port: int | None = None,
+    stream_key: str | None = None,
 ) -> AutonomousConfig:
     validate_stream_selector(stream=stream, stream_quality=stream_quality)
     resolved_cloud_account = resolve_cloud_account_alias(
@@ -51,6 +54,12 @@ def resolve_camera_config(
         cloud_account=cloud_account,
     )
     values: dict[str, object] = {}
+    if connection_mode is not None:
+        values["connection_mode"] = connection_mode
+    if stream_port is not None:
+        values["stream_port"] = stream_port
+    if stream_key is not None:
+        values["stream_key"] = stream_key
     if assets_dir is not None:
         root = Path(assets_dir).expanduser().resolve()
         values.update(

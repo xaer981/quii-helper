@@ -2,14 +2,16 @@
 
 [Documentation](README.md) | [API Reference](api.md) | [Compatibility](../COMPATIBILITY.md)
 
-QUII Helper is a library, not a replacement mobile-app installer. Some setup
-values must be obtained from your account/device and the original Android app.
-Use only software and devices you are authorized to inspect.
+LAN playback needs the camera IP and a saved stream key/auth pair. To acquire
+that pair through cloud, you also need account/app settings from your device
+and the original Android app. Use only software and devices you are authorized
+to inspect.
 
 ## Contents
 
 - [Install from PyPI](#using-an-installed-package) or [use a checkout](#using-a-checkout).
 - [Choose the inputs for your operation](#what-your-operation-needs).
+- [Get a stream key and reuse it locally](#stream-key-bootstrap-and-local-reuse).
 - [Extract assets](#required-assets) and [find APK constants](#finding-apk-constants).
 - [Fill environment settings](#environment-settings) and [discover cloud values](#discovering-cloud-values).
 - [Run a first check](#first-read-only-check) and [install FFmpeg](#media-prerequisites).
@@ -61,23 +63,125 @@ Contributor tooling is covered in [Contributing](../CONTRIBUTING.md).
 
 ## What Your Operation Needs
 
+LAN-only is the default for capture and RTSP. It needs an explicit IP and a
+saved key/auth pair, not APK assets or cloud account settings. Cloud queries,
+key acquisition and cloud/P2P preview require `connection_mode="cloud"`.
+
 | Operation | Inputs and prerequisites |
 | --- | --- |
-| Snapshot, MP4, RTSP | Cloud/app settings, device id, native assets, and a working preview connection. JPEG/MP4 also needs FFmpeg. |
-| `get_device_info()` | Cloud account/device and app settings. It does not start a media session or discover the LAN host. |
-| `get_call_events()` | Cloud/app settings and service-discovery TLS assets; no LAN host or FFmpeg. |
+| LAN snapshot, MP4, RTSP (default) | Reachable `CAMERA_DEVICE_HOST`, TCP port `CAMERA_STREAM_PORT` (default `34567`), saved key/auth pair from JSON or `STREAM_KEY` / `AUTH_CODE`, and channel/stream. JPEG/MP4 also needs FFmpeg. |
+| Explicit cloud stream-key bootstrap | Cloud account, device id, app/region settings and auth URL. Shared validation also requires the service URL, but no discovery, P2P assets, FFmpeg or device connection is used. |
+| Cloud/P2P snapshot, MP4, RTSP | Explicit cloud mode, cloud/app settings, device id, native assets, and a working preview connection. JPEG/MP4 also needs FFmpeg. |
+| `get_device_info()` | Explicit cloud mode, cloud account/device and app settings. It does not start a media session or discover the LAN host. |
+| `get_call_events()` | Explicit cloud mode, cloud/app settings and service-discovery TLS assets; no LAN host or FFmpeg. |
 | Local CGI inspection | Reachable `CAMERA_DEVICE_HOST` and `AUTH_CODE`; no implicit cloud login, APK assets, or FFmpeg. |
 | `open_door()` with an explicit password mode | Local CGI settings and `UNLOCK_PASSWORD`; no cloud lookup, APK assets, or FFmpeg. |
-| `open_door(password_mode="auto")` | Local door settings plus cloud metadata if capability 24 is not already cached. |
+| `open_door(password_mode="auto")` | Local door settings plus known capability 24. An uncached cloud lookup requires explicit cloud mode; LAN mode rejects unknown capability before sending. |
 | LAN discovery | Access to the local network; no account login or opening command. |
 
 Do not enter every credential just to perform a local-only query. Conversely,
 cloud/P2P preview does not need `CAMERA_DEVICE_HOST`: it selects peers from
 the cloud/P2P response. Local CGI methods require that host explicitly.
 
+LAN supports AES-256/SHA256 with no separate media encryption. The key must
+contain exactly 32 UTF-8 bytes; it is not hex/base64-decoded or padded. Use its
+matching auth code, not the cloud account or door password.
+
+## Stream-Key Bootstrap And Local Reuse
+
+**Fetch once, then reuse locally.** These are separate steps; loading a file
+or connecting in LAN mode never fetches or renews a key automatically.
+
+### First Run: Fetch And Save
+
+Fill the [cloud/app settings](#cloud-and-preview), including `DEVICE_ID`,
+`CLOUD_AUTH_URL` and `CLOUD_SERVICE_URL`. Set the camera's `CAMERA_DEVICE_HOST`
+and channel/stream for playback. `AUTH_CODE` and `STREAM_KEY` may initially be
+empty: this example uses the matching pair returned by cloud instead.
+
+The bootstrap uses ordinary cloud login and `get-device-token`. With a known
+auth URL and complete app settings it does not read APK assets or contact the
+camera. If those settings are unknown, follow [APK extraction](#required-assets)
+and [discovery](#discovering-cloud-values) first; discovery needs TLS assets.
+
+Run this from your application directory:
+
+```python
+from quii_helper import Camera, load_config
+
+cloud_camera = Camera(config=load_config(), connection_mode="cloud")
+credentials = cloud_camera.fetch_stream_credentials()
+saved_path = credentials.save("data/stream_credentials.json")
+print(saved_path)
+```
+
+This honors `TLS_VERIFY`, saves the matching pair without starting a preview,
+and does not edit `.env` or open a door. Re-running it fetches again and replaces
+the file; reuse the saved file for normal playback.
+
+### Later Runs: Load And View Locally
+
+Keep the saved JSON and these local settings; cloud account/app settings and
+`assets/` can be absent for playback:
+
+```dotenv
+CAMERA_CONNECTION_MODE=lan
+CAMERA_DEVICE_HOST=192.0.2.10
+CAMERA_STREAM_PORT=34567
+CAMERA_CHANNEL=1
+CAMERA_STREAM=2
+```
+
+Load the saved file explicitly and start RTSP:
+
+```python
+from quii_helper import Camera, CameraStreamCredentials, load_config
+
+saved = CameraStreamCredentials.load("data/stream_credentials.json")
+camera = Camera(
+    config=load_config(),
+    connection_mode="lan",
+    device_id=saved.device_id,
+    stream_key=saved.stream_key,
+    auth_code=saved.auth_code,
+)
+try:
+    with camera.serve_rtsp(port=8554) as session:
+        print(session.url)
+        session.wait()
+except KeyboardInterrupt:
+    pass
+```
+
+Open `rtsp://127.0.0.1:8554/live` in VLC on the same machine once media arrives.
+Use `Ctrl+C` to stop. This phase never contacts cloud, even if cloud settings
+remain in `.env`. Missing files, invalid keys and connection errors fail without
+renewal or fallback. Use `camera.snapshot()` or `camera.save_video(15)` instead
+for JPEG/MP4; these also need [FFmpeg](#media-prerequisites).
+
+If you already have the raw pair, you can set `AUTH_CODE` / `STREAM_KEY` in
+`.env` and use `Camera(config=load_config())` without a JSON file. Keep
+`CAMERA_CONNECTION_MODE=lan`; set `cloud` only to use cloud/P2P preview instead.
+
+In a [checkout](#using-a-checkout), `python -m examples.cloud_key_rtsp` combines
+bootstrap/save with RTSP. For later saved-file starts use
+`python -m examples.lan_rtsp`. The other media examples use `.env` key/auth
+values, not the saved file. See [All Examples](api.md#application-entry-point).
+
+The credential file is plaintext, not an encrypted vault. Keep it outside
+version control in a private directory; Unix files use `0600`, while Windows
+requires a restricted folder ACL. The file stores no cloud account password,
+session or opening password. It also does not store/discover the current IP.
+Do not use a file belonging to another device.
+
+Key lifetime, reboot persistence and operation with the camera's own Internet
+access blocked are not established; see [Compatibility](../COMPATIBILITY.md).
+If a key stops working, bootstrap again only as an explicit application action.
+
 ## Required Assets
 
-For preview/RTSP, put these files in the application's `assets/` directory:
+For **cloud/P2P** preview/RTSP, put these files in the application's `assets/`
+directory. Direct LAN playback with supplied credentials does not read them:
 
 ```text
 assets/
@@ -180,8 +284,11 @@ python -c "import uuid; print(uuid.uuid4().hex)"
 
 | Variable | Meaning and default |
 | --- | --- |
-| `CAMERA_DEVICE_HOST` | LAN host/IP for local CGI queries and door control. No automatic cloud/P2P fallback. |
-| `AUTH_CODE` | CGI authentication code. Required for local CGI queries and door control. |
+| `CAMERA_CONNECTION_MODE` | `lan` by default; set `cloud` explicitly for cloud/P2P operations. |
+| `CAMERA_STREAM_PORT` | Native direct LAN TCP port; default `34567`, separate from CGI HTTP/HTTPS. |
+| `STREAM_KEY` | Saved 32-byte UTF-8 stream key for LAN TCP; treated as a secret. Never fetched or refreshed automatically. |
+| `CAMERA_DEVICE_HOST` | Explicit IP for LAN TCP; LAN host/IP for local CGI queries and door control. No automatic cloud/P2P fallback. |
+| `AUTH_CODE` | Authentication code for LAN TCP and local CGI; separate from cloud and door passwords. LAN TCP also accepts its already encoded value. |
 | `UNLOCK_PASSWORD` | Separate opening password. Used only by explicit `open_door()` calls. |
 | `DEVICE_PASSWORD` | Password for low-level development/probe helpers; not a `Camera` unlock setting. |
 | `CAMERA_CHANNEL` | Default video-panel channel; `1`. |
@@ -222,6 +329,14 @@ Do not edit the installed library to add personal constants.
 
 ## First Read-Only Check
 
+For a first **local** check, use the
+[saved-key playback example](#later-runs-load-and-view-locally) above.
+
+If you separately want to check **cloud metadata**, select
+`connection_mode="cloud"` explicitly. This is not a prerequisite for a LAN
+session with saved credentials. The default stays LAN-only even when cloud
+account settings are present. See [Connection Modes](api.md#connection-modes).
+
 Save this as `app.py` next to your configured `.env` and `assets/`:
 
 ```python
@@ -232,6 +347,7 @@ from quii_helper import Camera, load_config
 application_dir = Path(__file__).resolve().parent
 camera = Camera(
     config=load_config(project_root=application_dir),
+    connection_mode="cloud",
     data_dir=application_dir / "data",
 )
 info = camera.get_device_info()
@@ -243,9 +359,9 @@ does not start a preview or open the door. Sparse metadata may be normal for
 the firmware. Local `get_product_info()` and similar methods need the separate
 LAN host and `AUTH_CODE`; see [Local Methods](api.md#local-device-read-only-methods).
 
-After this succeeds, try `snapshot()`, `save_video()`, or the
-[RTSP example](api.md#rtsp-streaming). These are real camera operations, not
-offline installation checks. The dedicated `examples.open_door` script sends
+For cloud/P2P media, retain `connection_mode="cloud"`; for local playback,
+construct a separate LAN Camera with the saved pair. These are real camera
+operations, not offline installation checks. The dedicated `examples.open_door` script sends
 a **real opening command** and must never be used as a read-only smoke test.
 
 ## Media Prerequisites
@@ -278,7 +394,9 @@ and certificate files. If your vendor endpoint still needs an explicit bypass:
 ```python
 from quii_helper import Camera, load_config
 
-camera = Camera(config=load_config(), tls_verify=False)
+camera = Camera(
+    config=load_config(), connection_mode="cloud", tls_verify=False
+)
 ```
 
 The configuration class is **`AutonomousConfig`**, not `AnonymousConfig`;
@@ -301,12 +419,15 @@ python -m pip check
 ```
 
 This fails explicitly if compatible wheels are unavailable for that platform.
-The separately extracted `.so` must still be the verified **arm64-v8a** asset.
+For cloud/P2P, the separately extracted `.so` must still be the verified
+**arm64-v8a** asset; supplied-key LAN playback does not read it.
 The external PyPI `kcp` package is not needed. FFmpeg is separate.
 
-Earlier ARM64 checks cover installation and mocked entrance-bot integration,
-not live media capture. See the [validation matrix](../COMPATIBILITY.md#validation-scope)
-for the exact scope; they do not certify every new PyPI build on ARM64.
+Earlier ARM64 checks cover installation and mocked entrance-bot integration.
+The LAN API was also tested on a physical Pi for capture,
+RTSP, cloud bootstrap and saved-key reconnect. See the
+[validation matrix](../COMPATIBILITY.md#validation-scope) for scope and limits;
+these checks do not certify every PyPI build on ARM64.
 
 ## Troubleshooting
 
@@ -315,9 +436,13 @@ for the exact scope; they do not certify every new PyPI build on ARM64.
 | `ModuleNotFoundError: quii_helper` | Activate the environment where the package was installed; use that interpreter's `python -m pip`. |
 | `No module named examples` | Examples are checkout/source-distribution tools. Run `python -m examples.<name>` from that root, not a wheel-only application. |
 | Missing app-specific configuration | Complete the cloud/app values, and pass `config=load_config()` if using `.env`. |
+| `connection_mode='cloud'` required | LAN is the default. Select cloud explicitly only for bootstrap, cloud queries or the existing P2P preview. |
+| Missing/invalid `STREAM_KEY` | Load a saved key/auth pair explicitly, or bootstrap it deliberately in cloud mode. LAN playback never fetches one for you. |
+| Missing `data/stream_credentials.json` | Run the bootstrap example first, or select your application's actual saved path. The LAN example never creates/renews it. |
 | `AssetMissingError` | Check `assets_dir`, required files, and the verified vHome ABI/table profile. Do not substitute an arbitrary `.so`. |
 | `CERTIFICATE_VERIFY_FAILED` | Follow [TLS guidance](#cloud-region-and-auth-url); do not disable verification silently. |
-| Missing `CAMERA_DEVICE_HOST` / `AUTH_CODE` | Local CGI settings are separate from cloud/P2P credentials. Supply the host explicitly. |
+| Missing `CAMERA_DEVICE_HOST` / `AUTH_CODE` | Supply local settings or the loaded key/auth pair. LAN TCP requires an IP, not a hostname; CGI has separate HTTP settings. |
+| LAN crypto/SHA/media profile rejected | Only the verified AES-256/SHA256 profile without separate media encryption is supported; do not guess a different key or fall back silently. |
 | Device `error=-1` with empty content | Often an unsupported/rejected firmware command. Inspect the raw response or profile status; do not assume every device implements every query. |
 | Missing JPEG/MP4 | Check FFmpeg in the application's environment and inspect the capture error/summary and retained H.264. |
 | VLC cannot connect | Wait for media readiness; check the bind host, server LAN IP, firewall, and producer error from `session.wait()`. |

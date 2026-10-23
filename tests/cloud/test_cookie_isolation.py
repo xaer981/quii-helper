@@ -12,6 +12,7 @@ from tests.cloud.test_http_transport import _Response
 
 def _config(account):
     return AutonomousConfig(
+        connection_mode="cloud",
         cloud_account=account,
         cloud_password="synthetic-password",
         device_id=f"device-{account}",

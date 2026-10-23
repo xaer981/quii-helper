@@ -118,6 +118,7 @@ from quii_helper.camera import (
     CameraDeviceWifiListInfo,
     CameraDoorOpenResult,
     CameraIotCommandSupportInfo,
+    CameraStreamCredentials,
 )
 from quii_helper.config import (
     AutonomousConfig,
@@ -142,6 +143,7 @@ __all__ = [
     "CameraCallEventPage",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "CameraStreamCredentials",
     "CameraDoorOpenResult",
     "CameraDeviceAllInfo",
     "CameraDeviceAlarmChannel",

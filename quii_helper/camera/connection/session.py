@@ -1,16 +1,19 @@
 from dataclasses import dataclass
 from http.cookiejar import CookieJar
 from threading import Event
-from typing import Any
+from typing import Any, overload
 
 from quii_helper.cloud.services.discovery import fetch_runtime_credentials
 from quii_helper.config import AutonomousConfig, RuntimeCredentials
+from quii_helper.config.connection import require_cloud_connection
 from quii_helper.direct.preview import open_direct_preview
 from quii_helper.protocols.p2p.models import (
     P2PConnectResponse,
     ParsedP2PTestResponse,
 )
 from quii_helper.protocols.rbudp.tunnel.session import DirectKcpQuiiTunnel
+from quii_helper.protocols.tcp.live.session import LanTcpSession
+from quii_helper.support.errors import ConfigurationError
 
 
 @dataclass
@@ -94,13 +97,39 @@ class CameraConnector:
         self.cookie_jar = CookieJar()
 
     def fetch_credentials(self) -> RuntimeCredentials:
+        require_cloud_connection(
+            self.config.connection_mode, operation="fetch_credentials"
+        )
         return fetch_runtime_credentials(
             self.config, cookie_jar=self.cookie_jar
         )
 
+    def create_lan_session(self) -> LanTcpSession:
+        """Construct an unopened session so streaming can cancel startup I/O."""
+        return LanTcpSession(self.config)
+
+    @overload
+    def open_preview(
+        self, *, credentials: RuntimeCredentials
+    ) -> CameraPreviewSession: ...
+
+    @overload
+    def open_preview(
+        self, *, credentials: None = None
+    ) -> CameraPreviewSession | LanTcpSession: ...
+
     def open_preview(
         self, *, credentials: RuntimeCredentials | None = None
-    ) -> CameraPreviewSession:
+    ) -> CameraPreviewSession | LanTcpSession:
+        if self.config.connection_mode == "lan":
+            if credentials is not None:
+                raise ConfigurationError(
+                    "LAN-only sessions do not accept cloud credentials"
+                )
+            return self.create_lan_session().open()
+        require_cloud_connection(
+            self.config.connection_mode, operation="open_preview"
+        )
         resolved_credentials, response, test_response, tunnel = (
             open_direct_preview(
                 self.config,
@@ -115,6 +144,8 @@ class CameraConnector:
             tunnel=tunnel,
         )
 
-    def connect(self) -> CameraPreviewSession:
+    def connect(self) -> CameraPreviewSession | LanTcpSession:
+        if self.config.connection_mode == "lan":
+            return self.open_preview()
         credentials = self.fetch_credentials()
         return self.open_preview(credentials=credentials)

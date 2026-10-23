@@ -7,7 +7,7 @@ from quii_helper.support.log import configure_logging
 def main() -> None:
     """Open the configured door once using environment-backed settings."""
     configure_logging(replace_existing=True)
-    camera = Camera(config=load_config())
+    camera = Camera(config=load_config(), connection_mode="cloud")
     info = camera.get_device_info()
     print(
         f"Capability 24 (TYPE_ENCRYPY_SHA256): {info.supports_sha256_password}",

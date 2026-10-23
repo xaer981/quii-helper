@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+from quii_helper.config.connection import validate_connection_options
 from quii_helper.config.settings_loader import (
     EnvironmentSettings,
     load_environment_settings,
@@ -73,11 +74,15 @@ class AutonomousConfig:
 
     Attributes:
         device_id: Camera device id.
+        connection_mode: 'lan' (default) or explicit 'cloud'; no automatic fallback.
+        stream_port: Native direct-IP TCP port, default 34567.
+        stream_key: Saved 32-byte UTF-8 key for LAN TCP playback, hidden in repr.
         cloud_account: Cloud account/login.
         cloud_password: Cloud account password.
-        device_host: Camera LAN IP address or hostname for local `/tdkcgi`
-            HTTP requests.
-        auth_code: Device auth code for local `/tdkcgi` HTTP requests.
+        device_host: Explicit camera IP for LAN TCP playback; local `/tdkcgi`
+            HTTP requests also accept a hostname.
+        auth_code: Device auth code for LAN TCP and local `/tdkcgi`, separate
+            from the cloud account and door-opening passwords.
         unlock_password: Door-opening password from `UNLOCK_PASSWORD`, separate
             from CGI authentication and cloud account credentials.
         channel: Camera channel number.
@@ -182,9 +187,13 @@ class AutonomousConfig:
     unlock_password: str = field(default="", repr=False)
     assets_dir: Path = Path("assets")
     auth_version: str = ""
+    connection_mode: str = "lan"
+    stream_port: int = 34567
+    stream_key: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         """Anchor relative asset paths once, without reading any assets."""
+        validate_connection_options(self.connection_mode, self.stream_port)
         self.assets_dir = Path(self.assets_dir).expanduser().resolve()
         for name in ("ca_path", "cert_path", "key_path"):
             path = Path(getattr(self, name)).expanduser()
@@ -220,6 +229,9 @@ class AutonomousConfig:
             "key_path": settings.tls_key_path,
             "ip_region_id": settings.ip_region_id,
             "tls_verify": settings.tls_verify,
+            "connection_mode": settings.camera_connection_mode,
+            "stream_port": settings.camera_stream_port,
+            "stream_key": settings.stream_key,
         }
         values.update(overrides)
         return cls(**cast(Any, values))

@@ -1,6 +1,7 @@
 """High-level camera API."""
 
 from quii_helper.camera.api import Camera
+from quii_helper.camera.connection.credentials import CameraStreamCredentials
 from quii_helper.camera.connection.session import (
     CameraConnector,
     CameraPreviewSession,
@@ -132,6 +133,7 @@ __all__ = [
     "CameraCallEventPage",
     "CameraCaptureError",
     "CameraCaptureResult",
+    "CameraStreamCredentials",
     "CameraDoorOpenResult",
     "CameraConnector",
     "CameraDeviceAllInfo",

@@ -8,9 +8,13 @@ for every product sharing the protocol or app name.
 
 ## Known Working Devices
 
-| Device | App | User-confirmed features |
+| Device | App | Verified features |
 | --- | --- | --- |
 | Tantos Marilyn Wi-Fi s | vHome 2.2 | JPEG snapshot, MP4 capture, RTSP, physical door opening in `auto` mode, and incoming-call history on the tested account/backend. |
+
+Physical Pi checks on 2026-10-23 also verified direct LAN capture, saved-key
+RTSP, cloud bootstrap/save/load, and independent LAN reconnect without client
+cloud requests. These tests did not send a door command.
 
 Door opening was confirmed on 2026-10-16 with capability 24 enabled and
 `error=0`. This verifies the encoded-password path, not the plain-password path
@@ -40,10 +44,17 @@ wheels for 32-bit Windows and Intel (`x86_64`) macOS; do not assume a binary
 installation works there. See the
 [upstream compatibility changes](https://cryptography.io/en/latest/changelog/#v49-0-0).
 
-The extracted P2P asset must have the verified vHome 2.2 **arm64-v8a** layout
+For cloud/P2P preview, the extracted asset must have the verified vHome 2.2 **arm64-v8a** layout
 on every host. It is read as data, not executed. Other ABIs/builds require
 explicit native verification. JPEG/MP4 additionally needs FFmpeg on `PATH`;
 RTSP and local CGI do not.
+
+Direct LAN TCP playback uses supplied IP/auth code/stream key and
+does not require that asset. Only the AES-256/SHA256 profile without separate
+media encryption is implemented. Both isolated probes and the current Camera
+integration have physical Pi validation, in addition to offline loopback tests.
+Key lifetime, reboot persistence, and playback with the camera's WAN blocked
+are not established.
 
 ## Validation Scope
 
@@ -55,11 +66,20 @@ RTSP and local CGI do not.
 | Physical Raspberry Pi ARM64, 2026-10-21 | Earlier local wheel in entrance-bot; 140 isolated tests with fake door openers and networking disabled. | A fresh installation of every later PyPI release or live ARM64 preview/RTSP. |
 | PyPI consumer check, 2026-10-22 | Published `0.1.0rc6` with entrance-bot commit `40680ee`: 140 tests in a fresh Windows Python 3.11 environment, `pip check`, no private settings/non-loopback access. | Deployment, physical door behavior, or ARM64 installation of that artifact. |
 | Published `0.1.0`, 2026-10-22 | Fresh Windows Python 3.11 wheel/sdist installs and default pip resolution; dependency/import/configuration/logging smoke checks. | A new live-device test. |
+| LAN API on physical Raspberry Pi ARM64, 2026-10-23 | Isolated local wheel: saved-key capture/RTSP, cloud bootstrap/save/load, then independent LAN reconnect. Four samples decoded at 960x576 / 20 fps without errors; RTP checks found no sequence gaps and contexts closed. | Visual scene quality, long-run soak, maximum key lifetime, reboot/rotation persistence, camera-WAN isolation, LAN JPEG rendering on this device, or other hardware. |
 
-The ARM64 integration uses the library as a dependency; it is not a claim of
-tested ARM64 media capture. Installing this package does not update or deploy
-entrance-bot. Older validation artifacts are evidence, not replacement uploads
-for an already published version.
+The earlier entrance-bot checks cover dependency integration, not media.
+The separate physical LAN tests cover that tested build/device only; they do not
+certify every PyPI build on ARM64. The test process blocked cloud requests
+during LAN phases, but the camera's own WAN access remained unchanged.
+Installing this package does not update or deploy entrance-bot. Older artifacts
+are evidence, not replacement uploads for an already published version.
+
+The physical LAN check reused a key aged 2 h 32 m. A fresh cloud fetch returned
+the same key/encoded-auth pair, and a later process reconnected without cloud
+settings/requests. Cloud TLS verification was temporarily disabled with explicit
+authorization because the vendor chain failed; strict-TLS cloud success is not
+claimed. No production service, device setting or door state was changed.
 
 ## Reporting A Device
 

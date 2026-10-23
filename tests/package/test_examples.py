@@ -24,6 +24,7 @@ class ExampleModuleTests:
         )
         with (
             patch("quii_helper.Camera", autospec=True) as camera_cls,
+            patch("quii_helper.CameraStreamCredentials", autospec=True),
             patch("quii_helper.load_config", return_value=sentinel.config),
             patch(
                 "builtins.input",
@@ -102,7 +103,9 @@ class ExampleModuleTests:
             ):
                 module.main()
 
-        camera_cls.assert_called_once_with(config=sentinel.config)
+        camera_cls.assert_called_once_with(
+            config=sentinel.config, connection_mode="cloud"
+        )
         camera.get_device_info.assert_called_once_with()
         camera.open_door.assert_called_once_with(password_mode="auto")
         camera.serve_rtsp.assert_not_called()
