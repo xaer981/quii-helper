@@ -325,6 +325,15 @@ already configured, this flow does not read APK assets. The shared config
 validator still requires `CLOUD_SERVICE_URL`, even though no discovery query
 is sent here.
 
+Before calling this method, complete the
+[first-run cloud configuration](setup.md#first-run-fetch-and-save):
+`CLOUD_ACCOUNT`, `CLOUD_PASSWORD`, `DEVICE_ID`, `CLOUD_CLIENT_UUID`,
+`CLOUD_AUTH_URL`, `CLOUD_SERVICE_URL`, `CAMERA_OEM`, `CAMERA_APP_ID`,
+`CAMERA_CLIENT_TYPE` and `IP_REGION_ID`. Local IP/channel/stream values alone
+are not sufficient. The setup guide distinguishes these required values from
+conditional auth-version/TLS options and the much smaller
+[later LAN-only configuration](setup.md#later-runs-load-and-view-locally).
+
 `CameraStreamCredentials` contains `device_id`, secret `stream_key` and secret
 `auth_code`. The last two are hidden from `repr`, but can be accessed explicitly
 for application use. The returned auth code comes from the same cloud response

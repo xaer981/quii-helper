@@ -49,6 +49,9 @@ being stabilized.
 
 - Simplify the PyPI quick start: obtain/save a key explicitly, then reuse it
   locally. Align setup, API, security and compatibility guides with that flow.
+- Separate the complete first-run cloud configuration (all 10 mandatory
+  settings) from saved-key LAN starts. Add offline checks for both documented
+  configurations and make bootstrap an explicit, non-recurring application step.
 - Physical Raspberry Pi checks on Tantos Marilyn Wi-Fi s verified saved-key
   capture/RTSP, cloud bootstrap/save/load, and independent LAN reconnect without
   client cloud requests. A cached key worked after more than two hours; saved
