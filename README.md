@@ -65,34 +65,61 @@ To upgrade, use `python -m pip install --upgrade quii-helper`.
 `Camera` defaults to LAN-only playback: use the camera's IP and a saved
 stream key/auth pair, with **no cloud requests or automatic fallback**.
 
-Prepare an application directory:
+There are two separate setup phases:
+
+- **No saved key yet?** Complete the first-run cloud setup in step 3.
+- **Already have a saved key for this camera?** Skip cloud setup and go
+  straight to [step 4: LAN-only playback](https://github.com/xaer981/quii-helper#4-later-runs-lan-only-playback).
+
+Prepare an application directory and run the following code from there:
 
 ```text
 my-camera-app/
   app.py
   .env
   data/
-    stream_credentials.json  # Saved explicitly; keep private.
+    stream_credentials.json  # Created in step 3; keep private.
 ```
 
-Set the local settings in `.env`, replacing the example IP:
+### 3. First Run: Cloud Setup And Key Save
+
+**Local IP/channel/stream settings alone cannot obtain a key.** Before running
+the cloud code below, fill **all 10 required variables** in `.env`:
 
 ```dotenv
-CAMERA_DEVICE_HOST=192.0.2.10
-CAMERA_CHANNEL=1
-CAMERA_STREAM=2
+CLOUD_ACCOUNT="<mobile-app-login>"
+CLOUD_PASSWORD="<mobile-app-password>"
+DEVICE_ID="<your-camera-device-id>"
+CLOUD_CLIENT_UUID="<generate-once-with-command-below>"
+CLOUD_AUTH_URL="<auth-url-for-your-app-and-region>"
+CLOUD_SERVICE_URL="<service-discovery-base-url-from-your-app>"
+CAMERA_OEM="<oem-from-your-app>"
+CAMERA_APP_ID=<numeric-app-id>
+CAMERA_CLIENT_TYPE=<numeric-client-type>
+IP_REGION_ID=<numeric-region-id>
 ```
 
-To obtain the key, also fill the cloud account/app/region values described in
-[Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md)
-using your account and authorized Android app. Later local playback needs
-neither a cloud account nor APK assets. JPEG/MP4 output additionally needs
-**FFmpeg** on `PATH`; RTSP does not.
+Replace every `<...>` placeholder with your own value before running anything.
+The last three values must be positive integers, not the placeholder text.
+Generate `CLOUD_CLIENT_UUID` once and keep it between runs:
 
-### 3. Get And Save A Key Explicitly
+```shell
+python -c "import uuid; print(uuid.uuid4().hex)"
+```
 
-Run once from your application directory after configuring the cloud settings.
-Skip this step if you already have a saved credential file:
+Copy the printed value into `CLOUD_CLIENT_UUID` in `.env`.
+
+Find the other values using [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#finding-apk-constants)
+and [cloud discovery](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#discovering-cloud-values).
+`CLOUD_SERVICE_URL` is required by shared validation even though key acquisition
+does not perform discovery. `CLOUD_AUTH_VERSION` is additionally needed if your
+app uses a versioned auth header. TLS verification defaults to enabled; see
+[TLS troubleshooting](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-region-and-auth-url)
+if a vendor certificate fails.
+
+With these settings already known, this call needs cloud access but **no camera
+IP, APK assets, FFmpeg, `AUTH_CODE`, or `STREAM_KEY`**. It obtains the matching
+key/auth pair for you. Put this code in `app.py` and run `python app.py` once:
 
 ```python
 from quii_helper import Camera, load_config
@@ -102,14 +129,35 @@ credentials = cloud_camera.fetch_stream_credentials()
 credentials.save("data/stream_credentials.json")
 ```
 
-This contacts cloud and saves a matching key/auth pair without starting a
-preview or changing `.env`. Reuse that file for subsequent local connections;
-the library never fetches or renews it automatically.
+This saves `data/stream_credentials.json` without starting a preview or changing
+`.env`. A failure here must be resolved before proceeding. Re-running this code
+contacts cloud again and replaces the file; do not include it in normal LAN
+startup. The library never fetches or renews a key automatically.
 
-### 4. Capture Locally With The Saved Key
+### 4. Later Runs: LAN-Only Playback
 
-Run from the directory containing `.env` (camera IP/channel/stream) and the
-saved JSON. No cloud account or assets are needed for this phase:
+Keep the saved JSON for this camera. For this phase, `.env` only needs the
+following local settings; replace the example IP with the camera's LAN IP:
+
+```dotenv
+CAMERA_CONNECTION_MODE=lan
+CAMERA_DEVICE_HOST=192.0.2.10
+CAMERA_STREAM_PORT=34567
+CAMERA_CHANNEL=1
+CAMERA_STREAM=2
+```
+
+The port/channel/stream above are defaults; select the correct channel/stream
+for your device. You can remove cloud settings from this application's `.env`;
+if retained, they are not used for this LAN connection. **No cloud account or
+APK assets are needed.** The saved file supplies the device id and key/auth
+pair; do not copy them into `.env` for this example.
+
+For JPEG/MP4, install **FFmpeg** on `PATH` as described in
+[Media Prerequisites](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#media-prerequisites).
+RTSP does not need FFmpeg. Run from the directory containing `.env` and the
+saved JSON: replace the bootstrap code in `app.py` with the following, then
+run `python app.py`. Do not keep the cloud-fetch code in this script:
 
 ```python
 from quii_helper import Camera, CameraStreamCredentials, load_config

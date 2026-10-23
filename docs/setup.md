@@ -38,9 +38,13 @@ Use `python -m pip install --upgrade quii-helper` to upgrade an existing
 installation; no `--pre` is needed for final releases.
 
 The wheel installs `quii_helper`, not `examples/`, `docs/`, or `.env.example`.
-Download the [environment template](https://github.com/xaer981/quii-helper/blob/main/.env.example)
-and save a filled-in copy as `.env` in your application directory. For a pinned
-version, use the template at its matching Git tag. Do not edit `site-packages`.
+Create `.env` in your application directory using the
+[first-run cloud block](#first-run-fetch-and-save) or, if you already have a
+saved key, the [later LAN-only block](#later-runs-load-and-view-locally).
+The full [environment template](https://github.com/xaer981/quii-helper/blob/main/.env.example)
+also covers other operations; not every setting is needed for playback.
+For a pinned version, use the template at its matching Git tag.
+Do not edit `site-packages`.
 
 ## Using A Checkout
 
@@ -92,19 +96,60 @@ matching auth code, not the cloud account or door password.
 **Fetch once, then reuse locally.** These are separate steps; loading a file
 or connecting in LAN mode never fetches or renews a key automatically.
 
+If you already have `stream_credentials.json` for this camera, skip the cloud
+setup and go directly to [later LAN-only runs](#later-runs-load-and-view-locally).
+Run the snippets below from the application directory containing `.env`;
+`data/stream_credentials.json` is relative to that directory.
+
 ### First Run: Fetch And Save
 
-Fill the [cloud/app settings](#cloud-and-preview), including `DEVICE_ID`,
-`CLOUD_AUTH_URL` and `CLOUD_SERVICE_URL`. Set the camera's `CAMERA_DEVICE_HOST`
-and channel/stream for playback. `AUTH_CODE` and `STREAM_KEY` may initially be
-empty: this example uses the matching pair returned by cloud instead.
+**All 10 variables below are required for cloud key acquisition.** The camera's
+IP, channel and stream alone are not sufficient. Put these in `.env`, replacing
+every `<...>` placeholder before running the Python snippet:
+
+```dotenv
+CLOUD_ACCOUNT="<mobile-app-login>"
+CLOUD_PASSWORD="<mobile-app-password>"
+DEVICE_ID="<your-camera-device-id>"
+CLOUD_CLIENT_UUID="<generate-once-with-command-below>"
+CLOUD_AUTH_URL="<auth-url-for-your-app-and-region>"
+CLOUD_SERVICE_URL="<service-discovery-base-url-from-your-app>"
+CAMERA_OEM="<oem-from-your-app>"
+CAMERA_APP_ID=<numeric-app-id>
+CAMERA_CLIENT_TYPE=<numeric-client-type>
+IP_REGION_ID=<numeric-region-id>
+```
+
+`CAMERA_APP_ID`, `CAMERA_CLIENT_TYPE` and `IP_REGION_ID` must be positive
+integers from your app/region, not the placeholder text or guessed defaults.
+Generate `CLOUD_CLIENT_UUID` once, put the result in `.env`, and keep it:
+
+```shell
+python -c "import uuid; print(uuid.uuid4().hex)"
+```
+
+The [cloud settings reference](#cloud-and-preview) explains every required
+variable. Use your mobile-app account and device id; obtain the app/region
+values via [APK inspection](#finding-apk-constants) and, if needed,
+[discovery](#discovering-cloud-values). If those values are not known yet,
+complete that preparation before requesting the key.
+
+`CLOUD_AUTH_VERSION` is additionally needed for an app using a versioned auth
+header; leave it empty only for the unversioned variant. `TLS_VERIFY` defaults
+to `true`; use the [TLS guidance](#cloud-region-and-auth-url) for certificate
+failures rather than disabling verification by default.
 
 The bootstrap uses ordinary cloud login and `get-device-token`. With a known
-auth URL and complete app settings it does not read APK assets or contact the
-camera. If those settings are unknown, follow [APK extraction](#required-assets)
-and [discovery](#discovering-cloud-values) first; discovery needs TLS assets.
+auth URL and the complete settings above, it does not read APK assets or contact
+the camera. `CLOUD_SERVICE_URL` is still required by shared validation, although
+this operation does not send a discovery query. Discovery itself needs the
+[TLS assets](#required-assets).
 
-Run this from your application directory:
+**Not needed for key acquisition:** `CAMERA_DEVICE_HOST`, channel/stream,
+`AUTH_CODE`, `STREAM_KEY`, `UNLOCK_PASSWORD`, or FFmpeg. The cloud response
+supplies the matching key/auth pair; no door command is involved.
+
+Put this code in `app.py` in your application directory and run `python app.py`:
 
 ```python
 from quii_helper import Camera, load_config
@@ -117,12 +162,13 @@ print(saved_path)
 
 This honors `TLS_VERIFY`, saves the matching pair without starting a preview,
 and does not edit `.env` or open a door. Re-running it fetches again and replaces
-the file; reuse the saved file for normal playback.
+the file; reuse the saved file for normal playback. If fetching or saving fails,
+resolve that error before proceeding to the LAN-only step.
 
 ### Later Runs: Load And View Locally
 
-Keep the saved JSON and these local settings; cloud account/app settings and
-`assets/` can be absent for playback:
+Keep the saved JSON for the intended camera. For playback, `.env` needs only
+these local settings, with your camera's actual IP/channel/stream:
 
 ```dotenv
 CAMERA_CONNECTION_MODE=lan
@@ -132,7 +178,16 @@ CAMERA_CHANNEL=1
 CAMERA_STREAM=2
 ```
 
-Load the saved file explicitly and start RTSP:
+The TCP port defaults to `34567`, channel to `1`, and stream to `2`; adjust
+them only as needed for your device. You can remove cloud account/app settings
+from this application's `.env`; valid values left there do not cause cloud
+requests in LAN mode. `assets/` can also be absent. The JSON supplies device id,
+stream key and auth code, so this example needs none of those values in `.env`.
+It does not contain the camera IP, which must still be configured above.
+
+Replace the cloud-fetch code in `app.py` with the following and run
+`python app.py`. This loads the saved file explicitly and starts RTSP;
+do not keep the bootstrap call in this script:
 
 ```python
 from quii_helper import Camera, CameraStreamCredentials, load_config
@@ -258,14 +313,17 @@ Start from `.env.example`. Keep one `.env` per application, outside
 
 ### Cloud And Preview
 
-These values configure cloud-backed operations and preview:
+The first **10** variables in this table are mandatory for stream-key bootstrap
+and the shared cloud configuration. `CLOUD_AUTH_VERSION` is conditional on the
+app's auth format. These are not prerequisites for saved-key LAN playback.
+See [first-run setup](#first-run-fetch-and-save) for the complete `.env` block.
 
 | Variable | Meaning |
 | --- | --- |
 | `CLOUD_ACCOUNT` | Your mobile-app account login. `CLOUD_USERNAME` is a legacy alias. |
 | `CLOUD_PASSWORD` | Your mobile-app account password. |
 | `DEVICE_ID` | The camera/intercom identifier for that account. |
-| `CLOUD_CLIENT_UUID` | Stable per-install client identity, generated once below. |
+| `CLOUD_CLIENT_UUID` | Stable per-install client identity; generate once as shown in [first-run setup](#first-run-fetch-and-save). |
 | `CLOUD_SERVICE_URL` | Service-discovery base URL extracted from the app. |
 | `CLOUD_AUTH_URL` | Region-specific auth endpoint; the helper can discover it. |
 | `CAMERA_OEM` | App/OEM family identifier from the APK. |
@@ -273,12 +331,6 @@ These values configure cloud-backed operations and preview:
 | `CAMERA_CLIENT_TYPE` | Numeric client type from the APK. |
 | `IP_REGION_ID` | Numeric cloud region id, returned by discovery. |
 | `CLOUD_AUTH_VERSION` | Auth XML version required by that app build; default empty. |
-
-Generate the client UUID once, copy it into `.env`, and keep it between runs:
-
-```shell
-python -c "import uuid; print(uuid.uuid4().hex)"
-```
 
 ### Local Access And Preferences
 

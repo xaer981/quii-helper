@@ -4,14 +4,26 @@ import ast
 import inspect
 import re
 import unicodedata
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch, sentinel
 from urllib.parse import unquote, urlsplit
 
 import black
 import pytest
+from dotenv import dotenv_values
 
-from quii_helper import AutonomousConfig, Camera, CameraStreamCredentials
+from quii_helper import (
+    AutonomousConfig,
+    Camera,
+    CameraStreamCredentials,
+    load_config,
+)
+from quii_helper.cloud.config.runtime import validate_runtime_config
+from quii_helper.config.validation import (
+    REQUIRED_CAMERA_APP_FIELDS,
+    validate_camera_app_config,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = sorted(
@@ -19,6 +31,7 @@ DOCUMENTS = sorted(
     + list((ROOT / ".github").rglob("*.md"))
 )
 PYTHON_BLOCK = re.compile(r"```python\s*\n(.*?)```", re.DOTALL)
+ENV_BLOCK = re.compile(r"```dotenv\s*\n(.*?)```", re.DOTALL)
 LINK = re.compile(r"(?<!!)\[[^\]\n]+\]\(([^)\s]+)\)")
 METHOD_ROW = re.compile(r"^\| `([a-z_]+\([^`]*\))` \|", re.MULTILINE)
 
@@ -112,6 +125,78 @@ def test_readme_quick_start_works_without_repository_examples() -> None:
     assert "git clone" not in quick_start
 
 
+@pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])
+def test_first_run_documents_all_required_cloud_settings(
+    document: str, tmp_path: Path
+) -> None:
+    text = (ROOT / document).read_text(encoding="utf-8")
+    block = next(
+        block for block in ENV_BLOCK.findall(text) if "CLOUD_ACCOUNT=" in block
+    )
+    values = dotenv_values(stream=StringIO(block), interpolate=False)
+    required = set(REQUIRED_CAMERA_APP_FIELDS.values()) | {
+        "CLOUD_ACCOUNT",
+        "CLOUD_PASSWORD",
+        "DEVICE_ID",
+    }
+    assert set(values) == required
+    assert all(values.values())
+    assert text.index(block) < text.index(
+        "cloud_camera.fetch_stream_credentials()"
+    )
+    numeric = {"CAMERA_APP_ID", "CAMERA_CLIENT_TYPE", "IP_REGION_ID"}
+    config = load_config(
+        project_root=tmp_path,
+        env={
+            name: "1" if name in numeric else "synthetic-value"
+            for name in values
+        },
+    )
+    validate_runtime_config(config)
+    validate_camera_app_config(config)
+
+
+@pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])
+def test_later_run_documents_only_local_settings(
+    document: str, tmp_path: Path
+) -> None:
+    text = (ROOT / document).read_text(encoding="utf-8")
+    block = next(
+        block
+        for block in ENV_BLOCK.findall(text)
+        if "CAMERA_DEVICE_HOST=" in block
+    )
+    values = dotenv_values(stream=StringIO(block), interpolate=False)
+    assert set(values) == {
+        "CAMERA_CONNECTION_MODE",
+        "CAMERA_DEVICE_HOST",
+        "CAMERA_STREAM_PORT",
+        "CAMERA_CHANNEL",
+        "CAMERA_STREAM",
+    }
+    config = load_config(
+        project_root=tmp_path,
+        env={
+            name: value for name, value in values.items() if value is not None
+        },
+    )
+    saved = CameraStreamCredentials(
+        "synthetic-device", "K" * 32, "synthetic-auth"
+    )
+    camera = Camera(
+        config=config,
+        connection_mode="lan",
+        device_id=saved.device_id,
+        stream_key=saved.stream_key,
+        auth_code=saved.auth_code,
+    )
+    assert camera.config.connection_mode == "lan"
+    assert camera.config.device_host == "192.0.2.10"
+    assert not camera.config.cloud_account
+    assert not camera.config.cloud_password
+    assert not camera.config.auth_url
+
+
 def test_all_runnable_examples_are_listed_in_api_guide() -> None:
     text = (ROOT / "docs/api.md").read_text(encoding="utf-8")
     for example in (ROOT / "examples").glob("*.py"):
@@ -119,7 +204,9 @@ def test_all_runnable_examples_are_listed_in_api_guide() -> None:
             assert f"python -m examples.{example.stem}" in text
 
 
-@pytest.mark.parametrize("document", ["README.md", "docs/api.md"])
+@pytest.mark.parametrize(
+    "document", ["README.md", "docs/api.md", "docs/setup.md"]
+)
 def test_documented_saved_key_rtsp_stays_lan_with_cloud_settings(
     document: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

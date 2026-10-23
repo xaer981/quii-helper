@@ -5,9 +5,12 @@
 
 ## Start Here
 
-Start with [Setup](setup.md): install the package, obtain and save a stream
-key, then connect locally. LAN-only is the default; cloud operations require
-explicit opt-in. Use the [API Reference](api.md) for individual methods.
+Start with [Setup](setup.md). On the first run, complete the
+[10 required cloud settings and save a key](setup.md#first-run-fetch-and-save).
+Already have that key file? Skip cloud setup and use the
+[local settings and saved-file example](setup.md#later-runs-load-and-view-locally).
+LAN-only is the default; cloud operations require explicit opt-in. Use the
+[API Reference](api.md) for individual methods.
 
 | Your goal | Guide |
 | --- | --- |
