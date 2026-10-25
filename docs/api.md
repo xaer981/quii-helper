@@ -397,10 +397,13 @@ a saved file or fetches a missing key.
 
 On the tested Tantos/Pi, a fresh cloud fetch returned the same key/encoded-auth
 pair as the older cache, and independent LAN sessions worked without cloud
-requests. This is observed behavior, not an immutability/rotation guarantee.
-The saved key's lifetime, reboot persistence and the effect of fetching another
-key on existing sessions are unknown. A load/playback failure must not cause an
-automatic cloud login. Call the bootstrap API again only explicitly.
+requests. The original saved key still worked after 55 h 13 m in a later
+capture check. A Vimar K40955 owner also confirmed saved-key LAN RTSP; the same
+key lifetime has not been measured on that device. These are observations,
+not an immutability/rotation guarantee. Maximum key lifetime, reboot persistence
+and the effect of fetching another key on existing sessions are unknown.
+A load/playback failure must not cause an automatic cloud login. Call the
+bootstrap API again only explicitly.
 LAN-only applies to this client; the camera's own WAN access was not blocked
 in these tests. See [Validation Scope](../COMPATIBILITY.md#validation-scope).
 

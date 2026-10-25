@@ -2,25 +2,42 @@
 
 [Project Overview](README.md) | [Setup](docs/setup.md) | [API Reference](docs/api.md)
 
-QUII Helper targets the QUII / Qualvision protocol family used by **vHome 2.2**
-cameras and video intercoms. Support for one device does not establish support
-for every product sharing the protocol or app name.
+QUII Helper targets the QUII / Qualvision protocol family used by cameras and
+video intercoms with apps such as **vHome 2.2** and **vEye Pro**. Support for one
+device does not establish support for every product sharing the protocol or
+app name. Maintainer tests and community reports are distinguished below.
 
 ## Known Working Devices
 
-| Device | App | Verified features |
+| Device | App | Confirmed features and evidence |
 | --- | --- | --- |
-| Tantos Marilyn Wi-Fi s | vHome 2.2 | JPEG snapshot, MP4 capture, RTSP, physical door opening in `auto` mode, and incoming-call history on the tested account/backend. |
+| Tantos Marilyn Wi-Fi s | vHome 2.2 | Maintainer media tests and user-confirmed door/call checks: JPEG snapshot, MP4 capture, RTSP, physical door opening in `auto` mode, and incoming-call history on the tested account/backend. |
+| Vimar K40955, firmware `V401R001B002` | vEye Pro 1.9.4.0.2 | Saved-key LAN RTSP through `lan_rtsp`, [reported by luigi-pi on 2026-10-25](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080). Not independently tested by the maintainer. |
 
-Physical Pi checks on 2026-10-23 also verified direct LAN capture, saved-key
-RTSP, cloud bootstrap/save/load, and independent LAN reconnect without client
-cloud requests. These tests did not send a door command.
+Physical Pi checks with Tantos on 2026-10-23 also verified direct LAN capture,
+saved-key RTSP, cloud bootstrap/save/load, and independent LAN reconnect without
+client cloud requests. These tests did not send a door command.
 
-Door opening was confirmed on 2026-10-16 with capability 24 enabled and
-`error=0`. This verifies the encoded-password path, not the plain-password path
+On Tantos, door opening was confirmed on 2026-10-16 with capability 24 enabled
+and `error=0`. This verifies the encoded-password path, not the plain-password path
 or all firmware. Call-history reads and observation of a new call were
 confirmed on 2026-10-19/20. Those checks establish neither a delivery-time
 guarantee nor delivery with Android fully disconnected.
+
+### Vimar K40955: Community Report
+
+The report confirms LAN video with a saved cloud key/auth pair, not every
+Camera API. JPEG/MP4 capture, door control, cloud call history, two-way audio,
+reboot persistence, and playback with the intercom's WAN blocked remain
+unverified on this model. Two-way audio and local-only call detection are not
+implemented by this library.
+
+Local `get.device.streamkey` has not succeeded in the reported Vimar tests or
+our Tantos investigation; this does not establish a firmware-level ban.
+Initial key acquisition still uses cloud. The reporter's cloud TLS workaround
+disabled hostname checking, so strict-TLS cloud success is not established.
+See [TLS troubleshooting](docs/setup.md#cloud-region-and-auth-url); do not
+treat a CA file or disabled verification as proof of server identity.
 
 ## Discovery Hints
 
@@ -28,7 +45,7 @@ Related devices may expose:
 
 - HTTP header `Server: Qualvision -HTTPServer`.
 - Native TCP port `34567`.
-- Integration with the vHome 2.2 mobile app.
+- Integration with mobile apps such as vHome 2.2 or vEye Pro.
 
 These are search/discovery hints, not compatibility or authentication checks.
 Local CGI uses HTTP port `80` by default; do not substitute native port `34567`.
@@ -53,8 +70,9 @@ Direct LAN TCP playback uses supplied IP/auth code/stream key and
 does not require that asset. Only the AES-256/SHA256 profile without separate
 media encryption is implemented. Both isolated probes and the current Camera
 integration have physical Pi validation, in addition to offline loopback tests.
-Key lifetime, reboot persistence, and playback with the camera's WAN blocked
-are not established.
+The Tantos key has been reused after more than 55 hours, but maximum key
+lifetime, reboot persistence, and playback with the camera's WAN blocked are
+not established. The same lifetime has not been verified on Vimar.
 
 ## Validation Scope
 
@@ -67,6 +85,8 @@ are not established.
 | PyPI consumer check, 2026-10-22 | Published `0.1.0rc6` with entrance-bot commit `40680ee`: 140 tests in a fresh Windows Python 3.11 environment, `pip check`, no private settings/non-loopback access. | Deployment, physical door behavior, or ARM64 installation of that artifact. |
 | Published `0.1.0`, 2026-10-22 | Fresh Windows Python 3.11 wheel/sdist installs and default pip resolution; dependency/import/configuration/logging smoke checks. | A new live-device test. |
 | LAN API on physical Raspberry Pi ARM64, 2026-10-23 | Isolated local wheel: saved-key capture/RTSP, cloud bootstrap/save/load, then independent LAN reconnect. Four samples decoded at 960x576 / 20 fps without errors; RTP checks found no sequence gaps and contexts closed. | Visual scene quality, long-run soak, maximum key lifetime, reboot/rotation persistence, camera-WAN isolation, LAN JPEG rendering on this device, or other hardware. |
+| Tantos saved-key recheck on physical Pi, 2026-10-25 | The original saved key still worked after 55 h 13 m without renewal. A 10-second LAN TCP capture yielded 141 H.264 frames at 960x576 / 20 fps; FFmpeg decoded them without errors. The process guard allowed only camera TCP and blocked cloud/HTTP and external DNS. | An indefinite key lifetime, reboot/rotation persistence, camera-WAN isolation, or Vimar key lifetime. |
+| Vimar K40955 community report, 2026-10-25 | The owner confirmed `lan_rtsp` video in [issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080), after troubleshooting cloud bootstrap. | Independent maintainer testing, strict cloud TLS validation, JPEG/MP4, door control, call history, two-way audio, or other firmware. |
 
 The earlier entrance-bot checks cover dependency integration, not media.
 The separate physical LAN tests cover that tested build/device only; they do not
@@ -75,11 +95,14 @@ during LAN phases, but the camera's own WAN access remained unchanged.
 Installing this package does not update or deploy entrance-bot. Older artifacts
 are evidence, not replacement uploads for an already published version.
 
-The physical LAN check reused a key aged 2 h 32 m. A fresh cloud fetch returned
-the same key/encoded-auth pair, and a later process reconnected without cloud
-settings/requests. Cloud TLS verification was temporarily disabled with explicit
-authorization because the vendor chain failed; strict-TLS cloud success is not
-claimed. No production service, device setting or door state was changed.
+During the 2026-10-23 Tantos check, a fresh cloud fetch returned the same
+key/encoded-auth pair as the 2 h 32 m cache. The later 55-hour recheck reused
+the original saved file read-only, without fetching a key or loading cloud
+settings. These observations are lower bounds, not an expiry guarantee.
+Cloud TLS verification was temporarily disabled with explicit authorization
+only for the earlier cloud probe because the vendor chain failed; strict-TLS
+cloud success is not claimed. No production service, device setting or door
+state was changed.
 
 ## Reporting A Device
 
