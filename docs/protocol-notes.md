@@ -86,8 +86,17 @@ During LAN phases, a process audit guard permitted only camera TCP and the
 loopback RTSP client, rejecting cloud HTTP and external DNS. This proves the
 observed client's behavior, not OS-level isolation or camera-WAN independence.
 RTSP contexts stopped their workers and listeners. No production service or
-device setting was changed. The observed two-hour key reuse is a lower bound,
-not a TTL, rotation/reboot guarantee or visual-quality certification. See
+device setting was changed. A LAN-only recheck on 2026-10-25 reused the original
+key after 55 h 13 m and yielded 141 H.264 frames during a 10-second capture;
+FFmpeg decoded them without errors. These reuse intervals are lower bounds,
+not a TTL, rotation/reboot guarantee or visual-quality certification.
+
+A Vimar K40955 owner confirmed saved-key LAN RTSP with firmware V401R001B002
+and vEye Pro 1.9.4.0.2 in
+[issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080).
+This is a community report, not independent native/device validation by the
+maintainer. It does not establish local key acquisition, other Camera APIs,
+strict cloud TLS, two-way audio or local call-event support. See
 [Compatibility](../COMPATIBILITY.md#validation-scope) for the exact scope.
 
 ## Media Capture

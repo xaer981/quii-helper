@@ -37,16 +37,22 @@ that video capture is unsupported.
 
 ## Compatibility 🔍
 
-The tested device is **Tantos Marilyn Wi-Fi s**, used with **vHome 2.2**:
-snapshots, MP4 capture, RTSP, door opening in `auto` mode, and incoming-call
-history on the tested account/backend.
-LAN playback and cloud-key bootstrap were also checked on a physical Raspberry
-Pi (Linux ARM64). See the compatibility guide for validation scope and limits.
+- **Tantos Marilyn Wi-Fi s** with **vHome 2.2**: snapshots, MP4 capture, RTSP,
+  door opening in `auto` mode, and incoming-call history on the tested backend.
+- **Vimar K40955**, firmware **V401R001B002**, with **vEye Pro 1.9.4.0.2**:
+  saved-key LAN RTSP, [confirmed by a user](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080)
+  on 2026-10-25. Other features on this model remain unverified.
+
+Tantos LAN playback and cloud-key bootstrap were also checked on a physical
+Raspberry Pi (Linux ARM64). Its saved key still worked after more than 55 hours
+without a client-side cloud request; the actual expiry remains unknown.
 
 Related devices may return the HTTP header `Server: Qualvision -HTTPServer`
 or expose TCP port `34567`. These are discovery hints, not proof of support.
 See [Compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md)
-for platform coverage and how to report another device.
+for per-device evidence, platform coverage, limitations, and reporting another
+device. A working video stream does not establish support for door control,
+call history, or two-way audio.
 
 ## Quick Start 🚀
 

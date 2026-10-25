@@ -229,9 +229,13 @@ requires a restricted folder ACL. The file stores no cloud account password,
 session or opening password. It also does not store/discover the current IP.
 Do not use a file belonging to another device.
 
-Key lifetime, reboot persistence and operation with the camera's own Internet
-access blocked are not established; see [Compatibility](../COMPATIBILITY.md).
-If a key stops working, bootstrap again only as an explicit application action.
+Saved-key LAN RTSP has maintainer validation on Tantos and a community success
+report on Vimar K40955. Other features are not established by that report;
+see [Compatibility](../COMPATIBILITY.md) for per-model scope and prerequisites.
+The Tantos key still worked after more than 55 hours, but maximum key lifetime,
+reboot persistence and operation with the camera's own Internet access blocked
+remain unknown. If a key stops working, bootstrap again only as an explicit
+application action.
 
 ## Required Assets
 

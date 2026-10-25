@@ -5,6 +5,22 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Documentation And Validation
+
+- Add the first community-confirmed device beyond Tantos: Vimar K40955,
+  firmware `V401R001B002`, with vEye Pro 1.9.4.0.2. The owner confirmed
+  saved-key LAN RTSP in [issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080)
+  on 2026-10-25; other features and strict cloud TLS remain unverified.
+- Record a Tantos/Pi recheck using the original saved key after 55 h 13 m,
+  without client-side cloud requests or renewal. A 10-second capture yielded
+  141 H.264 frames decoded without FFmpeg errors. This is not a maximum-lifetime,
+  reboot-persistence or camera-WAN-isolation guarantee.
+- Align README, setup, API and protocol notes with these evidence boundaries.
+  Include vHome and vEye Pro in package search keywords and the compatibility
+  issue form. No runtime, protocol, dependency or package-version changes.
+
 ## 0.2.0 - 2026-10-23
 
 ### Changed

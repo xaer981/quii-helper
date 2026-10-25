@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
+keywords = ["quii", "qualvision", "vhome", "veye-pro", "rtsp", "video-intercom"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
