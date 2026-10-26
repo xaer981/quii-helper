@@ -122,18 +122,20 @@ def check_install(directory: Path, *, soak_seconds: float = 0) -> None:
                 check=True,
             )
             if suffix == "*.whl" and soak_seconds:
-                subprocess.run(
-                    [
-                        str(executable),
-                        "-I",
-                        "-B",
-                        str(source / ".github/scripts/check_rtsp_soak.py"),
-                        "--seconds",
-                        str(soak_seconds),
-                    ],
-                    cwd=consumer,
-                    check=True,
-                )
+                for options in ([], ["--audio"]):
+                    subprocess.run(
+                        [
+                            str(executable),
+                            "-I",
+                            "-B",
+                            str(source / ".github/scripts/check_rtsp_soak.py"),
+                            "--seconds",
+                            str(soak_seconds),
+                            *options,
+                        ],
+                        cwd=consumer,
+                        check=True,
+                    )
             subprocess.run(
                 [str(executable), "-m", "pip", "check"], cwd=root, check=True
             )

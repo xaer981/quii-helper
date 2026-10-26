@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from quii_helper.media.cpacket.constants import (
@@ -7,6 +8,48 @@ from quii_helper.media.cpacket.constants import (
     CPACKET_START_TYPE_MIN,
 )
 from quii_helper.media.h264.merge.probe_analysis import analyze_annexb_h264
+
+
+def cpacket_timestamp_ms(stamp: int, milliseconds: int) -> int:
+    """Read native packed device-local time without guessing its timezone."""
+    value = datetime(
+        2000 + (stamp >> 26),
+        (stamp >> 22) & 15,
+        (stamp >> 17) & 31,
+        (stamp >> 12) & 31,
+        (stamp >> 6) & 63,
+        stamp & 63,
+    )
+    if not 0 <= milliseconds < 1000:
+        raise ValueError("invalid CPacket milliseconds")
+    return (
+        value.toordinal() * 86400
+        + value.hour * 3600
+        + value.minute * 60
+        + value.second
+    ) * 1000 + milliseconds
+
+
+def cpacket_audio_metadata(
+    blob: bytes | bytearray, offset: int = 0
+) -> dict[str, Any]:
+    """Read native E3 audio fields instead of interpreting them as video."""
+    if blob[offset + 3] != 0xE3:
+        return {}
+    return {
+        "is_audio": True,
+        "channels": blob[offset + 0x0F],
+        "sample_rate": int.from_bytes(
+            blob[offset + 0x10 : offset + 0x12], "little"
+        ),
+        "frame_ms": int.from_bytes(
+            blob[offset + 0x0C : offset + 0x0E], "little"
+        ),
+        "fps_raw": 0,
+        "fps": 0.0,
+        "width": 0,
+        "height": 0,
+    }
 
 
 def cpacket_codec_name(codec: int) -> str:
@@ -92,6 +135,7 @@ def parse_cpacket_header(blob: bytes, offset: int = 0) -> dict[str, Any]:
             "plausible": plausible,
             "payload_prefix_hex": payload[:64].hex(),
             "media_analysis": media_analysis,
+            **cpacket_audio_metadata(blob, offset),
         }
     )
     return result

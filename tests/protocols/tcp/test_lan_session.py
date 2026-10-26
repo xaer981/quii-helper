@@ -4,17 +4,20 @@ import hashlib
 import socket
 import struct
 import threading
+import warnings
 from collections import deque
 from unittest.mock import Mock
 
 import pytest
 
+from quii_helper import Camera, load_config
 from quii_helper.config import AutonomousConfig
 from quii_helper.device.security.auth import encode_device_password
 from quii_helper.protocols.quii.crypto import aes_cbc_crypt
 from quii_helper.protocols.tcp.live.session import (
     MAX_TCP_PAYLOAD_BYTES,
     LanTcpSession,
+    validate_lan_config,
 )
 from quii_helper.protocols.tcp.transport.socket_transport import (
     TcpSocketTransport,
@@ -136,6 +139,39 @@ def session_and_socket(**overrides):
     return session, sock
 
 
+@pytest.mark.parametrize("channel", [1, 2])
+@pytest.mark.parametrize(
+    "stream,expected", [("high", 1), ("low", 2), ("3", 3)]
+)
+def test_environment_selectors_reach_camera_play_header(
+    channel, stream, expected, monkeypatch
+):
+    camera = Camera(
+        config=load_config(
+            env={
+                "CAMERA_DEVICE_HOST": "127.0.0.1",
+                "STREAM_KEY": KEY,
+                "AUTH_CODE": "synthetic-auth",
+                "CAMERA_CHANNEL": str(channel),
+                "CAMERA_STREAM": stream,
+            }
+        )
+    )
+    session = camera.connector.create_lan_session()
+    sock = ScriptedSocket()
+    monkeypatch.setattr(
+        session._client.transport,
+        "connect",
+        lambda **kwargs: setattr(session._client.transport, "sock", sock),
+    )
+    with session:
+        header = aes_cbc_crypt(
+            sock.sent[1][:32], KEY, crypto_mode=2, decrypt=True
+        )
+        assert struct.unpack_from("<H", header, 13)[0] == channel
+        assert header[16] == expected - 1
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -149,7 +185,10 @@ def session_and_socket(**overrides):
         {"auth_code": ""},
         {"auth_code": "a" * 64 + "\x00"},
         {"channel": 0},
+        {"channel": True},
+        {"channel": 0x10000},
         {"stream": True},
+        {"stream": 0x101},
         {"connect_timeout": float("nan")},
         {"connect_timeout": 0},
         {"live_keepalive_interval": float("inf")},
@@ -163,23 +202,80 @@ def test_invalid_lan_inputs_fail_before_transport_construction(overrides):
     factory.assert_not_called()
 
 
-def test_play_matches_native_seconds_flags_body_and_separate_aes(monkeypatch):
+@pytest.mark.parametrize(
+    "overrides,option",
+    [
+        ({"live_play_payload": "oem"}, "live_play_payload"),
+        ({"live_inner": True}, "live_inner"),
+        ({"live_newcn": True}, "live_newcn"),
+    ],
+)
+def test_legacy_lan_live_options_warn_and_keep_verified_packet(
+    overrides, option
+):
+    with pytest.warns(UserWarning, match=option):
+        session, sock = session_and_socket(**overrides)
+    with session:
+        header = aes_cbc_crypt(
+            sock.sent[1][:32], KEY, crypto_mode=2, decrypt=True
+        )
+        body = aes_cbc_crypt(
+            sock.sent[1][32:], KEY, crypto_mode=2, decrypt=True
+        )
+        assert header[17] == 0
+        assert b"/mode=real&idc=1&ids=1&ap=2\x00" in body
+        assert b"inner=" not in body and b"newcn=" not in body
+
+
+def test_explicit_supported_lan_live_options_preserve_play_packet():
+    session, sock = session_and_socket(
+        live_play_payload="path", live_inner=False, live_newcn=False
+    )
+    with session:
+        header = aes_cbc_crypt(
+            sock.sent[1][:32], KEY, crypto_mode=2, decrypt=True
+        )
+        body = aes_cbc_crypt(
+            sock.sent[1][32:], KEY, crypto_mode=2, decrypt=True
+        )
+        assert header[17] == 0
+        assert b"/mode=real&idc=1&ids=1&ap=2\x00" in body
+        assert b"inner=" not in body and b"newcn=" not in body
+
+
+def test_default_warning_filter_deduplicates_rtsp_preflight_and_session():
+    settings = config(live_newcn=True)
+    with warnings.catch_warnings(record=True) as observed:
+        warnings.simplefilter("default")
+        validate_lan_config(settings)
+        LanTcpSession(settings)
+    assert len(observed) == 1
+    assert "live_newcn" in str(observed[0].message)
+
+
+@pytest.mark.parametrize(
+    ("channel", "stream"),
+    [(1, 1), (2, 1), (1, 2), (1, 3), (2, 2), (0x102, 0x100), (0xFFFF, 1)],
+)
+def test_play_matches_native_seconds_flags_body_and_separate_aes(
+    monkeypatch, channel, stream
+):
     monkeypatch.setattr(
         "quii_helper.protocols.tcp.live.packet_builder.time.time",
         lambda: 1700000000,
     )
-    session, sock = session_and_socket()
+    session, sock = session_and_socket(channel=channel, stream=stream)
     with session:
         assert sock.sent[0] == b"\xa9" + bytes(31)
         packet = sock.sent[1]
         header = aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True)
         body = aes_cbc_crypt(packet[32:], KEY, crypto_mode=2, decrypt=True)
         assert struct.unpack_from("<Q", header, 1)[0] == 1700000000
-        assert header[13:18] == b"\x01\x00\x01\x00\x00"
+        assert header[13:18] == struct.pack("<HBBB", channel, 1, stream - 1, 0)
         expected = (
             "adminapp2&&"
             + encode_device_password("synthetic-auth")
-            + "\x00/mode=real&idc=1&ids=1&ap=2\x00"
+            + f"\x00/mode=real&idc={channel}&ids={stream}&ap=2\x00"
         ).encode()
         assert struct.unpack_from("<H", header, 11)[0] == len(expected)
         assert body[: len(expected)] == expected

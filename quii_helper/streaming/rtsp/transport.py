@@ -1,3 +1,29 @@
+import socket
+from dataclasses import dataclass
+
+
+@dataclass
+class RtpTransport:
+    """Per-track transport; a second SETUP must not replace the first track."""
+
+    mode: str = "tcp"
+    channel: int = 0
+    rtp_sock: socket.socket | None = None
+    rtcp_sock: socket.socket | None = None
+    target: tuple[str, int] | None = None
+
+    def close(self) -> None:
+        sockets = self.rtp_sock, self.rtcp_sock
+        self.rtp_sock = self.rtcp_sock = None
+        self.target = None
+        for sock in sockets:
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+
+
 def interleaved_channel(transport: str) -> int | None:
     marker = "interleaved="
     lower = transport.lower()

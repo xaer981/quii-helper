@@ -73,7 +73,7 @@ class QuiiClient:
         }
 
     def send_live_open(
-        self, play_param: int = 1, stream_flag: int = 0
+        self, play_param: int = 1, stream_flag: int | None = None
     ) -> bytes:
         packet = self.build_live_open_packet(
             play_param=play_param, stream_flag=stream_flag
@@ -82,7 +82,7 @@ class QuiiClient:
         return packet
 
     def build_live_open_packet(
-        self, play_param: int = 1, stream_flag: int = 0
+        self, play_param: int = 1, stream_flag: int | None = None
     ) -> bytes:
         return self.live_open_builder.build_live_open_packet(
             crypto_mode=self.crypto_mode,

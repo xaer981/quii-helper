@@ -7,6 +7,7 @@ from pathlib import Path
 
 from quii_helper.camera.connection.session import CameraConnector
 from quii_helper.camera.outputs.results import capture_done_message
+from quii_helper.media.audio.recording import AudioRecording
 from quii_helper.media.frames.assembler import AssembledH264Stream
 from quii_helper.media.frames.assembler_state import (
     KEY_FRAME_TAGS,
@@ -40,13 +41,15 @@ def capture_lan_summary(
 ) -> CaptureSummary:
     """Collect a wall-clock window after TCP setup/play, without cloud fallback.
 
-    Snapshot capture stops at a decodable keyframe. Video keeps the source FPS,
-    never stretches sparse frames, and fails explicitly on the memory limit.
+    Snapshot capture stops at a decodable keyframe. Video keeps the source FPS
+    and available supported audio, never stretches sparse frames, and fails
+    explicitly on the combined payload memory limit.
     RBUDP-specific drain, diagnostics and message limits do not apply to TCP.
     """
     packer = QuiiCFramePack()
     frames: list[MediaFrameSummary] = []
     stream = bytearray()
+    audio = AudioRecording() if render_video else None
     nal_counts: Counter[str] = Counter()
     decoded_count = media_count = 0
     decodable = False
@@ -72,15 +75,32 @@ def capture_lan_summary(
                     if frame["frame_tag"] not in KEY_FRAME_TAGS:
                         continue
                     waiting_for_keyframe = False
+                audio_bytes = len(audio.data) if audio is not None else 0
+                if frame["frame_tag"] == 0xE3 and audio is not None:
+                    if (
+                        len(stream) + audio_bytes + len(frame["bitstream"])
+                        > MAX_LAN_CAPTURE_BYTES
+                    ):
+                        raise CameraCaptureError(
+                            "LAN capture exceeds the 256 MiB buffer limit; "
+                            "use shorter recordings or serve_rtsp()"
+                        )
+                    audio.feed(frame)
+                    continue
                 access_unit = access_unit_from_frame(frame)
                 if not access_unit:
                     continue
-                if len(stream) + len(access_unit) > MAX_LAN_CAPTURE_BYTES:
+                if (
+                    len(stream) + audio_bytes + len(access_unit)
+                    > MAX_LAN_CAPTURE_BYTES
+                ):
                     raise CameraCaptureError(
                         "LAN capture exceeds the 256 MiB buffer limit; "
                         "use shorter recordings or serve_rtsp()"
                     )
                 stream.extend(access_unit)
+                if audio is not None:
+                    audio.start_video(frame)
                 frames.append(frame_info_from_parsed_frame(frame))
                 nal_counts.update(
                     analyze_h264_annexb_stream(access_unit).get("counts", {})
@@ -128,7 +148,9 @@ def capture_lan_summary(
         try:
             summary["media_result"] = write_assembled_h264_stream(
                 base,
-                AssembledH264Stream(bytes(stream), frames, media_summary),
+                AssembledH264Stream(
+                    bytes(stream), frames, media_summary, audio
+                ),
                 render_snapshot=render_snapshot,
                 render_video=render_video,
                 input_fps=float(frames[0]["fps"]) or None,

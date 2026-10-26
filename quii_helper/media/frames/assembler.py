@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from typing import Any
 
+from quii_helper.media.audio.recording import AudioRecording
 from quii_helper.media.frames.assembler_state import (
     MEDIA_PACKET_TYPES,
+    access_unit_from_frame,
     assemble_access_units,
     build_media_summary,
     frame_info_from_parsed_frame,
@@ -16,6 +18,7 @@ class AssembledH264Stream:
     stream_bytes: bytes
     frames: list[MediaFrameSummary]
     summary: dict[str, Any]
+    audio: AudioRecording | None = None
 
     @property
     def has_access_units(self) -> bool:
@@ -24,9 +27,18 @@ class AssembledH264Stream:
 
 def assemble_h264_stream_from_messages(
     messages: list[dict[str, Any]],
+    *,
+    collect_audio: bool = False,
 ) -> AssembledH264Stream:
     parsed_frames, frame_info, cframe_stats = _parse_video_frames(messages)
     access_units = assemble_access_units(parsed_frames)
+    audio = AudioRecording() if collect_audio else None
+    if audio is not None:
+        for frame in parsed_frames:
+            if access_unit_from_frame(frame):
+                audio.start_video(frame)
+            elif frame["frame_tag"] == 0xE3:
+                audio.feed(frame)
     return AssembledH264Stream(
         stream_bytes=b"".join(access_units),
         frames=frame_info,
@@ -35,6 +47,7 @@ def assemble_h264_stream_from_messages(
             assembled_units=len(access_units),
             cframe_stats=cframe_stats,
         ),
+        audio=audio,
     )
 
 

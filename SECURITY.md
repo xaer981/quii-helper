@@ -5,7 +5,7 @@
 ## Supported Versions
 
 `0.1.0` is the first published final release. Security fixes target the latest
-`0.2.x` release; older versions do not receive separate backports.
+`0.3.x` release; older versions do not receive separate backports.
 The API remains pre-`1.0`, with experimental features and compatibility limits
 documented explicitly. See the [Changelog](CHANGELOG.md).
 

@@ -29,8 +29,12 @@ def h264_mp4_command(
     mp4_path: Path,
     *,
     input_rate_args: Sequence[str] = (),
+    audio_path: Path | None = None,
+    audio_format: str = "alaw",
+    audio_offset_seconds: float = 0,
+    duration_seconds: float | None = None,
 ) -> list[str]:
-    return [
+    command = [
         "ffmpeg",
         "-y",
         "-loglevel",
@@ -40,10 +44,37 @@ def h264_mp4_command(
         "h264",
         "-i",
         str(stream_path),
-        "-c:v",
-        "copy",
-        str(mp4_path),
     ]
+    if audio_path is not None:
+        if duration_seconds is None:
+            raise ValueError("audio mux requires a video duration")
+        command.extend(
+            [
+                "-f",
+                audio_format,
+                "-ar",
+                "8000",
+                "-ac",
+                "1",
+                "-i",
+                str(audio_path),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "32k",
+                "-af",
+                f"adelay={audio_offset_seconds * 1000:.0f}:all=1,apad,atrim=duration={duration_seconds:.6f}",
+                "-t",
+                f"{duration_seconds:.6f}",
+                "-movflags",
+                "+faststart",
+            ]
+        )
+    return [*command, "-c:v", "copy", str(mp4_path)]
 
 
 def raw_h264_input_args(stream_path: Path) -> list[str]:

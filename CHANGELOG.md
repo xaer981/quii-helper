@@ -5,10 +5,64 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.3.0 - 2026-10-26
+
+### Added
+
+- Accept named quality profiles in `CAMERA_STREAM`: `high` / `main` / `1`
+  resolves to stream 1 and `low` / `sub` / `2` to stream 2. Positive numeric
+  ids and the legacy `QUII_STREAM` variable remain supported; the default
+  stays stream 2. The standalone main no longer forces high quality, so
+  channel/profile settings are honored consistently by the media examples.
+- Experimental receive-only `Camera.listen_audio()` for saved-key LAN preview,
+  returning encoded `CameraAudioFrame` payloads and per-frame codec, sample
+  rate, channels and raw device-local timestamp metadata. It owns a closeable
+  synchronous session, has no cloud fallback, and starts no microphone,
+  speaker, talk session or file writer.
+- Automatically retain supported G.711 A-law/mu-law (8000 Hz mono) in MP4
+  recordings as AAC from the same preview connection. Align to the first
+  retained video timestamp, trim/pad audio to the produced video duration,
+  clean up temporary audio, and preserve video-only output when audio is
+  absent or unsupported. RTSP audio remains an explicit opt-in.
+- `examples.listen_audio` inspects ten frames without playback or commands.
+  Tantos/Pi read-only reception verified 298 G.711 A-law frames at 8000 Hz mono
+  in 15 seconds. Vimar audio remains unverified.
+- Opt-in `Camera.serve_rtsp(audio=True)` shares one preview/CFrame producer for
+  H.264 and G.711 audio, with independent per-track TCP/UDP transports and
+  bounded shared viewer queues. Native device timestamps provide the A/V
+  timeline; late A/V viewers wait for a keyframe and receive SPS/PPS in SDP.
+  FFprobe/FFmpeg A/V decoding was checked on Tantos/Pi. RTSP remains video-only
+  by default; the source `quii_helper.main` opts into audio. No talkback or
+  guaranteed cross-player lip-sync is introduced.
+
+### Fixed
+
+- Warn about unsupported LAN live-play options instead of silently ignoring
+  them or rejecting earlier callers. LAN uses `live_play_payload="path"`,
+  `live_inner=False`, and `live_newcn=False`; cloud handling is unchanged.
+  Remove the ineffective `live_newcn=True` override from the standalone main.
+- Normalize RTSP paths, including root and trailing-slash paths, and return
+  a `Content-Base` using the client's request authority so relative SDP track
+  URLs resolve correctly for both local and remote viewers.
+- Stop announcing speculative `RTP-Info` sequence/timestamp values in live
+  PLAY responses: keyframe gating and concurrent publication do not guarantee
+  that those values describe the first packet actually delivered.
+- Encode the selected LAN TCP channel and zero-based stream in the binary
+  live-play header, matching native `ParseURL`/`OnSendPlay`. Previously only
+  the URL changed while the header always selected channel 1 / stream 1.
+- Reject LAN selectors outside the header's 16-bit channel / 8-bit stream
+  index range instead of silently truncating them.
+- Interpret E3 CPacket audio fields as frequency/channel count instead of
+  reporting them as video dimensions/FPS. Preserve video parsing behavior.
 
 ### Documentation And Validation
 
+- Verify the MP4 writer from an isolated wheel installation on physical
+  Raspberry Pi ARM64: both Tantos panels at high/low profiles, H.264/AAC
+  decoding and matching track durations, plus warning-only legacy LAN flags.
+- Extend the installed-wheel RTSP soak and CI to test video-only and combined
+  A/V for two minutes each, checking separate track sequences/audio timestamps,
+  slow-client eviction, bounded queues and worker cleanup.
 - Add the first community-confirmed device beyond Tantos: Vimar K40955,
   firmware `V401R001B002`, with vEye Pro 1.9.4.0.2. The owner confirmed
   saved-key LAN RTSP in [issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080)
@@ -19,7 +73,7 @@ being stabilized.
   reboot-persistence or camera-WAN-isolation guarantee.
 - Align README, setup, API and protocol notes with these evidence boundaries.
   Include vHome and vEye Pro in package search keywords and the compatibility
-  issue form. No runtime, protocol, dependency or package-version changes.
+  issue form.
 
 ## 0.2.0 - 2026-10-23
 

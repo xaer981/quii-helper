@@ -35,11 +35,16 @@ def resolve_stream_quality(value: str | int) -> int:
     else:
         key = value.strip().lower().replace("-", "_")
         try:
-            stream = STREAM_QUALITY_ALIASES[key]
-        except KeyError as exc:
+            stream = (
+                STREAM_QUALITY_ALIASES[key]
+                if key in STREAM_QUALITY_ALIASES
+                else int(value)
+            )
+        except ValueError as exc:
             names = ", ".join(sorted(STREAM_QUALITY_ALIASES))
             raise ConfigurationError(
-                f"unknown stream quality {value!r}; expected one of: {names}"
+                f"unknown stream quality {value!r}; expected a positive "
+                f"stream id or one of: {names}"
             ) from exc
     if stream <= 0:
         raise ConfigurationError("stream id must be greater than zero")

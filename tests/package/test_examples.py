@@ -72,13 +72,11 @@ class ExampleModuleTests:
 
         camera_cls.assert_called_once_with(
             config=sentinel.config,
-            stream_quality="high",
-            live_newcn=True,
             tls_verify=False,
         )
         load.assert_called_once_with()
         configure.assert_called_once_with(replace_existing=True)
-        camera.serve_rtsp.assert_called_once_with(port=8554)
+        camera.serve_rtsp.assert_called_once_with(port=8554, audio=True)
         stream.wait.assert_called_once_with()
         context.__exit__.assert_called_once()
         camera.open_door.assert_not_called()

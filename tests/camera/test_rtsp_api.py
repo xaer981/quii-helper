@@ -2,8 +2,11 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from quii_helper.camera import Camera
 from quii_helper.camera.streaming import CameraRtspStream
+from quii_helper.config import AutonomousConfig
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
 )
@@ -18,6 +21,65 @@ class _FakeRtspAssembler:
 
 
 class CameraRtspApiTests:
+    @pytest.mark.parametrize(
+        "overrides,option",
+        [
+            ({"live_play_payload": "oem"}, "live_play_payload"),
+            ({"live_inner": True}, "live_inner"),
+            ({"live_newcn": True}, "live_newcn"),
+        ],
+    )
+    def test_legacy_lan_options_warn_without_blocking_rtsp_start(
+        self, overrides, option
+    ):
+        camera = Camera(
+            AutonomousConfig(
+                device_host="127.0.0.1",
+                stream_key="K" * 32,
+                auth_code="synthetic-auth",
+            ),
+            **overrides,
+        )
+        with patch("quii_helper.camera.api.CameraRtspStream") as rtsp:
+            with pytest.warns(UserWarning, match=option):
+                camera.serve_rtsp(audio=True)
+        rtsp.return_value.start.assert_called_once_with()
+
+    def test_av_ready_requires_real_audio_and_video_configuration(self):
+        from quii_helper.streaming.rtp.g711 import G711Format
+
+        statuses = []
+        stream = CameraRtspStream(
+            connector=object(),
+            preview_settings=DEFAULT_PREVIEW_CAPTURE_SETTINGS,
+            data_dir=Path("."),
+            emit=lambda value: None,
+            status=statuses.append,
+            audio=True,
+        )
+        stream.assembler = _FakeRtspAssembler()
+        stream._feed_assembler_message({"access_unit_count": 1})
+        assert not statuses
+        stream.server.audio_format = G711Format(4)
+        stream._feed_assembler_message({"access_unit_count": 1})
+        assert not statuses
+        stream.server._sps, stream.server._pps = b"sps", b"pps"
+        stream._feed_assembler_message({"access_unit_count": 1})
+        stream._feed_assembler_message({"access_unit_count": 2})
+        assert len(statuses) == 1 and statuses[0].startswith(
+            "RTSP stream ready:"
+        )
+
+    def test_audio_opt_in_uses_the_same_rtsp_producer(self):
+        camera = Camera(connection_mode="cloud")
+        with patch("quii_helper.camera.api.CameraRtspStream") as rtsp:
+            with patch(
+                "quii_helper.camera.api.CameraAudioStream"
+            ) as separate_audio:
+                camera.serve_rtsp(audio=True)
+        assert rtsp.call_args.kwargs["audio"] is True
+        separate_audio.assert_not_called()
+
     def test_serve_rtsp_defaults_to_loopback(self) -> None:
         camera = Camera(connection_mode="cloud")
         with patch("quii_helper.camera.api.CameraRtspStream") as stream_cls:

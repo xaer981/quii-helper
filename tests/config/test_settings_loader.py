@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from dotenv import dotenv_values
 
+from quii_helper import Camera
 from quii_helper.config import AutonomousConfig, load_config
 from quii_helper.config.settings_loader import (
     SettingsLoader,
@@ -12,6 +13,68 @@ from quii_helper.config.settings_loader import (
 
 
 class SettingsLoaderTests:
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("high", 1),
+            ("main", 1),
+            (" HD ", 1),
+            ("clear", 1),
+            ("low", 2),
+            ("sub", 2),
+            ("sd", 2),
+            ("smooth", 2),
+            ("1", 1),
+            ("2", 2),
+            ("3", 3),
+        ],
+    )
+    def test_stream_names_and_numeric_ids(self, value, expected) -> None:
+        config = load_config(env={"CAMERA_STREAM": value})
+        assert config.stream == expected
+        assert isinstance(config.stream, int)
+
+    @pytest.mark.parametrize("value", ["0", "-1", "unknown", "1.5"])
+    def test_invalid_stream_is_reported_as_configuration_error(
+        self, value
+    ) -> None:
+        from quii_helper import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="CAMERA_STREAM"):
+            load_config(env={"CAMERA_STREAM": value})
+
+    @pytest.mark.parametrize(
+        "env,expected",
+        [
+            ({}, 2),
+            ({"CAMERA_STREAM": "  "}, 2),
+            ({"QUII_STREAM": "high"}, 1),
+            ({"CAMERA_STREAM": "low", "QUII_STREAM": "high"}, 2),
+            ({"CAMERA_STREAM": "", "QUII_STREAM": "high"}, 1),
+        ],
+    )
+    def test_stream_default_and_legacy_alias_precedence(
+        self, env, expected
+    ) -> None:
+        assert load_config(env=env).stream == expected
+
+    def test_named_stream_file_process_and_camera_precedence(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.delenv("CAMERA_STREAM", raising=False)
+        monkeypatch.delenv("QUII_STREAM", raising=False)
+        path = tmp_path / ".env"
+        path.write_text("CAMERA_STREAM=low\n", encoding="utf-8")
+        assert load_config(project_root=tmp_path).stream == 2
+        monkeypatch.setenv("CAMERA_STREAM", "high")
+        config = load_config(project_root=tmp_path)
+        assert config.stream == 1
+        assert Camera(config=config).config.stream == 1
+        assert Camera(config=config, stream_quality="low").config.stream == 2
+        assert Camera(config=config, stream=3).config.stream == 3
+        assert config.stream == 1
+        assert path.read_text(encoding="utf-8") == "CAMERA_STREAM=low\n"
+
     def setup_method(self) -> None:
         reset_default_settings_cache()
 
@@ -22,6 +85,7 @@ class SettingsLoaderTests:
         template = Path(__file__).resolve().parents[2] / ".env.example"
         values = dotenv_values(template, interpolate=False)
         assert values["UNLOCK_PASSWORD"] == ""
+        assert values["CAMERA_STREAM"] == "low"
 
     def test_loaded_settings_repr_hides_authentication_values(self) -> None:
         values = {

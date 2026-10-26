@@ -154,7 +154,8 @@ def test_installed_checks_use_both_archives_and_isolated_imports(
         "-I" in cmd and "--import-mode=importlib" in " ".join(cmd)
         for cmd in tests
     )
-    assert sum("--seconds" in cmd for cmd in commands) == 1
+    assert sum("--seconds" in cmd for cmd in commands) == 2
+    assert sum("--audio" in cmd for cmd in commands) == 1
     assert commands.index(
         next(cmd for cmd in commands if "--smoke" in cmd)
     ) < commands.index(tests[0])
@@ -185,12 +186,15 @@ def test_installed_smoke_accepts_noncanonical_working_directory(
     assert not (root / "assets").exists()
 
 
-def test_synthetic_soak_runs_without_camera_or_assets():
+@pytest.mark.parametrize("audio", [False, True])
+def test_synthetic_soak_runs_without_camera_or_assets(audio):
     soak = load_script("check_rtsp_soak")
-    report = soak.run_soak(3)
+    report = soak.run_soak(3, audio=audio)
     assert report["received_frames"] > 0
     assert report["slow_disconnects"] == 1
     assert report["worker_cleanup"] == "passed"
+    assert report["audio_enabled"] is audio
+    assert (report["received_audio_packets"] > 0) is audio
 
 
 def test_ci_release_gate_requires_all_jobs_and_reuses_checked_archives():
@@ -199,5 +203,6 @@ def test_ci_release_gate_requires_all_jobs_and_reuses_checked_archives():
     assert "needs: [secret-scan, test, build, install, rtsp-soak]" in workflow
     assert 'value["result"] != "success"' in workflow
     assert "--seconds 120" in workflow
+    assert "--seconds 120 --audio" in workflow
     assert "uses: ./.github/workflows/ci.yml" in publish
     assert "needs: checks" in publish

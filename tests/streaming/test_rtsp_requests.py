@@ -132,14 +132,14 @@ def test_closed_client_cannot_send_or_reopen_transport():
 def test_repeated_setup_releases_previous_udp_sockets():
     client = RtspClient(RtspH264Server(), Mock(), ("127.0.0.1", 1))
     rtp, rtcp = Mock(), Mock()
-    client.udp_rtp_sock, client.udp_rtcp_sock = rtp, rtcp
+    client.tracks[0].rtp_sock, client.tracks[0].rtcp_sock = rtp, rtcp
     request = parse_request(
         "SETUP rtsp://localhost/live RTSP/1.0\r\nTransport: RTP/AVP/TCP;interleaved=0-1"
     )
     client._handle_setup(request)
     rtp.close.assert_called_once_with()
     rtcp.close.assert_called_once_with()
-    assert client.udp_rtp_sock is None
+    assert client.tracks[0].rtp_sock is None
 
 
 def test_server_rejects_clients_over_limit(monkeypatch):
@@ -157,9 +157,9 @@ def test_server_rejects_clients_over_limit(monkeypatch):
 def test_udp_publication_and_close_do_not_race():
     client = RtspClient(RtspH264Server(), Mock(), ("127.0.0.1", 1))
     udp = Mock()
-    client.transport = "udp"
-    client.udp_rtp_sock = udp
-    client.udp_rtp_target = ("127.0.0.1", 1234)
+    client.tracks[0].mode = "udp"
+    client.tracks[0].rtp_sock = udp
+    client.tracks[0].target = ("127.0.0.1", 1234)
     entered, release, closing, closed = (threading.Event() for _ in range(4))
     errors, results = [], []
 

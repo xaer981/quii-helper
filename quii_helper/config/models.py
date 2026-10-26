@@ -93,9 +93,9 @@ class AutonomousConfig:
         auth_version: Cloud XML protocol version from the original app.
         assets_dir: Directory containing application-supplied native assets.
         oem: Original application OEM code.
-        live_play_payload: QUII live-play payload mode.
-        live_inner: Whether to use the inner live-play packet variant.
-        live_newcn: Whether to use the new connection flag in live-play.
+        live_play_payload: Cloud QUII payload variant; LAN warns and uses 'path'.
+        live_inner: Cloud inner-packet flag; LAN warns and uses False.
+        live_newcn: Cloud URL connection flag; LAN warns and uses False.
         live_keepalive_interval: Seconds between live keepalive packets.
         play_sync_iterations: Number of extra post-play sync iterations.
         enable_play_probes: Whether to send additional play probe packets.
@@ -250,6 +250,8 @@ def load_config(
     By default, read `.env` in `project_root` (the working directory) and let
     process values take precedence. Neither source is modified. Relative
     `assets_dir` values are resolved against `project_root`.
+    `CAMERA_STREAM` accepts named quality profiles or positive numeric ids;
+    the returned `stream` always contains the resolved integer.
     """
 
     settings = load_environment_settings(

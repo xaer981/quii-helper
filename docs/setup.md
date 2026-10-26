@@ -90,6 +90,10 @@ the cloud/P2P response. Local CGI methods require that host explicitly.
 LAN supports AES-256/SHA256 with no separate media encryption. The key must
 contain exactly 32 UTF-8 bytes; it is not hex/base64-decoded or padded. Use its
 matching auth code, not the cloud account or door password.
+Leave `live_play_payload="path"`, `live_inner=False`, and `live_newcn=False`
+for LAN playback. Other values are cloud-path compatibility controls: LAN
+warns through Python `UserWarning` and ignores them, so older examples keep
+working. Panel/quality selection uses `channel` and `stream` instead.
 
 ## Stream-Key Bootstrap And Local Reuse
 
@@ -175,11 +179,15 @@ CAMERA_CONNECTION_MODE=lan
 CAMERA_DEVICE_HOST=192.0.2.10
 CAMERA_STREAM_PORT=34567
 CAMERA_CHANNEL=1
-CAMERA_STREAM=2
+CAMERA_STREAM=low
 ```
 
-The TCP port defaults to `34567`, channel to `1`, and stream to `2`; adjust
-them only as needed for your device. You can remove cloud account/app settings
+The TCP port defaults to `34567`, channel to `1`, and stream to `low` (`2`).
+Choose the panel with `CAMERA_CHANNEL`, independently of quality:
+`CAMERA_STREAM=high` selects the main stream (`1`), while `low` selects the
+lower-bandwidth stream (`2`). Numeric ids, including other device-specific
+profiles, remain supported. Actual resolution and profile availability depend
+on firmware. You can remove cloud account/app settings
 from this application's `.env`; valid values left there do not cause cloud
 requests in LAN mode. `assets/` can also be absent. The JSON supplies device id,
 stream key and auth code, so this example needs none of those values in `.env`.
@@ -348,14 +356,16 @@ See [first-run setup](#first-run-fetch-and-save) for the complete `.env` block.
 | `UNLOCK_PASSWORD` | Separate opening password. Used only by explicit `open_door()` calls. |
 | `DEVICE_PASSWORD` | Password for low-level development/probe helpers; not a `Camera` unlock setting. |
 | `CAMERA_CHANNEL` | Default video-panel channel; `1`. |
-| `CAMERA_STREAM` | Default stream id; `2` (lower bandwidth). `1` selects the high-quality stream on the tested device. |
+| `CAMERA_STREAM` | Quality profile: `high` / `main` / `1` selects stream 1; `low` / `sub` / `2` selects stream 2 (default). Other positive numeric ids are device-specific. |
 | `TLS_VERIFY` | Certificate verification; `true`. Disabling it weakens cloud/device trust. |
 | `LOG_LEVEL` | Standalone/example console level; `info`, or `debug` for diagnostics. |
 
 For an explicit high/low selector in code, use
 `Camera(config=load_config(), stream_quality="high")` or `"low"`.
 Device support can differ. `stream` and `stream_quality` are
-mutually exclusive overrides.
+mutually exclusive overrides. Explicit Camera arguments override the loaded
+configuration; the built-in `main.py` and media examples do not force a quality
+profile. Keep a single `CAMERA_STREAM` variable, not a separate quality setting.
 
 `load_config()` reads `.env` explicitly through python-dotenv's non-mutating
 `dotenv_values()` reader. Process environment values take precedence.

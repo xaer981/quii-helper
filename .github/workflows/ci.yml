@@ -172,11 +172,18 @@ jobs:
           python -I -B .github/scripts/check_rtsp_soak.py --seconds 120 > data/rtsp-soak.json
           cat data/rtsp-soak.json
 
+      - name: Exercise combined audio and video for 2 minutes
+        run: |
+          python -I -B .github/scripts/check_rtsp_soak.py --seconds 120 --audio > data/rtsp-av-soak.json
+          cat data/rtsp-av-soak.json
+
       - name: Save synthetic soak report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rtsp-soak-report
-          path: data/rtsp-soak.json
+          path: |
+            data/rtsp-soak.json
+            data/rtsp-av-soak.json
           if-no-files-found: error
 
   release-gate:

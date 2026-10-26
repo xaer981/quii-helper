@@ -180,6 +180,8 @@ def test_later_run_documents_only_local_settings(
             name: value for name, value in values.items() if value is not None
         },
     )
+    assert values["CAMERA_STREAM"] == "low"
+    assert config.stream == 2
     saved = CameraStreamCredentials(
         "synthetic-device", "K" * 32, "synthetic-auth"
     )

@@ -61,12 +61,12 @@ def test_client_byte_budget_counts_inflight_and_pending_packets(monkeypatch):
 @pytest.mark.parametrize("transport", ["tcp", "udp"])
 def test_expired_access_unit_is_not_sent(transport):
     client = RtspClient(RtspH264Server(), Mock(), ("127.0.0.1", 1))
-    client.transport = transport
-    client.udp_rtp_sock = Mock()
-    client.udp_rtp_target = ("127.0.0.1", 2)
+    client.tracks[0].mode = transport
+    client.tracks[0].rtp_sock = Mock()
+    client.tracks[0].target = ("127.0.0.1", 2)
     assert not client.send_rtp_packets([b"rtp"], deadline=time.monotonic() - 1)
     client.sock.sendall.assert_not_called()
-    client.udp_rtp_sock.sendto.assert_not_called()
+    client.tracks[0].rtp_sock.sendto.assert_not_called()
     client.close()
 
 
@@ -84,9 +84,9 @@ def test_slow_trickle_cannot_extend_access_unit_deadline(
     transport, monkeypatch
 ):
     client = RtspClient(RtspH264Server(), Mock(), ("127.0.0.1", 1))
-    client.transport = transport
-    client.udp_rtp_sock = Mock()
-    client.udp_rtp_target = ("127.0.0.1", 2)
+    client.tracks[0].mode = transport
+    client.tracks[0].rtp_sock = Mock()
+    client.tracks[0].target = ("127.0.0.1", 2)
     monkeypatch.setattr(
         client_module.time, "monotonic", Mock(side_effect=[1, 3])
     )
@@ -94,7 +94,7 @@ def test_slow_trickle_cannot_extend_access_unit_deadline(
     sender = (
         client.sock.sendall
         if transport == "tcp"
-        else client.udp_rtp_sock.sendto
+        else client.tracks[0].rtp_sock.sendto
     )
     assert sender.call_count == 1
     client.close()
@@ -117,7 +117,10 @@ def test_close_during_udp_setup_does_not_resurrect_transport(monkeypatch):
         Mock(cseq="1"), "RTP/AVP;client_port=6000-6001"
     )
     assert client._closed
-    assert client.udp_rtp_sock is None and client.udp_rtcp_sock is None
+    assert (
+        client.tracks[0].rtp_sock is None
+        and client.tracks[0].rtcp_sock is None
+    )
     rtp.__exit__.assert_called_once()
     rtcp.__exit__.assert_called_once()
     client.sock.sendall.assert_not_called()

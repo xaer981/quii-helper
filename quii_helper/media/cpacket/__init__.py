@@ -6,6 +6,7 @@ from quii_helper.media.cpacket.constants import (
     CPACKET_START_TYPE_MAX,
     CPACKET_START_TYPE_MIN,
 )
+from quii_helper.media.cpacket.header import cpacket_audio_metadata
 
 CPACKET_MAX_FRAME_LEN = 64 * 1024 * 1024
 
@@ -69,6 +70,9 @@ def parse_cpacket_header(
             "little",
         ),
         "frame_flags": bytes(payload[offset + 12 : offset + 16]),
+        "frame_ms": int.from_bytes(
+            payload[offset + 12 : offset + 14], "little"
+        ),
         "codec": payload[offset + 0x0E],
         "fps_raw": fps_raw,
         "fps": fps_raw / 4.0,
@@ -78,4 +82,5 @@ def parse_cpacket_header(
             payload[offset + 18 : offset + 20],
             "little",
         ),
+        **cpacket_audio_metadata(payload, offset),
     }

@@ -7,6 +7,8 @@ from the package root.
 
 from quii_helper.camera import (
     Camera,
+    CameraAudioFrame,
+    CameraAudioStream,
     CameraCallEvent,
     CameraCallEventPage,
     CameraCaptureError,
@@ -139,6 +141,8 @@ __all__ = [
     "AssetMissingError",
     "AutonomousConfig",
     "Camera",
+    "CameraAudioFrame",
+    "CameraAudioStream",
     "CameraCallEvent",
     "CameraCallEventPage",
     "CameraCaptureError",

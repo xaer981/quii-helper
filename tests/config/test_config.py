@@ -13,6 +13,12 @@ from quii_helper.config import validation as config_validation
 
 
 class ConfigTests:
+    @pytest.mark.parametrize(
+        "value,expected", [("1", 1), ("2", 2), (" 3 ", 3), ("+3", 3)]
+    )
+    def test_resolve_numeric_stream_strings(self, value, expected) -> None:
+        assert resolve_stream_quality(value) == expected
+
     def test_resolve_stream_quality_aliases(self) -> None:
         assert STREAM_HIGH_QUALITY == resolve_stream_quality("high")
         assert STREAM_HIGH_QUALITY == resolve_stream_quality("main")
