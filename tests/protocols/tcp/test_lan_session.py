@@ -4,6 +4,7 @@ import hashlib
 import socket
 import struct
 import threading
+import warnings
 from collections import deque
 from unittest.mock import Mock
 
@@ -16,6 +17,7 @@ from quii_helper.protocols.quii.crypto import aes_cbc_crypt
 from quii_helper.protocols.tcp.live.session import (
     MAX_TCP_PAYLOAD_BYTES,
     LanTcpSession,
+    validate_lan_config,
 )
 from quii_helper.protocols.tcp.transport.socket_transport import (
     TcpSocketTransport,
@@ -208,11 +210,21 @@ def test_invalid_lan_inputs_fail_before_transport_construction(overrides):
         ({"live_newcn": True}, "live_newcn"),
     ],
 )
-def test_unsupported_lan_live_options_fail_before_transport(overrides, option):
-    factory = Mock(side_effect=AssertionError("network must not start"))
-    with pytest.raises(ConfigurationError, match=option):
-        LanTcpSession(config(**overrides), transport_factory=factory)
-    factory.assert_not_called()
+def test_legacy_lan_live_options_warn_and_keep_verified_packet(
+    overrides, option
+):
+    with pytest.warns(UserWarning, match=option):
+        session, sock = session_and_socket(**overrides)
+    with session:
+        header = aes_cbc_crypt(
+            sock.sent[1][:32], KEY, crypto_mode=2, decrypt=True
+        )
+        body = aes_cbc_crypt(
+            sock.sent[1][32:], KEY, crypto_mode=2, decrypt=True
+        )
+        assert header[17] == 0
+        assert b"/mode=real&idc=1&ids=1&ap=2\x00" in body
+        assert b"inner=" not in body and b"newcn=" not in body
 
 
 def test_explicit_supported_lan_live_options_preserve_play_packet():
@@ -229,6 +241,16 @@ def test_explicit_supported_lan_live_options_preserve_play_packet():
         assert header[17] == 0
         assert b"/mode=real&idc=1&ids=1&ap=2\x00" in body
         assert b"inner=" not in body and b"newcn=" not in body
+
+
+def test_default_warning_filter_deduplicates_rtsp_preflight_and_session():
+    settings = config(live_newcn=True)
+    with warnings.catch_warnings(record=True) as observed:
+        warnings.simplefilter("default")
+        validate_lan_config(settings)
+        LanTcpSession(settings)
+    assert len(observed) == 1
+    assert "live_newcn" in str(observed[0].message)
 
 
 @pytest.mark.parametrize(

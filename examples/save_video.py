@@ -1,6 +1,8 @@
 """Record MP4 using CAMERA_CHANNEL and CAMERA_STREAM from .env.
 
 CAMERA_STREAM accepts "high", "low", or numeric ids; quality is not overridden.
+Available G.711 sound is included as AAC automatically. Missing/unsupported
+audio leaves a video-only MP4; no separate audio stream or microphone is used.
 """
 
 from pathlib import Path

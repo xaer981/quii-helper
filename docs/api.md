@@ -104,8 +104,8 @@ overrides the loaded value; `channel` independently selects the panel.
 | `preview_settings` | `PreviewCaptureSettings`; keep defaults unless tuning capture/diagnostics. |
 | `emit` | Callback receiving structured diagnostic summaries. |
 | `status` | Callback receiving user-facing status strings. |
-| `live_play_payload` | Advanced cloud live-play variant: `"path"` (default) or `"oem"`. LAN requires `"path"`. |
-| `live_inner`, `live_newcn` | Advanced cloud packet/URL flags; defaults `False`. LAN requires both `False`. |
+| `live_play_payload` | Advanced cloud live-play variant: `"path"` (default) or `"oem"`. LAN always uses `"path"`. |
+| `live_inner`, `live_newcn` | Advanced cloud packet/URL flags; defaults `False`. LAN always uses both `False`. |
 | `live_keepalive_interval` | Live keepalive interval; base default `10.0` seconds. |
 | `play_sync_iterations` | Extra post-play sync iterations; base default `0`. |
 | `enable_play_probes` | Extra play probes; base default `False`. |
@@ -115,10 +115,11 @@ presets. Change them only with device/native evidence. The defaults above are
 plain configuration defaults; environment settings or a supplied config can
 replace them.
 
-LAN playback rejects non-default values of `live_play_payload`, `live_inner`,
-and `live_newcn` with `ConfigurationError` before opening a camera socket or
-starting an RTSP server. Previously these values were silently ignored in LAN
-mode. Leave them at their defaults; they do not select the panel or quality.
+LAN playback emits a standard Python `UserWarning` for non-default values of
+`live_play_payload`, `live_inner`, and `live_newcn`, then uses the verified
+default profile. Older examples keep working, without silent overrides or a
+cloud fallback. Leave these options at their defaults; they do not select the
+panel or quality. Invalid IPs, keys and selector ranges still raise errors.
 The cloud path retains its existing handling, but support for alternative
 combinations depends on the device and is not universally verified. Native
 `inner=1` sets a play-header flag; the full firmware meaning of `inner` and
@@ -206,12 +207,35 @@ delivery quality, or an exact wall-clock return time.
 LAN MP4 uses the first accepted video frame's FPS (or FFmpeg's H.264 timing
 when it is zero); sparse frames are **not stretched** to the collection window.
 Frames before the first keyframe are suppressed like the native player.
-Recording buffers up to 256 MiB of H.264 payload, then raises
+Recording buffers up to 256 MiB of combined video/audio payload, then raises
 `CameraCaptureError` instead of returning a silently shortened clip. Use shorter
 recordings or RTSP for long-running viewing. Variable-FPS preservation is not
 implemented. The budget is payload size, not a bound on total process RSS.
 RBUDP message limits, post-capture drain and sample-file diagnostics are not
 used in LAN mode; its summary includes TCP, CFrame and NAL statistics instead.
+
+### MP4 Audio
+
+`save_video()`, `record()`, and MP4-producing `capture()` calls automatically
+include available G.711 A-law/mu-law audio at 8000 Hz mono from the **same
+preview connection**. FFmpeg copies H.264 and encodes audio as AAC; no second
+session, microphone or talk command is started. RTSP remains video-only unless
+`audio=True` is explicitly requested.
+
+Audio is anchored to the first retained video frame using native timestamps;
+leading samples are trimmed, a late start gets initial silence, and the tail
+is padded/trimmed to the produced video's duration. Short audio never truncates
+video, and video frames are not repeated to fill the requested window. Native
+audio timestamp jitter is handled with a continuous sample clock, as in RTSP;
+lost samples are not reconstructed. Precise lip-sync is not guaranteed.
+
+Without audio, MP4 remains video-only. Unsupported/changed audio formats,
+unusable timestamps, or unknown video duration cause a `UserWarning` and
+video-only output; encoding/file errors remain render failures. The artifact's
+`summary["audio"]` reports `included`, `source_codec`, `samples`,
+`offset_seconds`, and `skipped_reason`. Private temporary audio is placed next
+to the output and removed after rendering, including on failure. Snapshots
+do not retain an audio recording. Live cloud/Vimar MP4 audio remains unverified.
 
 ### Capture Settings And Results
 
@@ -289,7 +313,8 @@ It is not a lossless recording API or a local playback/PCM decoder.
 Run `python -m examples.listen_audio` to print metadata for ten frames with
 saved credentials. It writes no files and sends no audio or door commands.
 For combined A/V, use `serve_rtsp(audio=True)` instead of opening a separate
-`listen_audio()` connection. JPEG/MP4 output remains video-only.
+`listen_audio()` connection. JPEG has no audio; MP4 recording automatically
+includes supported audio as described in [MP4 Audio](#mp4-audio).
 
 ## RTSP Streaming
 

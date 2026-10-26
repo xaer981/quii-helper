@@ -454,9 +454,9 @@ class Camera:
             auth_version: Cloud XML protocol version from the original app.
             ip_region_id: Cloud login IP region id.
             live_play_payload: Cloud QUII payload variant, `"path"` or `"oem"`.
-                LAN playback requires `"path"`.
-            live_inner: Cloud inner-packet flag. LAN playback requires False.
-            live_newcn: Cloud URL connection flag. LAN playback requires False.
+                LAN warns about other values and uses `"path"`.
+            live_inner: Cloud inner-packet flag. LAN warns and uses False.
+            live_newcn: Cloud URL connection flag. LAN warns and uses False.
             live_keepalive_interval: Seconds between live keepalive packets.
             play_sync_iterations: Number of extra post-play sync iterations.
             enable_play_probes: Whether to send additional play probe packets.
@@ -529,7 +529,7 @@ class Camera:
             stop_when_decodable: Overrides whether capture may stop as soon as
                 enough H.264 context is available.
             render_snapshot: Whether to render a JPEG snapshot.
-            render_video: Whether to render an MP4 video.
+            render_video: Whether to render MP4 with available supported audio.
 
         Returns:
             `CameraCaptureResult` with generated paths, write flags,
@@ -3419,6 +3419,9 @@ class Camera:
 
         LAN uses the camera's FPS, not a stretched collection window. Startup
         and rendering add time; sparse delivery produces a shorter video.
+        Available G.711 8000 Hz mono audio is saved as AAC from the same preview
+        session. Missing/unsupported audio leaves video-only output; unusable
+        formats/timestamps warn rather than preventing video recording.
 
         Args:
             duration_seconds: Desired capture duration in seconds.
@@ -3465,7 +3468,8 @@ class Camera:
         its own ordinary preview session; video is received and discarded.
         No cloud fallback, talk session, microphone, speaker or file is used.
         RTSP audio requires a separate `serve_rtsp(audio=True)` call; do not
-        open both methods just to obtain A/V. MP4 remains video-only. Audio is not
+        open both methods just to obtain A/V. MP4 capture includes supported audio.
+        Audio is not
         implied by successful video playback; use `recv_frame(timeout=...)`.
 
         Returns:

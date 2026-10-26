@@ -16,6 +16,25 @@ from quii_helper.media.h264.io.ffmpeg_state import (
 
 
 class H264FfmpegStateTests:
+    def test_audio_mux_preserves_video_and_bounds_padded_audio(self) -> None:
+        command = h264_mp4_command(
+            Path("stream.h264"),
+            Path("video.mp4"),
+            input_rate_args=["-r", "20.000000"],
+            audio_path=Path("audio.g711"),
+            audio_format="mulaw",
+            audio_offset_seconds=0.2,
+            duration_seconds=1.0,
+        )
+        assert command.count("-i") == 2
+        assert command[command.index("-af") + 1] == (
+            "adelay=200:all=1,apad,atrim=duration=1.000000"
+        )
+        assert command[command.index("-t") + 1] == "1.000000"
+        assert command[command.index("-c:a") + 1] == "aac"
+        assert command[command.index("-c:v") + 1] == "copy"
+        assert "-itsoffset" not in command and "-shortest" not in command
+
     def test_mp4_skip_reason_preserves_false_positive_sps_gate(self) -> None:
         assert FALSE_POSITIVE_SPS_SKIP_REASON == (
             mp4_skip_reason({"false_positive_sps_only": True})

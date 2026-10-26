@@ -18,7 +18,12 @@ being stabilized.
   returning encoded `CameraAudioFrame` payloads and per-frame codec, sample
   rate, channels and raw device-local timestamp metadata. It owns a closeable
   synchronous session, has no cloud fallback, and starts no microphone,
-  speaker, talk session or file writer. MP4 remains video-only.
+  speaker, talk session or file writer.
+- Automatically retain supported G.711 A-law/mu-law (8000 Hz mono) in MP4
+  recordings as AAC from the same preview connection. Align to the first
+  retained video timestamp, trim/pad audio to the produced video duration,
+  clean up temporary audio, and preserve video-only output when audio is
+  absent or unsupported. RTSP audio remains an explicit opt-in.
 - `examples.listen_audio` inspects ten frames without playback or commands.
   Tantos/Pi read-only reception verified 298 G.711 A-law frames at 8000 Hz mono
   in 15 seconds. Vimar audio remains unverified.
@@ -32,8 +37,8 @@ being stabilized.
 
 ### Fixed
 
-- Reject unsupported LAN live-play options before camera/RTSP startup instead
-  of silently ignoring them. LAN requires `live_play_payload="path"`,
+- Warn about unsupported LAN live-play options instead of silently ignoring
+  them or rejecting earlier callers. LAN uses `live_play_payload="path"`,
   `live_inner=False`, and `live_newcn=False`; cloud handling is unchanged.
   Remove the ineffective `live_newcn=True` override from the standalone main.
 - Normalize RTSP paths, including root and trailing-slash paths, and return
@@ -52,6 +57,9 @@ being stabilized.
 
 ### Documentation And Validation
 
+- Verify the MP4 writer from an isolated wheel installation on physical
+  Raspberry Pi ARM64: both Tantos panels at high/low profiles, H.264/AAC
+  decoding and matching track durations, plus warning-only legacy LAN flags.
 - Extend the installed-wheel RTSP soak and CI to test video-only and combined
   A/V for two minutes each, checking separate track sequences/audio timestamps,
   slow-client eviction, bounded queues and worker cleanup.

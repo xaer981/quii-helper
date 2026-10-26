@@ -5,6 +5,7 @@ import hmac
 import ipaddress
 import math
 import time
+import warnings
 from threading import Event
 from typing import cast
 
@@ -48,9 +49,11 @@ def validate_lan_config(config: AutonomousConfig) -> None:
         ("live_newcn", False),
     ):
         if getattr(config, name) != expected:
-            raise ConfigurationError(
-                f"LAN playback requires {name}={expected!r}; "
-                "other values are supported only by the cloud preview path"
+            # A stable warning location avoids duplicate RTSP preflight warnings.
+            warnings.warn(
+                f"{name} is ignored in LAN playback; using {name}={expected!r}. "
+                "Non-default live options apply only to the cloud preview path.",
+                UserWarning,
             )
     try:
         address = ipaddress.ip_address(config.device_host)

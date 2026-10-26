@@ -51,7 +51,20 @@ after startup/timing fixes. Both operations used saved credentials; the combined
 preview connection, not separate audio/video connections. No cloud request,
 door command, microphone transmission, recording, or service reconfiguration
 was performed. Vimar audio, subjective sound quality, and precise lip-sync
-remain unverified. This is not two-way audio or an MP4 audio implementation.
+remain unverified. These receive/RTSP probes did not exercise the new native
+MP4 audio writer; earlier AAC samples were recorded externally through FFmpeg.
+This is not two-way audio.
+
+A separate candidate-wheel MP4 check on Tantos/Pi on 2026-10-26 used a new
+private Python 3.11 ARM64 venv and the host's FFmpeg. Both panels with `high`
+and `low` profiles produced H.264 + AAC 8000 Hz mono files, decoded without
+errors. Audio/video track durations matched: 3.20, 2.25, 3.70 and 3.15 seconds
+from four six-second collection windows. Keyframe/startup delay remains part
+of that window; no video stretching was introduced. Legacy LAN live flags
+warned without aborting the two low-profile captures. Each capture used one
+saved-key TCP session with cloud/HTTP and door calls blocked; no service or
+device settings changed. Temporary audio was removed after muxing. Subjective
+sound quality, exact lip-sync and cloud/Vimar MP4 audio remain unverified.
 
 Local `get.device.streamkey` has not succeeded in the reported Vimar tests or
 our Tantos investigation; this does not establish a firmware-level ban.

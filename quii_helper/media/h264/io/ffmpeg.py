@@ -1,8 +1,11 @@
+import math
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
+from quii_helper.media.audio.recording import AudioRecording
 from quii_helper.media.h264.io.ffmpeg_state import (
     decodable_mp4_skip_reason,
     ffmpeg_input_rate_args,
@@ -51,10 +54,43 @@ def write_h264_mp4_if_decodable(
     h264_analysis: Mapping[str, Any],
     *,
     input_fps: float | None = None,
+    audio: AudioRecording | None = None,
+    duration_seconds: float | None = None,
 ) -> tuple[bool, str, str]:
     skipped_reason = decodable_mp4_skip_reason(h264_analysis)
     if skipped_reason:
         return False, skipped_reason, skipped_reason
+    if audio is not None and audio.data:
+        if (
+            duration_seconds is None
+            or not math.isfinite(duration_seconds)
+            or duration_seconds <= 0
+        ):
+            return (
+                False,
+                "MP4 audio requires a finite positive video duration",
+                "",
+            )
+        try:
+            with TemporaryDirectory(
+                prefix=".quii-audio-", dir=mp4_path.parent
+            ) as temp:
+                audio_path = Path(temp) / "audio.g711"
+                audio_path.write_bytes(audio.data)
+                ok, error = _run_ffmpeg(
+                    h264_mp4_command(
+                        stream_path,
+                        mp4_path,
+                        input_rate_args=ffmpeg_input_rate_args(input_fps),
+                        audio_path=audio_path,
+                        audio_format="alaw" if audio.codec == 4 else "mulaw",
+                        audio_offset_seconds=audio.offset_seconds,
+                        duration_seconds=duration_seconds,
+                    )
+                )
+        except OSError as exc:
+            return False, f"unable to prepare MP4 audio: {exc}", ""
+        return ok and path_written(mp4_path, require_non_empty=True), error, ""
     ok, error = _run_ffmpeg(
         h264_mp4_command(
             stream_path,

@@ -91,9 +91,9 @@ LAN supports AES-256/SHA256 with no separate media encryption. The key must
 contain exactly 32 UTF-8 bytes; it is not hex/base64-decoded or padded. Use its
 matching auth code, not the cloud account or door password.
 Leave `live_play_payload="path"`, `live_inner=False`, and `live_newcn=False`
-for LAN playback. Other values are cloud-path compatibility controls and
-raise `ConfigurationError` before LAN connection attempts; they are no longer
-silently ignored. Panel/quality selection uses `channel` and `stream` instead.
+for LAN playback. Other values are cloud-path compatibility controls: LAN
+warns through Python `UserWarning` and ignores them, so older examples keep
+working. Panel/quality selection uses `channel` and `stream` instead.
 
 ## Stream-Key Bootstrap And Local Reuse
 

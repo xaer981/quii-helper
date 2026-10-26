@@ -1,7 +1,9 @@
+import warnings
 from pathlib import Path
 from typing import Any
 
 from quii_helper.io.paths import DATA_DIR
+from quii_helper.media.audio.recording import AudioRecording
 from quii_helper.media.frames.assembler import (
     AssembledH264Stream,
     assemble_h264_stream_from_messages,
@@ -34,7 +36,9 @@ def write_h264_stream(
 ) -> MediaArtifactSummary:
     return write_assembled_h264_stream(
         base_name,
-        assemble_h264_stream_from_messages(messages),
+        assemble_h264_stream_from_messages(
+            messages, collect_audio=render_video
+        ),
         output_dir=output_dir,
         render_snapshot=render_snapshot,
         render_video=render_video,
@@ -85,12 +89,50 @@ def write_assembled_h264_stream(
                 frame_count=int(summary.get("assembled_units", 0)),
                 target_duration_seconds=target_duration_seconds,
             )
+        duration = (
+            int(summary.get("assembled_units", 0)) / input_fps
+            if input_fps is not None and input_fps > 0
+            else None
+        )
+        audio_to_mux: AudioRecording | None = None
+        audio_summary: dict[str, Any] = {}
+        if assembled_stream.audio is not None:
+            audio = assembled_stream.audio
+            reason = audio.skipped_reason
+            if audio.data:
+                if duration is None:
+                    reason = "video duration is unknown"
+                elif audio.offset_seconds >= duration:
+                    reason = "audio starts after video ends"
+                else:
+                    audio_to_mux = audio
+                if reason:
+                    warnings.warn(
+                        f"MP4 audio unavailable; writing video-only: {reason}",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+            audio_summary = {
+                "included": False,
+                "source_codec": audio.codec,
+                "sample_rate": 8000 if audio.codec is not None else None,
+                "channels": 1 if audio.codec is not None else None,
+                "samples": len(audio.data),
+                "offset_seconds": audio.offset_seconds,
+                "skipped_reason": reason
+                or ("" if audio.data else "no_audio_frames"),
+            }
+            summary["audio"] = audio_summary
         mp4_ok, mp4_error, ffmpeg_skipped_reason = write_h264_mp4_if_decodable(
             stream_path,
             mp4_path,
             h264_analysis,
             input_fps=input_fps,
+            audio=audio_to_mux,
+            duration_seconds=duration,
         )
+        if audio_summary:
+            audio_summary["included"] = mp4_ok and audio_to_mux is not None
 
     snapshot_ok = False
     snapshot_error = ""

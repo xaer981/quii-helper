@@ -10,7 +10,6 @@ from quii_helper.config import AutonomousConfig
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
 )
-from quii_helper.support.errors import ConfigurationError
 
 
 class _FakeRtspAssembler:
@@ -30,7 +29,7 @@ class CameraRtspApiTests:
             ({"live_newcn": True}, "live_newcn"),
         ],
     )
-    def test_unsupported_lan_options_fail_before_rtsp_start(
+    def test_legacy_lan_options_warn_without_blocking_rtsp_start(
         self, overrides, option
     ):
         camera = Camera(
@@ -42,9 +41,9 @@ class CameraRtspApiTests:
             **overrides,
         )
         with patch("quii_helper.camera.api.CameraRtspStream") as rtsp:
-            with pytest.raises(ConfigurationError, match=option):
+            with pytest.warns(UserWarning, match=option):
                 camera.serve_rtsp(audio=True)
-        rtsp.assert_not_called()
+        rtsp.return_value.start.assert_called_once_with()
 
     def test_av_ready_requires_real_audio_and_video_configuration(self):
         from quii_helper.streaming.rtp.g711 import G711Format

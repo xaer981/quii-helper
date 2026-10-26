@@ -39,7 +39,8 @@ The source checkout also includes [experimental audio](https://github.com/xaer98
 `Camera.listen_audio()` returns encoded frames, and `serve_rtsp(audio=True)`
 forwards G.711 sound alongside video through one camera connection. Both were
 tested with Tantos on a Raspberry Pi; they are not yet released on PyPI.
-MP4 remains video-only, and microphone/talkback is not implemented.
+MP4 recording also includes available G.711 sound as AAC; without supported
+audio it remains video-only. Microphone/talkback is not implemented.
 
 ## Compatibility 🔍
 
@@ -165,7 +166,8 @@ bandwidth. Numeric ids still work: `1` = `high`, `2` = `low`; other ids and exac
 resolutions depend on firmware. `main.py` and the media examples honor these
 settings; explicit `Camera(..., stream_quality="high")` overrides them.
 LAN playback uses `live_play_payload="path"`, `live_inner=False`, and
-`live_newcn=False`; other values raise `ConfigurationError` before connecting.
+`live_newcn=False`; other values produce a `UserWarning` and are ignored,
+preserving compatibility with older examples.
 These advanced compatibility options do not select the panel or quality.
 You can remove cloud settings from this application's `.env`;
 if retained, they are not used for this LAN connection. **No cloud account or

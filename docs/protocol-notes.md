@@ -73,10 +73,10 @@ returned 640x480. This does not prove independent third-profile support or
 simultaneous panel sessions. Earlier probes with the fixed channel-1/stream-1
 header did not validate alternate selector values.
 
-LAN accepts only the verified path-form play with `live_inner=False` and
+LAN sends the verified path-form play with `live_inner=False` and
 `live_newcn=False`. Non-default values of these flags or `live_play_payload`
-are rejected before transport construction, not silently ignored. This is a
-host-side compatibility policy, not evidence that firmware forbids the flags.
+emit a standard Python warning and are ignored, preserving earlier callers.
+This is a host-side compatibility policy, not evidence that firmware forbids the flags.
 Native `ParseURL` (`0047ccac`) detects `inner=1`; `OnSendPlay` (`0047d898`)
 copies that state to header byte 17. Its broader firmware meaning and that of
 `newcn=1` remain unconfirmed. The cloud RBUDP handling is unchanged.
@@ -87,10 +87,17 @@ are rejected before media is delivered. A 5 MiB payload cap is host policy,
 not a native protocol constant. Partial headers/bodies survive read timeouts;
 invalid packets, rejected play, SHA failures and EOF close the session.
 One receive timeout covers header and body together, preserving partial bytes.
-LAN recording collects at most 256 MiB of H.264 payload and fails explicitly on
-overflow; this is not a process RSS limit. RTSP retains only bounded assembler
+LAN recording collects at most 256 MiB of combined video/audio payload and
+fails explicitly on overflow; this is not a process RSS limit. RTSP retains only bounded assembler
 state/history and the server's bounded per-viewer queues, not a recording buffer.
-Existing cloud rendering/retiming remains unchanged. Explicit
+Existing video rendering/retiming remains unchanged. MP4 rendering additionally
+collects supported G.711 from the same retained CFrame sequence and encodes AAC.
+The first native audio/video timestamp pair provides the offset; subsequent
+audio follows sample count to avoid device timestamp jitter. Initial silence
+and end padding/trimming follow the produced video duration, not the requested
+capture window. Unsupported audio warns and leaves video usable; the LAN 256 MiB
+budget includes both payloads. No audio connection or new wire command is added.
+Explicit
 `Camera.fetch_stream_credentials()` reuses the existing cloud `login` +
 `get-device-token` flow and maps `data_encode_key` / `auth_code` into the minimal
 `CameraStreamCredentials` model. It introduces no new wire commands or

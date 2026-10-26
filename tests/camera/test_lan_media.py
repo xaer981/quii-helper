@@ -3,6 +3,7 @@
 import json
 import shutil
 import socket
+import struct
 import subprocess
 import threading
 import time
@@ -14,6 +15,7 @@ import pytest
 from quii_helper import Camera, CameraCaptureError, QuiiConnectionError
 from quii_helper.camera.runtime import lan_capture
 from quii_helper.protocols.tcp.codec.message_codec import decode_tcp_header
+from tests.media.audio.test_frames import audio_cpacket
 from tests.media.frames.test_parsing import _cpacket
 from tests.protocols.tcp.test_lan_session import (
     KEY,
@@ -77,7 +79,12 @@ def local_camera(
                                     return
                             except TimeoutError:
                                 continue
-            except (EOFError, ConnectionResetError, BrokenPipeError):
+            except (
+                EOFError,
+                ConnectionResetError,
+                ConnectionAbortedError,
+                BrokenPipeError,
+            ):
                 closed.set()
             except Exception as exc:
                 errors.append(exc)
@@ -91,6 +98,32 @@ def local_camera(
             thread.join(3)
             assert not thread.is_alive()
             assert not errors
+
+
+def test_local_camera_accepts_windows_connection_abort(monkeypatch):
+    monkeypatch.setattr(
+        "tests.camera.test_lan_media._read_exact",
+        Mock(side_effect=ConnectionAbortedError(10053, "connection aborted")),
+    )
+    with local_camera([]) as (port, closed):
+        with socket.create_connection(("127.0.0.1", port)):
+            assert closed.wait(2)
+
+
+def test_local_camera_reports_unexpected_socket_errors(monkeypatch):
+    failed = threading.Event()
+
+    def invalid_read(sock, size):
+        failed.set()
+        raise OSError(10022, "invalid socket argument")
+
+    monkeypatch.setattr(
+        "tests.camera.test_lan_media._read_exact", invalid_read
+    )
+    with pytest.raises(AssertionError):
+        with local_camera([]) as (port, _):
+            with socket.create_connection(("127.0.0.1", port)):
+                assert failed.wait(2)
 
 
 @pytest.fixture(autouse=True)
@@ -371,3 +404,164 @@ def test_real_tcp_to_jpeg_and_mp4_preserves_source_fps(
     assert len(list(tmp_path.glob("*.jpg"))) == 1
     assert len(list(tmp_path.glob("*.mp4"))) == 1
     assert not list(tmp_path.glob("*.h264"))
+
+
+@pytest.mark.parametrize(
+    "codec,method", [(4, "save_video"), (5, "record"), (4, "capture")]
+)
+def test_mp4_automatically_muxes_audio_without_shortening_video(
+    tmp_path, encoded_frame, codec, method
+):
+    stamp = 0x6AA12345
+    packets = [media(audio_cpacket(b"before-keyframe", codec=codec, ms=0))]
+    for index in range(20):
+        packet = bytearray(
+            _cpacket(
+                encoded_frame,
+                fps_raw=80,
+                width=64,
+                height=48,
+                frame_stamp=stamp,
+            )
+        )
+        packet[12:14] = (index * 50).to_bytes(2, "little")
+        packets.append(media(bytes(packet)))
+        if index == 4:
+            for audio_index in range(10):
+                packets.append(
+                    media(
+                        audio_cpacket(
+                            (b"\xaa" * 4 + b"\x2a" * 4) * 40,
+                            codec=codec,
+                            ms=200 + audio_index * 40,
+                        )
+                    )
+                )
+    with local_camera(packets) as (port, _):
+        camera = camera_for(port, tmp_path)
+        if method == "capture":
+            result = camera.capture(
+                duration_seconds=0.15, stop_when_decodable=False
+            )
+            video = result.require_video()
+            assert (
+                result.require_snapshot().read_bytes().startswith(b"\xff\xd8")
+            )
+            assert result.summary["media_result"]["summary"]["audio"][
+                "included"
+            ]
+        else:
+            video = getattr(camera, method)(0.15)
+    probe = json.loads(
+        subprocess.check_output(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_streams",
+                "-show_format",
+                "-of",
+                "json",
+                str(video),
+            ],
+            timeout=10,
+        )
+    )
+    tracks = {item["codec_type"]: item for item in probe["streams"]}
+    assert set(tracks) == {"video", "audio"}
+    assert tracks["video"]["codec_name"] == "h264"
+    assert tracks["video"]["nb_frames"] == "20"
+    assert tracks["audio"]["codec_name"] == "aac"
+    assert tracks["audio"]["sample_rate"] == "8000"
+    assert tracks["audio"]["channels"] == 1
+    assert float(probe["format"]["duration"]) == pytest.approx(1.0, abs=0.06)
+    assert float(tracks["audio"]["start_time"]) == pytest.approx(0, abs=0.02)
+    pcm = subprocess.check_output(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-i",
+            str(video),
+            "-map",
+            "0:a:0",
+            "-f",
+            "s16le",
+            "pipe:1",
+        ],
+        timeout=10,
+    )
+    samples = struct.unpack(f"<{len(pcm) // 2}h", pcm)
+    onset = next(
+        index for index, sample in enumerate(samples) if abs(sample) > 512
+    )
+    assert 0.15 <= onset / 8000 <= 0.23
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-xerror",
+            "-i",
+            str(video),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=10,
+    )
+    assert all(path.suffix in {".mp4", ".jpg"} for path in tmp_path.iterdir())
+    assert len(list(tmp_path.glob("*.mp4"))) == 1
+
+
+def test_snapshot_does_not_collect_audio(tmp_path, monkeypatch):
+    render = fake_renderer(monkeypatch)
+    with local_camera(
+        [
+            media(_cpacket(ANNEXB)),
+            media(audio_cpacket()),
+        ]
+    ) as (port, _):
+        camera_for(port, tmp_path).snapshot(timeout_seconds=0.1)
+    assert render.call_args.args[1].audio is None
+
+
+def test_audio_counts_towards_the_shared_capture_memory_limit(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        lan_capture, "MAX_LAN_CAPTURE_BYTES", len(ANNEXB) + 319
+    )
+    render = fake_renderer(monkeypatch)
+    with local_camera(
+        [
+            media(_cpacket(ANNEXB, frame_stamp=0x6AA12345)),
+            media(audio_cpacket(b"a" * 320, ms=0)),
+        ]
+    ) as (port, _):
+        with pytest.raises(CameraCaptureError, match="buffer limit"):
+            camera_for(port, tmp_path).save_video(0.1)
+    render.assert_not_called()
+
+
+def test_unsupported_audio_warns_but_preserves_video_capture(
+    tmp_path, monkeypatch
+):
+    render = fake_renderer(monkeypatch)
+    with local_camera(
+        [
+            media(_cpacket(ANNEXB, frame_stamp=0x6AA12345)),
+            media(audio_cpacket(codec=9)),
+        ]
+    ) as (port, _):
+        with pytest.warns(UserWarning, match="video-only"):
+            camera_for(port, tmp_path).save_video(0.1)
+    assembled = render.call_args.args[1]
+    assert assembled.stream_bytes == ANNEXB
+    assert assembled.audio.skipped_reason and not assembled.audio.data
