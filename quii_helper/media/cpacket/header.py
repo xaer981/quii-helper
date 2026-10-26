@@ -9,6 +9,28 @@ from quii_helper.media.cpacket.constants import (
 from quii_helper.media.h264.merge.probe_analysis import analyze_annexb_h264
 
 
+def cpacket_audio_metadata(
+    blob: bytes | bytearray, offset: int = 0
+) -> dict[str, Any]:
+    """Read native E3 audio fields instead of interpreting them as video."""
+    if blob[offset + 3] != 0xE3:
+        return {}
+    return {
+        "is_audio": True,
+        "channels": blob[offset + 0x0F],
+        "sample_rate": int.from_bytes(
+            blob[offset + 0x10 : offset + 0x12], "little"
+        ),
+        "frame_ms": int.from_bytes(
+            blob[offset + 0x0C : offset + 0x0E], "little"
+        ),
+        "fps_raw": 0,
+        "fps": 0.0,
+        "width": 0,
+        "height": 0,
+    }
+
+
 def cpacket_codec_name(codec: int) -> str:
     if codec == 1 or 0x10 <= codec <= 0x1F:
         return "h264"
@@ -92,6 +114,7 @@ def parse_cpacket_header(blob: bytes, offset: int = 0) -> dict[str, Any]:
             "plausible": plausible,
             "payload_prefix_hex": payload[:64].hex(),
             "media_analysis": media_analysis,
+            **cpacket_audio_metadata(blob, offset),
         }
     )
     return result

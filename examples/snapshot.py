@@ -1,4 +1,7 @@
-"""Capture a single JPEG snapshot using environment-backed settings."""
+"""Capture a JPEG using CAMERA_CHANNEL and CAMERA_STREAM from .env.
+
+CAMERA_STREAM accepts "high", "low", or numeric ids; quality is not overridden.
+"""
 
 from pathlib import Path
 

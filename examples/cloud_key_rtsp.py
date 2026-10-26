@@ -3,6 +3,8 @@
 Run ``python -m examples.cloud_key_rtsp`` with cloud/app settings and the LAN IP
 configured in `.env`. Every run fetches and replaces the saved pair. Use
 ``python -m examples.lan_rtsp`` for subsequent starts without cloud requests.
+The later LAN preview honors CAMERA_CHANNEL and CAMERA_STREAM ("high", "low",
+or a numeric id); cloud bootstrap does not choose a panel or quality profile.
 """
 
 from quii_helper import Camera, CameraStreamCredentials, load_config

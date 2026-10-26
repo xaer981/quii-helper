@@ -8,11 +8,9 @@ def main() -> None:
     configure_logging(replace_existing=True)
     camera = Camera(
         config=load_config(),
-        stream_quality="high",
-        live_newcn=True,
         tls_verify=False,
     )
-    with camera.serve_rtsp(port=8554) as stream:
+    with camera.serve_rtsp(port=8554, audio=True) as stream:
         stream.wait()
 
 

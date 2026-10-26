@@ -7,6 +7,7 @@ from threading import Lock
 from dotenv import dotenv_values
 
 from quii_helper.config.connection import validate_connection_options
+from quii_helper.config.validation import resolve_stream_quality
 from quii_helper.support.errors import ConfigurationError
 
 _DEFAULT_SETTINGS: "EnvironmentSettings | None" = None
@@ -85,6 +86,14 @@ class SettingsLoader:
         mode = self.getenv("CAMERA_CONNECTION_MODE", default="lan")
         port = self.getenv_int("CAMERA_STREAM_PORT", default=34567)
         validate_connection_options(mode, port)
+        try:
+            stream = resolve_stream_quality(
+                self.getenv("CAMERA_STREAM", "QUII_STREAM", default="low")
+            )
+        except ConfigurationError as exc:
+            raise ConfigurationError(
+                f"CAMERA_STREAM (or QUII_STREAM): {exc}"
+            ) from exc
         return EnvironmentSettings(
             project_root=self.project_root,
             default_assets_dir=assets_dir,
@@ -129,11 +138,7 @@ class SettingsLoader:
                 "QUII_CHANNEL",
                 default=1,
             ),
-            camera_stream=self.getenv_int(
-                "CAMERA_STREAM",
-                "QUII_STREAM",
-                default=2,
-            ),
+            camera_stream=stream,
             tls_verify=self.getenv_bool(
                 "TLS_VERIFY",
                 "CLOUD_TLS_VERIFY",

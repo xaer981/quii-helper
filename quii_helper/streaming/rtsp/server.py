@@ -4,12 +4,18 @@ import secrets
 import socket
 import threading
 import time
+from base64 import b64encode
 from dataclasses import dataclass, field
+from typing import Any
 
+from quii_helper.media.audio import CameraAudioFrame
+from quii_helper.streaming.rtp.clock import RtpMediaClock
+from quii_helper.streaming.rtp.g711 import G711Format, packetize_g711
 from quii_helper.streaming.rtp.h264 import (
     DEFAULT_H264_PAYLOAD_TYPE,
     DEFAULT_MAX_RTP_PAYLOAD_SIZE,
     DEFAULT_RTP_CLOCK_RATE,
+    annexb_nal_units,
     packetize_h264_access_unit,
 )
 from quii_helper.streaming.rtsp.client import RtspClient
@@ -25,6 +31,7 @@ class RtspH264Server:
     advertised_host: str | None = None
     payload_type: int = DEFAULT_H264_PAYLOAD_TYPE
     max_payload_size: int = DEFAULT_MAX_RTP_PAYLOAD_SIZE
+    audio: bool = field(default=False, kw_only=True)
     ssrc: int = field(default_factory=lambda: secrets.randbits(32))
     session_id: str = field(
         default_factory=lambda: secrets.token_hex(8), init=False
@@ -45,6 +52,25 @@ class RtspH264Server:
         default_factory=lambda: secrets.randbits(16), init=False
     )
     _running: bool = field(default=False, init=False)
+    audio_format: G711Format | None = field(default=None, init=False)
+    audio_ready: threading.Event = field(
+        default_factory=threading.Event, init=False, repr=False
+    )
+    _audio_ssrc: int = field(
+        default_factory=lambda: secrets.randbits(32), init=False
+    )
+    _audio_sequence: int = field(
+        default_factory=lambda: secrets.randbits(16), init=False
+    )
+    _audio_timestamp: int | None = field(default=None, init=False)
+    _media_clock: RtpMediaClock = field(
+        default_factory=RtpMediaClock, init=False
+    )
+    _sps: bytes = field(default=b"", init=False)
+    _pps: bytes = field(default=b"", init=False)
+    video_ready: threading.Event = field(
+        default_factory=threading.Event, init=False, repr=False
+    )
 
     def start(self) -> "RtspH264Server":
         if self._running:
@@ -52,6 +78,14 @@ class RtspH264Server:
 
         self.path = _normalize_path(self.path)
         self._stop_event.clear()
+        self.audio_ready.clear()
+        self.audio_format = None
+        self._audio_timestamp = None
+        if self._audio_ssrc == self.ssrc:
+            self._audio_ssrc = (self.ssrc + 1) & 0xFFFFFFFF
+        self._media_clock = RtpMediaClock()
+        self._sps = self._pps = b""
+        self.video_ready.clear()
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -103,11 +137,40 @@ class RtspH264Server:
     def stop_event(self) -> threading.Event:
         return self._stop_event
 
-    def publish(self, access_unit: bytes) -> None:
+    @property
+    def parameter_sets(self) -> str:
+        """Bounded H.264 decoder configuration for a joining RTSP viewer."""
+        if not self._sps or not self._pps:
+            return ""
+        return (
+            b64encode(self._sps).decode("ascii")
+            + ","
+            + b64encode(self._pps).decode("ascii")
+        )
+
+    def publish_frame(self, access_unit: bytes, frame: dict[str, Any]) -> None:
+        """Publish video on the same native-timestamp timeline as audio."""
+        timestamp = self._media_clock.timestamp(
+            frame["frame_stamp"], frame["frame_ms"], DEFAULT_RTP_CLOCK_RATE
+        )
+        self.publish(access_unit, timestamp=timestamp)
+
+    def publish(
+        self, access_unit: bytes, *, timestamp: int | None = None
+    ) -> None:
         if not access_unit or not self._running:
             return
 
-        timestamp = self.rtp_timestamp()
+        units = annexb_nal_units(access_unit)
+        keyframe = any(unit[0] & 31 == 5 for unit in units)
+        for unit in units:
+            if unit[0] & 31 == 7 and len(unit) <= 4096:
+                self._sps = unit
+            elif unit[0] & 31 == 8 and len(unit) <= 4096:
+                self._pps = unit
+        if self._sps and self._pps:
+            self.video_ready.set()
+        timestamp = self.rtp_timestamp() if timestamp is None else timestamp
         result = packetize_h264_access_unit(
             access_unit,
             sequence_number=self._sequence_number,
@@ -121,12 +184,50 @@ class RtspH264Server:
             return
 
         for client in self._playing_clients():
-            if not client.enqueue_rtp_packets(result.packets):
+            if not client.enqueue_rtp_packets(
+                result.packets, keyframe=keyframe
+            ):
                 self.remove_client(client)
+
+    def publish_audio(self, frame: CameraAudioFrame) -> None:
+        """Publish native G.711 bytes on track 1 without another camera session."""
+        if not self.audio or not self._running:
+            return
+        profile = G711Format.from_frame(frame)
+        if self.audio_format is not None and self.audio_format != profile:
+            raise ValueError("RTSP audio format changed; restart the stream")
+        self.audio_format = profile
+        self.audio_ready.set()
+        if self._audio_timestamp is None:
+            self._audio_timestamp = self._media_clock.timestamp(
+                frame.frame_stamp, frame.milliseconds, 8000
+            )
+        # Native audio timestamps jitter; continuous G.711 follows sample count.
+        result = packetize_g711(
+            frame.data,
+            payload_type=profile.payload_type,
+            sequence_number=self._audio_sequence,
+            timestamp=self._audio_timestamp,
+            ssrc=self._audio_ssrc,
+            max_payload_size=self.max_payload_size,
+        )
+        self._audio_sequence = result.next_sequence_number
+        self._audio_timestamp = (
+            self._audio_timestamp + len(frame.data)
+        ) & 0xFFFFFFFF
+        for client in self._playing_clients():
+            if not client.enqueue_rtp_packets(result.packets, track_id=1):
+                self.remove_client(client)
+
+    def track_ssrc(self, track_id: int) -> int:
+        """Return the SSRC actually used by this track's RTP packets."""
+        return self.ssrc if track_id == 0 else self._audio_ssrc
 
     def close(self) -> None:
         with self._clients_lock:
             self._stop_event.set()
+            self.audio_ready.set()
+            self.video_ready.set()
             self._running = False
             sock, self._sock = self._sock, None
             thread, self._accept_thread = self._accept_thread, None
@@ -192,4 +293,4 @@ class RtspH264Server:
 def _normalize_path(path: str) -> str:
     if not path:
         return "/live"
-    return path if path.startswith("/") else f"/{path}"
+    return "/" + path.strip("/")

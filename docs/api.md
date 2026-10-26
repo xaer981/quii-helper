@@ -13,8 +13,9 @@ no cloud/P2P/relay fallback. Cloud metadata/history methods reject this mode
 before I/O. Local CGI methods remain available without a stream key; door
 `password_mode="auto"` cannot perform a cloud capability lookup in this mode.
 
-LAN `capture()`, `snapshot()`, `save_video()`, `record()` and `serve_rtsp()` use
-the direct TCP session and shared CFrame/H.264 components. Invalid LAN settings
+LAN `capture()`, `snapshot()`, `save_video()`, `record()`, `serve_rtsp()` and
+`listen_audio()` use the direct TCP session and shared CFrame components.
+Invalid LAN settings
 fail before connecting (and before RTSP binds a listener). Invalid keys,
 unsupported profiles and connection failures never trigger a cloud fallback.
 Select `connection_mode="cloud"` explicitly for the cloud/P2P pipeline.
@@ -38,6 +39,7 @@ file, changes `.env`, or renews expired credentials.
 - [Connection modes](#connection-modes), including direct LAN playback.
 - [Stream-key bootstrap and persistence](#stream-key-bootstrap-and-persistence).
 - [Capture](#capture-methods), [RTSP](#rtsp-streaming), and [logging](#logging).
+- [Receive-only audio](#receive-only-audio-experimental); no talkback or playback.
 - [Cloud queries](#cloud-read-only-methods) and [call history](#incoming-call-history-experimental).
 - [LAN discovery](#lan-discovery) and [local inspection](#local-device-read-only-methods).
 - [Archive queries](#archive-queries), [door control](#door-control), and [errors](#error-codes).
@@ -69,9 +71,17 @@ for this camera; the supplied configuration is copied.
 | `device_host` | Explicit IP for LAN TCP; LAN host/IP for local CGI methods. Not discovered implicitly. |
 | `auth_code` | LAN TCP/CGI authentication code, separate from the opening password. |
 | `unlock_password` | Door-opening password used only by explicit `open_door()` calls. |
-| `channel` | Video-panel channel; base default `1`. |
-| `stream` | Numeric stream id; base default `2`. |
+| `channel` | Video-panel channel; base default `1`. LAN accepts `1-65535`; the device determines which inputs actually exist. |
+| `stream` | Numeric stream id; base default `2`. LAN accepts `1-256`, but available profiles are device-specific. |
 | `stream_quality` | Friendly selector such as `"high"` (`1`) or `"low"` (`2`). Mutually exclusive with an explicit `stream`. |
+
+For environment-backed configuration, use the same profiles in `CAMERA_STREAM`:
+`high` / `main` / `1` selects stream 1, `low` / `sub` / `2` selects stream 2
+(default). Other positive numeric ids remain available for device-specific
+profiles. `load_config()` resolves the value to an integer; the numeric
+`AutonomousConfig.stream` field and wire format do not change. Exact resolution
+depends on firmware. An explicit `Camera(..., stream_quality=...)` or `stream=...`
+overrides the loaded value; `channel` independently selects the panel.
 
 ### Cloud And Assets
 
@@ -94,8 +104,8 @@ for this camera; the supplied configuration is copied.
 | `preview_settings` | `PreviewCaptureSettings`; keep defaults unless tuning capture/diagnostics. |
 | `emit` | Callback receiving structured diagnostic summaries. |
 | `status` | Callback receiving user-facing status strings. |
-| `live_play_payload` | Native live-play variant; base default `"path"`. |
-| `live_inner`, `live_newcn` | Native packet/connection flags; base defaults `False`. |
+| `live_play_payload` | Advanced cloud live-play variant: `"path"` (default) or `"oem"`. LAN requires `"path"`. |
+| `live_inner`, `live_newcn` | Advanced cloud packet/URL flags; defaults `False`. LAN requires both `False`. |
 | `live_keepalive_interval` | Live keepalive interval; base default `10.0` seconds. |
 | `play_sync_iterations` | Extra post-play sync iterations; base default `0`. |
 | `enable_play_probes` | Extra play probes; base default `False`. |
@@ -104,6 +114,15 @@ Advanced protocol options are compatibility controls, not general performance
 presets. Change them only with device/native evidence. The defaults above are
 plain configuration defaults; environment settings or a supplied config can
 replace them.
+
+LAN playback rejects non-default values of `live_play_payload`, `live_inner`,
+and `live_newcn` with `ConfigurationError` before opening a camera socket or
+starting an RTSP server. Previously these values were silently ignored in LAN
+mode. Leave them at their defaults; they do not select the panel or quality.
+The cloud path retains its existing handling, but support for alternative
+combinations depends on the device and is not universally verified. Native
+`inner=1` sets a play-header flag; the full firmware meaning of `inner` and
+`newcn` is not established.
 
 ## Library Configuration
 
@@ -220,11 +239,63 @@ print(result.summary)
 in its result; it can still raise configuration, connection, or decoder errors.
 `snapshot()` and `save_video()` require their requested artifact to succeed.
 
+## Receive-Only Audio (Experimental)
+
+This API is **unreleased/source-checkout only**. Tantos G.711 A-law reception
+was tested on a physical Pi; Vimar audio remains unverified. It reads E3 frames from a LAN preview
+using the same saved key/auth pair as video. It never fetches or renews keys,
+contacts cloud, opens a talk connection or activates a microphone/speaker.
+Cloud mode is rejected before connecting. Each call opens a separate preview
+session and discards its video; avoid unnecessary simultaneous sessions on a
+resource-constrained intercom.
+
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `listen_audio()` | `CameraAudioStream` | Open receive-only encoded audio over a separate LAN preview session. |
+
+```python
+from quii_helper import Camera, CameraStreamCredentials, load_config
+
+saved = CameraStreamCredentials.load("data/stream_credentials.json")
+camera = Camera(
+    config=load_config(),
+    connection_mode="lan",
+    stream_key=saved.stream_key,
+    auth_code=saved.auth_code,
+)
+with camera.listen_audio() as audio:
+    frame = audio.recv_frame(timeout=5.0)
+    print(frame.codec_name, frame.sample_rate, frame.channels, len(frame.data))
+```
+
+| Handle / field | Meaning |
+| --- | --- |
+| `audio.recv_frame(timeout=5.0)` | Wait at most this many seconds for one complete `CameraAudioFrame`, including time spent receiving video/control messages. |
+| `audio.close()` | Close the owned socket and discard queued/partial frames; repeat calls are safe. A closed handle cannot reopen. |
+| `frame.data` | Encoded audio bytes without the CPacket header, **not necessarily PCM or a WAV file**. Hidden from the frame's representation. |
+| `frame.codec`, `frame.codec_name` | Original codec id; verified names are `4=g711_alaw`, `5=g711_mulaw`, `9=pcm`. Other ids remain `codec_N`; no decoding is attempted. |
+| `frame.sample_rate`, `frame.channels` | Values reported by each frame; a stream may change format. |
+| `frame.frame_stamp`, `frame.milliseconds` | Raw packed device-local calendar and its millisecond component, **not a Unix timestamp**. No timezone conversion is guessed. |
+
+`TimeoutError` means no complete audio arrived within the deadline. The
+connection and partial frame remain available for another read. Successful
+video does not guarantee audio; a silent/unsupported device may time out.
+Invalid audio metadata, EOF and connection errors raise `QuiiConnectionError`
+and close the stream. Invalid timeouts raise `ValueError` before reading.
+Use one reader per handle; another thread may call `close()` to cancel I/O.
+The stream has no background reader or retained history: drain it promptly.
+It is not a lossless recording API or a local playback/PCM decoder.
+
+Run `python -m examples.listen_audio` to print metadata for ten frames with
+saved credentials. It writes no files and sends no audio or door commands.
+For combined A/V, use `serve_rtsp(audio=True)` instead of opening a separate
+`listen_audio()` connection. JPEG/MP4 output remains video-only.
+
 ## RTSP Streaming
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
-| `serve_rtsp(host="127.0.0.1", port=8554, path="/live")` | `CameraRtspStream` | Start a listener and background camera producer. |
+| `serve_rtsp(host="127.0.0.1", port=8554, path="/live", audio=False)` | `CameraRtspStream` | Start a listener and one background preview producer; audio is opt-in. |
 
 ```python
 from quii_helper import Camera, load_config
@@ -243,6 +314,30 @@ Open `rtsp://127.0.0.1:8554/live` in VLC after media arrives. The helper forward
 the QUII H.264 preview; it does not enable native RTSP on the camera or require
 FFmpeg. Each call opens its own preview session.
 
+In the unreleased source version, pass **`audio=True`** for H.264 plus G.711
+A-law/mu-law, 8000 Hz mono. Both tracks use **the same camera connection and
+CFrame assembler**; do not open `listen_audio()` as well. No audio decoding,
+resampling, microphone, speaker or talk connection is started by the library.
+The library default remains video-only; `quii_helper.main` opts into audio.
+
+RTSP paths are normalized (`"/live/"` becomes `"/live"`; `"/"` is supported).
+DESCRIBE returns a `Content-Base` matching the authority used by the viewer,
+so relative SDP track URLs work without relying on player-specific URL rules.
+Live PLAY responses do not announce `RTP-Info` sequence/timestamp values that
+cannot be known before the next keyframe; timestamps remain in the RTP packets.
+
+With audio enabled, SDP advertises track 0 (H.264) and track 1 (PCMA/PCMU) only
+after actual audio format and H.264 parameters are available. An early DESCRIBE
+can wait up to ten seconds, then return `503`/`Retry-After`. Unknown audio
+profiles, a codec change or invalid device timestamps fail explicitly and stop
+the producer; use `audio=False` on unsupported cameras. A joining/resuming
+viewer waits for a keyframe rather than receiving undecodable P-frames.
+Source timestamps are mapped to a common device-relative A/V timeline, but
+precise lip-sync is not guaranteed across players: RTCP sender reports are not
+implemented yet. TCP interleaving and separate per-track UDP transports are
+covered by offline tests; Tantos combined A/V was decoded on a Pi over TCP and UDP.
+Vimar/cloud audio and subjective sound quality remain unverified.
+
 | Stream handle | Meaning |
 | --- | --- |
 | `session.url` | Address, **not** a readiness check. |
@@ -251,7 +346,8 @@ FFmpeg. Each call opens its own preview session.
 | `session.close()` | Request cancellation and release the listener; also called by the context manager. |
 
 The `RTSP stream ready` log appears after the first assembled H.264 access
-unit, if library logging is enabled. A producer failure closes the listener;
+unit (and known audio format/SPS/PPS when enabled), if library logging is enabled.
+A producer failure closes the listener;
 there is no automatic camera reconnect. An in-flight cloud/connection call can
 finish only at its own timeout during shutdown; subsequent startup stages are
 cancelled and overlapping restarts are rejected while the producer is stopping.
@@ -724,12 +820,14 @@ from its root after installation/configuration:
 | `python -m examples.serve_rtsp` | Serve RTSP on localhost port `8554`. |
 | `python -m examples.cloud_key_rtsp` | Explicit cloud login/key fetch, save/reload `data/stream_credentials.json`, then serve LAN-only RTSP. Each run contacts cloud first. |
 | `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
+| `python -m examples.listen_audio` | Experimental/unreleased: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until
-`Ctrl+C`, without opening a door. It currently forces `stream_quality="high"`,
-`live_newcn=True`, and **`tls_verify=False`**, overriding `.env` for those
-options, but does not select cloud mode or load a saved JSON automatically.
+`Ctrl+C`, without opening a door. It honors `CAMERA_CHANNEL` and `CAMERA_STREAM`,
+including named quality profiles, and no longer forces `live_newcn=True`.
+It still forces **`tls_verify=False`**, overriding `.env` for that option,
+but does not select cloud mode or load a saved JSON automatically.
 For saved-file LAN starts use `examples.lan_rtsp`; for environment-supplied
 keys and configured TLS policy use `examples.serve_rtsp`. The main entry point's
 TLS override is unrelated to native LAN TCP, which does not use HTTPS.

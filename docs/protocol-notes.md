@@ -10,6 +10,7 @@ findings below refer to the inspected app builds, not every vendor release.
 
 - [Connection flow](#connection-flow), [LAN TCP](#lan-tcp-session), [media](#media-capture), and [RTSP](#rtsp-streaming).
 - [Runtime limits](#runtime-limits-and-lifecycle).
+- [Receive-only audio](#receive-only-audio).
 - [Cloud history](#cloud-incoming-call-history) and [local device APIs](#local-device-apis).
 - [Receive parity](#receive-buffer-parity) and [failure/backpressure](#receiver-failure-and-backpressure).
 - [Native asset validation](#native-crypto-asset-validation) and [package layout](#package-layout).
@@ -47,6 +48,7 @@ The implementation was checked against `liblive_player.so` via GhidraMCP:
 | --- | --- |
 | `00479814` | Setup status byte 9; command crypto mode byte 10. |
 | `0047c0fc` | Live defaults: header flag word at 13 is 1; stream flag is 0. |
+| `0047ccac`, `0047d898` | `ParseURL` reads `idc` and `ids - 1`; play header bytes 13-14 contain the channel as little-endian uint16, byte 16 contains the zero-based stream index. |
 | `0047d898`, `007f0cc4` | Play timestamp is time_t in seconds; username/password/path body, SHA and separate header/body encryption. |
 | `00479d98` | Command SHA covers header only, except type `0xfe` also covers its declared body. |
 | `0047e198` | Play status byte 11; byte 12 equal to 1 marks active play. |
@@ -55,6 +57,29 @@ The implementation was checked against `liblive_player.so` via GhidraMCP:
 | `007dc394` | `CPacket::FrameGetFPS()` reads CPacket byte 15 divided by 4.0. LAN MP4 uses this rate, not the requested capture window. |
 | `00479020` | Keepalive type 0, empty body, zero play flags, SHA and separate encryption. |
 | `0047b914`, `0047b694` | Separate media encryption can use a third key; it must not be guessed from the command key. |
+
+The TCP packet builder encodes channel/stream selectors from the live path in
+the binary header as well as the body. Changing only `idc`/`ids` in the body
+does not reproduce native selection. LAN configuration accepts channels
+1-65535 and streams 1-256; rejecting larger values is host-side validation to
+prevent truncation, not evidence that a camera has that many inputs/profiles.
+Regression tests decrypt the actual outgoing play packet and check both the
+selectors and SHA. Physical panel/profile availability remains device-specific.
+On 2026-10-26 the corrected source build was checked on Tantos/Pi using channels
+1/2 and streams 1/2/3, with the saved key and no cloud requests. The channels
+showed distinct outdoor/indoor views; all six 15-second A/V samples decoded
+without errors. Stream 1 resolutions differed by panel; streams 2 and 3 both
+returned 640x480. This does not prove independent third-profile support or
+simultaneous panel sessions. Earlier probes with the fixed channel-1/stream-1
+header did not validate alternate selector values.
+
+LAN accepts only the verified path-form play with `live_inner=False` and
+`live_newcn=False`. Non-default values of these flags or `live_play_payload`
+are rejected before transport construction, not silently ignored. This is a
+host-side compatibility policy, not evidence that firmware forbids the flags.
+Native `ParseURL` (`0047ccac`) detects `inner=1`; `OnSendPlay` (`0047d898`)
+copies that state to header byte 17. Its broader firmware meaning and that of
+`newcn=1` remain unconfirmed. The cloud RBUDP handling is unchanged.
 
 The initial supported profile is AES-256 command encryption, SHA256 and media
 flag 15 equal to zero, matching the successful device probes. Other profiles
@@ -113,6 +138,45 @@ The capture pipeline:
 
 If a video duration is correct but the image contains repeated or corrupted frames, the likely issue is packet ordering, missing fragments, or incomplete H.264 reference frames rather than MP4 container duration.
 
+## Receive-Only Audio
+
+`Camera.listen_audio()` is an experimental, unreleased LAN-only API over the
+unchanged TCP preview handshake/play. It extracts E3 CPacket audio with the
+existing CFrame assembler. It does not use a talk session, change audio
+settings, request microphone transmission, or add audio to MP4. The raw
+codec and payload are retained; no decoder or sample-rate assumption is used.
+
+The following `liblive_player.so` functions were read via GhidraMCP on
+2026-10-26, together with vHome's `AudioPlayerManager`/`QvPlayerCore` Java:
+
+| Address | Receive-audio evidence |
+| --- | --- |
+| `0043986c`, `0078e5c8`, `0078b74c`, `00799adc` | `QVPanelListen` delegates to the player's decoder. |
+| `00799ba8`, `00799dc0` | Start/stop listening creates/deletes a local `IQVAudioPlay` device; it does not issue a new remote play/talk command. |
+| `007dc2fc` | `FrameGetCodec`: codec byte at offset `0x0e`. |
+| `007dcf90` | `FrameGetChnNum`: channel-count byte at offset `0x0f`, not video FPS. |
+| `007dcf48` | `FrameGetFreq`: little-endian sample rate at offset `0x10`, not video width. |
+| `007dce28`, `007dcd20`, `007dc508` | Milliseconds at `0x0c`; the word at `0x08` is a packed device-local calendar, not Unix time. Native conversion uses local-time `mktime`. |
+| `0043d128` | E3 audio generation; codec ids `4=G.711 A-law`, `5=G.711 mu-law`, `9=PCM`. This identifies payloads; it does not establish a device's negotiated codec. |
+| `00548f38` | Decoder selection depends on each frame's codec/frequency/channels; do not fix the format globally. |
+
+The shared parsers report zero video dimensions/FPS for audio and expose
+`sample_rate`, `channels`, and `frame_ms` instead. Video interpretation and
+capture/RTSP commands are unchanged. Unknown audio codec ids are preserved.
+Existing TCP payload and CFrame size limits apply. There is no background
+reader/history: only incomplete CFrame state and frames from the latest
+decoded message are retained. A read deadline includes discarded video and
+control traffic; timeout preserves partial data, while invalid metadata and
+connection failure close the stream. This is not a lossless recorder.
+
+Regression fixtures are synthetic native-layout packets plus encrypted
+loopback TCP, not captured speech. An authorized read-only Pi probe on
+2026-10-26 then received 298 Tantos E3 frames in 15 seconds: codec 4, 8000 Hz,
+mono, 95360 payload bytes, no incomplete CFrame resets or malformed headers.
+G.711 decoded in memory;
+no audio file, cloud request, device setting or outgoing audio was involved.
+Vimar audio and legacy non-CPacket audio formats remain unverified.
+
 ## RTSP Streaming
 
 The RTSP server is local-only infrastructure around the decoded camera frames.
@@ -122,6 +186,40 @@ It does not ask the camera to enable a native RTSP mode. Instead, it:
 - Opens the normal QUII preview stream.
 - Receives camera H.264 frames.
 - Serves those frames to RTSP clients.
+
+The opt-in `audio=True` branch passes E3 audio from this **same CFrame packer**
+to G.711 RTP; it never opens another preview or talk connection. RFC 3551
+payload types are 8 (PCMA) and 0 (PCMU), at 8000 Hz mono. Every encoded octet
+advances the RTP timestamp by one sample. Other formats fail closed instead of
+being mislabeled. Audio/video have separate SSRCs, sequence spaces, SETUP
+transports and TCP channels, but share a viewer's queue/byte/lag budget.
+
+Native `CPacket::FrameGetTimeStamp` at `007dc508` was rechecked for the A/V
+clock: unpack year/month/day/hour/minute/second and milliseconds, then use
+device-relative video deltas at 90000 Hz. Audio starts on the same origin and
+then advances at one tick per G.711 sample, not the camera's jittery per-frame
+arrival/capture timestamps. No device timezone is inferred.
+Video-only timing remains unchanged. SPS/PPS are cached with a 4096-byte cap
+per NAL and exposed in SDP; A/V viewers are gated until a fresh keyframe.
+RTCP sender reports and cross-player lip-sync guarantees are not implemented.
+
+RTSP DESCRIBE supplies `Content-Base` with a trailing slash and the request's
+authority, not the server's loopback fallback. SETUP matches canonical root,
+nested and trailing-slash paths for both tracks. Live PLAY omits speculative
+`RTP-Info`: skipped P-frames and concurrent publication mean that a snapshot of
+the producer's next sequence number need not be the first packet delivered to
+that viewer. This avoids false startup metadata without buffering a GOP or
+delaying PLAY. No camera-side QUII command or timestamp layout changes here.
+
+On the Pi, FFprobe identified both Tantos streams (H.264 960x576 and PCMA mono
+8000 Hz); an eight-second FFmpeg A/V decode to null returned zero with no
+decoder messages after the startup/clock fixes. Initial late-viewer trials
+exposed missing PPS and arrival-time DTS problems; those were not counted as
+successful validation. Remaining null-mux DTS rounding warnings were absent
+when the validation encoder preserved the 90000 Hz video timebase; sampled RTP
+DTS were strictly increasing. G.711 RTP timestamps use sample count to avoid
+the native audio header's timing jitter. No RTSP daemon was deployed or
+existing service changed.
 
 ## Runtime Limits And Lifecycle
 

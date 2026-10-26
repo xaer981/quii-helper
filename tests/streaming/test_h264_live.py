@@ -17,6 +17,26 @@ def _cpacket(bitstream: bytes, *, frame_tag: int = 0xE1) -> bytes:
 
 
 class H264LiveAssemblerTests:
+    def test_audio_and_video_use_one_packer_even_before_first_keyframe(self):
+        from tests.media.audio.test_frames import audio_cpacket
+
+        audio, video = [], []
+        assembler = H264LiveAssembler(
+            sink=video.append, audio_sink=audio.append, wait_for_keyframe=True
+        )
+        first = audio_cpacket(b"sound")
+        mixed = (
+            first + _cpacket(b"\x00\x00\x01\x65idr") + audio_cpacket(b"next")
+        )
+        for chunk in (mixed[:10], mixed[10:31], mixed[31:]):
+            assembler.feed_message(
+                {"header": SimpleNamespace(packet_type=0xA0), "payload": chunk}
+            )
+        assert [f.data for f in audio] == [b"sound", b"next"]
+        assert video == [b"\x00\x00\x01\x65idr"]
+        assert assembler.packer.stats["completed"] == 3
+        assert assembler.audio_frame_count == 2
+
     def test_native_keyframe_gate_preserves_partial_frame_state(self) -> None:
         assembler = H264LiveAssembler(wait_for_keyframe=True)
         emitted = []

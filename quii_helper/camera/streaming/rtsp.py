@@ -60,6 +60,7 @@ class CameraRtspStream:
     port: int = 8554
     path: str = "/live"
     connection_mode: str = "cloud"
+    audio: bool = False
     server: RtspH264Server = field(init=False)
     assembler: H264LiveAssembler = field(init=False)
     _stop_event: threading.Event = field(
@@ -82,8 +83,13 @@ class CameraRtspStream:
             host=self.host,
             port=self.port,
             path=self.path,
+            audio=self.audio,
         )
-        self.assembler = H264LiveAssembler(sink=self.server.publish)
+        self.assembler = H264LiveAssembler(
+            sink=self.server.publish,
+            audio_sink=self.server.publish_audio if self.audio else None,
+            frame_sink=self.server.publish_frame if self.audio else None,
+        )
 
     @property
     def url(self) -> str:
@@ -120,6 +126,8 @@ class CameraRtspStream:
             self.assembler = H264LiveAssembler(
                 sink=self.server.publish,
                 wait_for_keyframe=self.connection_mode == "lan",
+                audio_sink=self.server.publish_audio if self.audio else None,
+                frame_sink=self.server.publish_frame if self.audio else None,
             )
             self._ready_announced = False
             self._stop_event.clear()
@@ -320,7 +328,13 @@ class CameraRtspStream:
         if self._stop_event.is_set():
             return
         self.assembler.feed_message(decoded)
-        if self.assembler.access_unit_count > 0:
+        if self.assembler.access_unit_count > 0 and (
+            not self.audio
+            or (
+                self.server.audio_format is not None
+                and self.server.parameter_sets
+            )
+        ):
             self._announce_ready_once()
 
     def _announce_ready_once(self) -> None:

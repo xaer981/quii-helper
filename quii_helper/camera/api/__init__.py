@@ -192,7 +192,7 @@ from quii_helper.camera.settings.options import (
     resolve_capture_request,
     validate_output_path,
 )
-from quii_helper.camera.streaming import CameraRtspStream
+from quii_helper.camera.streaming import CameraAudioStream, CameraRtspStream
 from quii_helper.cloud.alarms import CameraCallEventPage, fetch_call_events
 from quii_helper.cloud.devices import (
     fetch_cloud_device_list,
@@ -453,9 +453,10 @@ class Camera:
                 Sets default TLS paths unless individual paths are supplied.
             auth_version: Cloud XML protocol version from the original app.
             ip_region_id: Cloud login IP region id.
-            live_play_payload: QUII live-play payload mode, usually `"path"`.
-            live_inner: Whether to use the inner live-play packet variant.
-            live_newcn: Whether to use the new connection flag in live-play.
+            live_play_payload: Cloud QUII payload variant, `"path"` or `"oem"`.
+                LAN playback requires `"path"`.
+            live_inner: Cloud inner-packet flag. LAN playback requires False.
+            live_newcn: Cloud URL connection flag. LAN playback requires False.
             live_keepalive_interval: Seconds between live keepalive packets.
             play_sync_iterations: Number of extra post-play sync iterations.
             enable_play_probes: Whether to send additional play probe packets.
@@ -3457,12 +3458,38 @@ class Camera:
         """
         return self.save_video(duration_seconds, output_path=output_path)
 
+    def listen_audio(self) -> CameraAudioStream:
+        """Open a receive-only LAN stream of encoded camera audio frames.
+
+        Requires the same saved key/auth pair as LAN video. Each call opens
+        its own ordinary preview session; video is received and discarded.
+        No cloud fallback, talk session, microphone, speaker or file is used.
+        RTSP audio requires a separate `serve_rtsp(audio=True)` call; do not
+        open both methods just to obtain A/V. MP4 remains video-only. Audio is not
+        implied by successful video playback; use `recv_frame(timeout=...)`.
+
+        Returns:
+            Opened handle with `recv_frame()` and `close()`. Prefer
+            `with camera.listen_audio() as audio:` for deterministic cleanup.
+
+        Raises:
+            ConfigurationError: Cloud mode or invalid LAN configuration.
+            QuiiConnectionError: The preview connection could not be opened.
+        """
+        if self.config.connection_mode != "lan":
+            raise ConfigurationError(
+                "listen_audio currently requires connection_mode='lan'; "
+                "cloud audio reception is not implemented"
+            )
+        return CameraAudioStream(self.connector.create_lan_session()).open()
+
     def serve_rtsp(
         self,
         *,
         host: str = "127.0.0.1",
         port: int = 8554,
         path: str = "/live",
+        audio: bool = False,
     ) -> CameraRtspStream:
         """Start an RTSP server backed by live camera packets.
 
@@ -3483,6 +3510,8 @@ class Camera:
                 interfaces.
             port: TCP port for the RTSP server.
             path: RTSP path, for example `"/live"`.
+            audio: Include native G.711 8000 Hz mono audio from the same preview
+                session. Defaults to video-only. No microphone/talkback is used.
 
         Returns:
             Started `CameraRtspStream` handle. The client URL is available as
@@ -3500,6 +3529,7 @@ class Camera:
             port=port,
             path=path,
             connection_mode=self.config.connection_mode,
+            audio=audio,
         )
         return stream.start()
 

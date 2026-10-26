@@ -18,6 +18,16 @@ Physical Pi checks with Tantos on 2026-10-23 also verified direct LAN capture,
 saved-key RTSP, cloud bootstrap/save/load, and independent LAN reconnect without
 client cloud requests. These tests did not send a door command.
 
+An unreleased source-checkout check on 2026-10-26 verified corrected LAN TCP
+selector headers on Tantos/Pi. Channel 1 showed an outdoor view and channel 2
+an indoor corridor. Stream 1 produced 960x576 and 1888x1080 respectively;
+streams 2 and 3 both produced 640x480 on each channel. Six 15-second MP4
+samples with AAC audio decoded without FFmpeg errors. Matching dimensions do
+not establish whether streams 2 and 3 are separate encoder profiles or aliases.
+The same saved key was reused without cloud requests; services and device
+settings were unchanged. These channel/profile results do not apply to Vimar
+without a separate test, and do not verify simultaneous two-panel playback.
+
 On Tantos, door opening was confirmed on 2026-10-16 with capability 24 enabled
 and `error=0`. This verifies the encoded-password path, not the plain-password path
 or all firmware. Call-history reads and observation of a new call were
@@ -31,6 +41,17 @@ Camera API. JPEG/MP4 capture, door control, cloud call history, two-way audio,
 reboot persistence, and playback with the intercom's WAN blocked remain
 unverified on this model. Two-way audio and local-only call detection are not
 implemented by this library.
+
+The unreleased `Camera.listen_audio()` API and `serve_rtsp(audio=True)` were
+tested on Tantos via a Raspberry Pi on 2026-10-26. A 15-second receive probe
+collected 298 G.711 A-law frames, 8000 Hz mono, decoded in memory. FFprobe
+identified H.264 960x576 and `pcm_alaw` audio in the combined RTSP stream;
+FFmpeg decoded both tracks over TCP and UDP to a null output without errors
+after startup/timing fixes. Both operations used saved credentials; the combined stream had one
+preview connection, not separate audio/video connections. No cloud request,
+door command, microphone transmission, recording, or service reconfiguration
+was performed. Vimar audio, subjective sound quality, and precise lip-sync
+remain unverified. This is not two-way audio or an MP4 audio implementation.
 
 Local `get.device.streamkey` has not succeeded in the reported Vimar tests or
 our Tantos investigation; this does not establish a firmware-level ban.

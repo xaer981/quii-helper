@@ -1,7 +1,8 @@
 """Serve LAN-only RTSP with saved credentials, without cloud access.
 
 Run ``python -m examples.lan_rtsp`` from the checkout root. Set the camera IP,
-channel and stream in `.env`; first save `data/stream_credentials.json` using
+channel and stream in `.env` (CAMERA_STREAM accepts "high", "low", or numeric
+ids); first save `data/stream_credentials.json` using
 the explicit cloud bootstrap API/example. No key refresh is attempted here.
 """
 

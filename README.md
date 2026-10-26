@@ -35,6 +35,12 @@ Call history is **not** a live ringing subscription. Available device fields
 and local commands depend on firmware; an unsupported query does not imply
 that video capture is unsupported.
 
+The source checkout also includes [experimental audio](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#receive-only-audio-experimental):
+`Camera.listen_audio()` returns encoded frames, and `serve_rtsp(audio=True)`
+forwards G.711 sound alongside video through one camera connection. Both were
+tested with Tantos on a Raspberry Pi; they are not yet released on PyPI.
+MP4 remains video-only, and microphone/talkback is not implemented.
+
 ## Compatibility 🔍
 
 - **Tantos Marilyn Wi-Fi s** with **vHome 2.2**: snapshots, MP4 capture, RTSP,
@@ -150,11 +156,18 @@ CAMERA_CONNECTION_MODE=lan
 CAMERA_DEVICE_HOST=192.0.2.10
 CAMERA_STREAM_PORT=34567
 CAMERA_CHANNEL=1
-CAMERA_STREAM=2
+CAMERA_STREAM=low
 ```
 
-The port/channel/stream above are defaults; select the correct channel/stream
-for your device. You can remove cloud settings from this application's `.env`;
+The values above are defaults. Set `CAMERA_CHANNEL` to the panel you want and
+`CAMERA_STREAM=high` for the main, higher-quality stream, or `low` for lower
+bandwidth. Numeric ids still work: `1` = `high`, `2` = `low`; other ids and exact
+resolutions depend on firmware. `main.py` and the media examples honor these
+settings; explicit `Camera(..., stream_quality="high")` overrides them.
+LAN playback uses `live_play_payload="path"`, `live_inner=False`, and
+`live_newcn=False`; other values raise `ConfigurationError` before connecting.
+These advanced compatibility options do not select the panel or quality.
+You can remove cloud settings from this application's `.env`;
 if retained, they are not used for this LAN connection. **No cloud account or
 APK assets are needed.** The saved file supplies the device id and key/auth
 pair; do not copy them into `.env` for this example.

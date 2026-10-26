@@ -1,4 +1,4 @@
-"""Exercise the installed RTSP server with synthetic loopback-only video."""
+"""Exercise installed video-only or A/V RTSP with synthetic loopback media."""
 
 import argparse
 import gc
@@ -7,8 +7,21 @@ import socket
 import threading
 import time
 import tracemalloc
+from urllib.parse import urljoin
 
+from quii_helper import CameraAudioFrame
 from quii_helper.streaming.rtsp.server import RtspH264Server
+
+STAMP = (26 << 26) | (1 << 22) | (1 << 17)
+
+
+def audio_frame(index: int) -> CameraAudioFrame:
+    """Generate 40 ms of synthetic G.711 within a 30-second test cycle."""
+    seconds, milliseconds = divmod(index * 40, 1000)
+    assert seconds < 60
+    return CameraAudioFrame(
+        b"\xd5" * 320, 4, 8000, 1, STAMP | seconds, milliseconds
+    )
 
 
 def read_exact(sock: socket.socket, size: int) -> bytes:
@@ -33,21 +46,26 @@ class Viewer:
         self.stopped = threading.Event()
         self.packets = 0
         self.frames = 0
+        self.audio_packets = 0
         self.error: BaseException | None = None
         self.thread: threading.Thread | None = None
         try:
-            for cseq, method in enumerate(("SETUP", "PLAY"), 1):
-                request = (
-                    f"{method} {server.url} RTSP/1.0\r\nCSeq: {cseq}\r\n"
-                    "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"
+            headers, sdp = self._request("DESCRIBE", server.url, 1)
+            controls = [
+                line.removeprefix("a=control:")
+                for line in sdp.decode().splitlines()
+                if line.startswith("a=control:trackID=")
+            ]
+            assert len(controls) == (2 if server.audio else 1)
+            for track, control in enumerate(controls):
+                self._request(
+                    "SETUP",
+                    urljoin(headers["content-base"], control),
+                    track + 2,
+                    f"Transport: RTP/AVP/TCP;unicast;interleaved={2 * track}-{2 * track + 1}\r\n",
                 )
-                self.sock.sendall(request.encode("ascii"))
-                response = bytearray()
-                while not response.endswith(b"\r\n\r\n"):
-                    response.extend(read_exact(self.sock, 1))
-                    if len(response) > 4096:
-                        raise AssertionError("oversized RTSP response")
-                assert response.startswith(b"RTSP/1.0 200 "), response
+            play, _ = self._request("PLAY", server.url, len(controls) + 2)
+            assert "rtp-info" not in play
             self.sock.settimeout(0.5)
             if not slow:
                 self.thread = threading.Thread(
@@ -58,25 +76,66 @@ class Viewer:
             self.close()
             raise
 
+    def _request(
+        self, method: str, uri: str, cseq: int, headers: str = ""
+    ) -> tuple[dict[str, str], bytes]:
+        self.sock.sendall(
+            f"{method} {uri} RTSP/1.0\r\nCSeq: {cseq}\r\n{headers}\r\n".encode(
+                "ascii"
+            )
+        )
+        response = bytearray()
+        while not response.endswith(b"\r\n\r\n"):
+            response.extend(read_exact(self.sock, 1))
+            assert len(response) <= 16384, "oversized RTSP response"
+        lines = response.decode().splitlines()
+        assert lines[0].startswith("RTSP/1.0 200 "), response
+        fields = {
+            key.lower(): value
+            for key, value in (
+                line.split(": ", 1) for line in lines[1:] if line
+            )
+        }
+        size = int(fields.get("content-length", "0"))
+        assert 0 <= size <= 16384
+        return fields, read_exact(self.sock, size)
+
     def _receive(self) -> None:
-        previous_sequence = None
+        previous_sequences: dict[int, int] = {}
+        previous_audio_timestamp = None
+        ssrcs: dict[int, bytes] = {}
         try:
             while not self.stopped.is_set():
                 try:
                     header = read_exact(self.sock, 4)
                 except socket.timeout:
                     continue
-                assert header[:2] == b"$\0", header
+                assert header[:1] == b"$" and header[1] in (0, 2), header
+                track = header[1] // 2
                 packet = read_exact(
                     self.sock, int.from_bytes(header[2:], "big")
                 )
                 assert len(packet) >= 12 and packet[0] == 0x80
                 sequence = int.from_bytes(packet[2:4], "big")
-                if previous_sequence is not None:
-                    assert sequence == (previous_sequence + 1) & 0xFFFF
-                previous_sequence = sequence
+                if track in previous_sequences:
+                    assert sequence == (previous_sequences[track] + 1) & 0xFFFF
+                previous_sequences[track] = sequence
+                ssrcs[track] = packet[8:12]
+                if len(ssrcs) == 2:
+                    assert ssrcs[0] != ssrcs[1]
                 self.packets += 1
-                self.frames += bool(packet[1] & 0x80)
+                if track == 0:
+                    assert packet[1] & 127 == 96
+                    self.frames += bool(packet[1] & 0x80)
+                else:
+                    assert packet[1] & 127 == 8 and len(packet[12:]) == 320
+                    timestamp = int.from_bytes(packet[4:8], "big")
+                    if previous_audio_timestamp is not None:
+                        assert (
+                            timestamp - previous_audio_timestamp
+                        ) & 0xFFFFFFFF == 320
+                    previous_audio_timestamp = timestamp
+                    self.audio_packets += 1
         except BaseException as exc:
             if not self.stopped.is_set():
                 self.error = exc
@@ -93,12 +152,12 @@ class Viewer:
             assert not self.thread.is_alive(), "viewer thread leaked"
 
 
-def run_soak(seconds: float) -> dict[str, object]:
+def run_soak(seconds: float, *, audio: bool = False) -> dict[str, object]:
     """Bound retained Python memory and exercise shutdown every 30 seconds."""
     if seconds < 3:
         raise ValueError("soak duration must be at least 3 seconds")
-    unit = b"\0\0\0\1\x65" + b"x" * (16 * 1024)
-    frames = packets = cycles = slow_disconnects = 0
+    unit = b"\0\0\0\1\x67sps\0\0\0\1\x68pps\0\0\0\1\x65" + b"x" * (16 * 1024)
+    frames = packets = audio_packets = cycles = slow_disconnects = 0
     started = time.monotonic()
     deadline = started + seconds
     baseline = None
@@ -106,10 +165,15 @@ def run_soak(seconds: float) -> dict[str, object]:
     tracemalloc.start()
     try:
         while time.monotonic() < deadline:
-            server = RtspH264Server(host="127.0.0.1", port=0).start()
+            server = RtspH264Server(
+                host="127.0.0.1", port=0, audio=audio
+            ).start()
             fast = slow = None
             workers = [server._accept_thread]
             try:
+                server.publish(unit)
+                if audio:
+                    server.publish_audio(audio_frame(0))
                 fast = Viewer(server)
                 slow = Viewer(server, slow=True)
                 with server._clients_lock:
@@ -123,8 +187,22 @@ def run_soak(seconds: float) -> dict[str, object]:
                 cycle_started = time.monotonic()
                 cycle_end = min(deadline, cycle_started + 30)
                 slow_checked = False
+                audio_index = 1
                 while time.monotonic() < cycle_end:
-                    server.publish(unit)
+                    elapsed_ms = int((time.monotonic() - cycle_started) * 1000)
+                    if audio:
+                        server.publish_frame(
+                            unit,
+                            {
+                                "frame_stamp": STAMP | (elapsed_ms // 1000),
+                                "frame_ms": elapsed_ms % 1000,
+                            },
+                        )
+                        while audio_index * 40 <= elapsed_ms:
+                            server.publish_audio(audio_frame(audio_index))
+                            audio_index += 1
+                    else:
+                        server.publish(unit)
                     assert fast.error is None, repr(fast.error)
                     with server._clients_lock:
                         assert all(
@@ -136,9 +214,14 @@ def run_soak(seconds: float) -> dict[str, object]:
                         slow_checked = True
                     time.sleep(0.1)
                 assert fast.frames > 0, "fast viewer received no media"
+                if audio:
+                    assert (
+                        fast.audio_packets > 0
+                    ), "fast viewer received no audio"
                 assert fast.error is None, repr(fast.error)
                 frames += fast.frames
                 packets += fast.packets
+                audio_packets += fast.audio_packets
                 slow_disconnects += slow_checked
             finally:
                 for viewer in (fast, slow):
@@ -165,6 +248,8 @@ def run_soak(seconds: float) -> dict[str, object]:
         "cycles": cycles,
         "received_frames": frames,
         "received_rtp_packets": packets,
+        "received_audio_packets": audio_packets,
+        "audio_enabled": audio,
         "slow_disconnects": slow_disconnects,
         "retained_python_growth_bytes": growth,
         "peak_traced_python_bytes": peak,
@@ -176,5 +261,10 @@ def run_soak(seconds: float) -> dict[str, object]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seconds", type=float, default=120)
+    parser.add_argument("--audio", action="store_true")
     arguments = parser.parse_args()
-    print(json.dumps(run_soak(arguments.seconds), indent=2))
+    print(
+        json.dumps(
+            run_soak(arguments.seconds, audio=arguments.audio), indent=2
+        )
+    )

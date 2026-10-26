@@ -5,7 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from quii_helper.config import RuntimeCredentials
-from quii_helper.protocols.quii.live_rb import build_direct_quii_setup_rb
+from quii_helper.protocols.quii.live_rb import (
+    build_direct_quii_play_oem_rb,
+    build_direct_quii_play_rb,
+    build_direct_quii_setup_rb,
+)
 from quii_helper.protocols.rbudp.core.constants import RbUdpProtocolConstants
 from quii_helper.protocols.rbudp.live.sender import RbUdpLiveCommandSender
 
@@ -61,6 +65,49 @@ def _credentials() -> RuntimeCredentials:
 
 
 class RbUdpLiveCommandSenderTests:
+    @pytest.mark.parametrize("payload", ["path", "oem"])
+    def test_cloud_live_options_still_reach_play_packet(
+        self, payload, monkeypatch
+    ):
+        monkeypatch.setattr("time.time", lambda: 1700000000)
+        owner = _Owner()
+        owner.config.channel = 0x102
+        owner.config.stream = 2
+        owner.config.live_inner = True
+        owner.config.live_play_payload = payload
+        credentials = _credentials()
+
+        RbUdpLiveCommandSender(owner).send_play(credentials, seq=7)
+
+        builder = (
+            build_direct_quii_play_rb
+            if payload == "path"
+            else build_direct_quii_play_oem_rb
+        )
+        target = (
+            "/mode=real&idc=258&ids=2&inner=1&newcn=1&ap=2"
+            if payload == "path"
+            else owner.config.oem
+        )
+        expected = builder(
+            "adminapp",
+            credentials.dynamic_password,
+            target,
+            src_id=owner.src_id,
+            dest_id=owner.dest_id,
+            seq=7,
+            packet_type=1,
+            ext_len_low=2,
+            ext_len_high=1,
+            play_param=1,
+            stream_flag=1,
+            inner=True,
+            crypto_mode=2,
+            key=credentials.data_encode_key,
+            encrypt=True,
+        )
+        assert owner.sent == [(expected, owner.QUII_PLAY_TAGS[0], owner.lane)]
+
     def test_send_setup_uses_same_direct_quii_payload(self) -> None:
         owner = _Owner()
         sender = RbUdpLiveCommandSender(owner)

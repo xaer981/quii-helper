@@ -3,6 +3,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from quii_helper.media.audio import CameraAudioFrame
 from quii_helper.media.frames.assembler_state import (
     KEY_FRAME_TAGS,
     MEDIA_PACKET_TYPES,
@@ -25,6 +26,9 @@ class H264LiveAssembler:
     frame_count: int = 0
     access_unit_count: int = 0
     wait_for_keyframe: bool = False
+    audio_sink: Callable[[CameraAudioFrame], None] | None = None
+    audio_frame_count: int = 0
+    frame_sink: Callable[[bytes, dict[str, Any]], None] | None = None
 
     def feed_message(self, decoded: Mapping[str, Any]) -> list[bytes]:
         header = decoded.get("header")
@@ -37,6 +41,9 @@ class H264LiveAssembler:
 
         access_units = []
         for frame in self.packer.feed(payload):
+            if self.audio_sink is not None and frame["frame_tag"] == 0xE3:
+                self.audio_sink(CameraAudioFrame.from_cpacket(frame))
+                self.audio_frame_count += 1
             if self.wait_for_keyframe:
                 if frame["frame_tag"] not in KEY_FRAME_TAGS:
                     continue
@@ -48,7 +55,9 @@ class H264LiveAssembler:
                 continue
             self.access_unit_count += 1
             access_units.append(access_unit)
-            if self.sink is not None:
+            if self.frame_sink is not None:
+                self.frame_sink(access_unit, frame)
+            elif self.sink is not None:
                 self.sink(access_unit)
         return access_units
 
@@ -57,5 +66,6 @@ class H264LiveAssembler:
         return {
             "frames": self.frame_count,
             "access_units": self.access_unit_count,
+            "audio_frames": self.audio_frame_count,
             "cframe_pack": dict(self.packer.stats),
         }

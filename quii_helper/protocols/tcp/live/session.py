@@ -42,6 +42,16 @@ def validate_lan_config(config: AutonomousConfig) -> None:
             "direct TCP playback requires connection_mode='lan'"
         )
     validate_connection_options(config.connection_mode, config.stream_port)
+    for name, expected in (
+        ("live_play_payload", "path"),
+        ("live_inner", False),
+        ("live_newcn", False),
+    ):
+        if getattr(config, name) != expected:
+            raise ConfigurationError(
+                f"LAN playback requires {name}={expected!r}; "
+                "other values are supported only by the cloud preview path"
+            )
     try:
         address = ipaddress.ip_address(config.device_host)
     except ValueError:
@@ -55,8 +65,15 @@ def validate_lan_config(config: AutonomousConfig) -> None:
     validate_stream_credentials(config.stream_key, config.auth_code)
     for name in ("channel", "stream"):
         value = getattr(config, name)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-            raise ConfigurationError(f"{name} must be a positive integer")
+        maximum = 0xFFFF if name == "channel" else 0x100
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not 1 <= value <= maximum
+        ):
+            raise ConfigurationError(
+                f"{name} must be an integer between 1 and {maximum}"
+            )
     if (
         not math.isfinite(config.connect_timeout)
         or config.connect_timeout <= 0

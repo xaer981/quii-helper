@@ -1,4 +1,7 @@
-"""Record a short MP4 clip using environment-backed settings."""
+"""Record MP4 using CAMERA_CHANNEL and CAMERA_STREAM from .env.
+
+CAMERA_STREAM accepts "high", "low", or numeric ids; quality is not overridden.
+"""
 
 from pathlib import Path
 

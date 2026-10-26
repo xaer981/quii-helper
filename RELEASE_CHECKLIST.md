@@ -54,9 +54,10 @@ source/archive SHA-256 hashes and per-check logs.
 | Gitleaks and actionlint | Public snapshot/workflows pass checks; CI separately scans Git history. |
 | Build, strict Twine, archive validation | sdist and wheel metadata/rendering, SPDX/license, `py.typed`, privacy, and package-source parity. |
 | Isolated installs | Wheel and sdist each install outside the source tree and run the full suite, not just imports. |
-| RTSP soak | The installed wheel passes a two-minute synthetic loopback backpressure/lifecycle check. |
+| RTSP soak | The installed wheel passes separate two-minute video-only and combined A/V synthetic loopback backpressure/lifecycle checks. |
 
-The soak covers fast and non-reading viewers, RTP sequence checks, bounded
+The soaks cover fast and non-reading viewers, per-track RTP sequence and
+G.711 sample-clock checks, SDP track URL resolution, bounded
 queues, repeated shutdown, thread cleanup, and retained Python allocations.
 Its 8 MiB growth guard uses `tracemalloc` after warmup, **not process RSS**.
 It does not validate real camera/cloud/UDP behavior, codec quality, or ARM64.

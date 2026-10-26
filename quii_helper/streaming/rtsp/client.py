@@ -6,6 +6,7 @@ import time
 from collections import deque
 from contextlib import ExitStack
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from quii_helper.streaming.rtsp.constants import PUBLIC_METHODS, RTSP_VERSION
 from quii_helper.streaming.rtsp.request import (
@@ -15,6 +16,7 @@ from quii_helper.streaming.rtsp.request import (
 )
 from quii_helper.streaming.rtsp.sdp import build_h264_sdp
 from quii_helper.streaming.rtsp.transport import (
+    RtpTransport,
     client_ports,
     interleaved_channel,
 )
@@ -39,14 +41,12 @@ class RtspClient:
         self.sock = sock
         self.address = address
         self.playing = False
-        self.transport = "tcp"
-        self.interleaved_rtp_channel = 0
-        self.udp_rtp_target: tuple[str, int] | None = None
-        self.udp_rtp_sock: socket.socket | None = None
-        self.udp_rtcp_sock: socket.socket | None = None
+        self.tracks = {0: RtpTransport()}
+        self._setup_tracks: set[int] = set()
+        self._waiting_keyframe = server.audio
         self._send_lock = threading.RLock()
         self._outgoing_condition = threading.Condition()
-        self._outgoing: deque[tuple[list[bytes], int, float]] = deque()
+        self._outgoing: deque[tuple[list[bytes], int, float, int]] = deque()
         self._outgoing_bytes = 0
         self._sender_thread = threading.Thread(
             target=self._send_loop,
@@ -69,7 +69,9 @@ class RtspClient:
             self.close()
             raise
 
-    def enqueue_rtp_packets(self, packets: list[bytes]) -> bool:
+    def enqueue_rtp_packets(
+        self, packets: list[bytes], *, track_id: int = 0, keyframe: bool = True
+    ) -> bool:
         """Queue a complete access unit without blocking the camera producer."""
         size = sum(len(packet) for packet in packets)
         with self._outgoing_condition:
@@ -78,11 +80,19 @@ class RtspClient:
             if not self.playing:
                 return True
             if (
+                self._setup_tracks and track_id not in self._setup_tracks
+            ) or track_id not in self.tracks:
+                return True
+            if track_id == 0 and self._waiting_keyframe:
+                if not keyframe:
+                    return True
+                self._waiting_keyframe = False
+            if (
                 len(self._outgoing) >= MAX_QUEUED_ACCESS_UNITS
                 or self._outgoing_bytes + size > MAX_QUEUED_RTP_BYTES
             ):
                 return False
-            self._outgoing.append((packets, size, time.monotonic()))
+            self._outgoing.append((packets, size, time.monotonic(), track_id))
             self._outgoing_bytes += size
             self._outgoing_condition.notify()
             return True
@@ -96,10 +106,14 @@ class RtspClient:
                     )
                     if self._closed:
                         return
-                    packets, size, enqueued_at = self._outgoing.popleft()
+                    packets, size, enqueued_at, track_id = (
+                        self._outgoing.popleft()
+                    )
                 with self._send_lock:
                     if self.playing and not self.send_rtp_packets(
-                        packets, deadline=enqueued_at + MAX_CLIENT_LAG_SECONDS
+                        packets,
+                        deadline=enqueued_at + MAX_CLIENT_LAG_SECONDS,
+                        track_id=track_id,
                     ):
                         return
                 with self._outgoing_condition:
@@ -109,15 +123,22 @@ class RtspClient:
             self.server.remove_client(self)
 
     def send_rtp_packets(
-        self, packets: list[bytes], *, deadline: float | None = None
+        self,
+        packets: list[bytes],
+        *,
+        deadline: float | None = None,
+        track_id: int = 0,
     ) -> bool:
         try:
             with self._send_lock:
                 if self._closed:
                     return False
-                if self.transport == "udp":
+                track = self.tracks.get(track_id)
+                if track is None:
+                    return False
+                if track.mode == "udp":
                     return self._send_udp_rtp_packets(
-                        packets, deadline=deadline
+                        packets, deadline=deadline, track_id=track_id
                     )
                 for packet in packets:
                     if self._closed or (
@@ -126,7 +147,7 @@ class RtspClient:
                         return False
                     frame = (
                         b"$"
-                        + bytes([self.interleaved_rtp_channel & 0xFF])
+                        + bytes([track.channel & 0xFF])
                         + len(packet).to_bytes(2, "big")
                         + packet
                     )
@@ -153,25 +174,22 @@ class RtspClient:
             self.sock.close()
         except OSError:
             pass
-        self._close_udp_transport()
+        for track_id in list(self.tracks):
+            self._close_udp_transport(track_id)
 
-    def _close_udp_transport(self) -> None:
+    def _close_udp_transport(self, track_id: int = 0) -> None:
         with self._outgoing_condition:
-            sockets = self.udp_rtp_sock, self.udp_rtcp_sock
-            self.udp_rtp_sock = None
-            self.udp_rtcp_sock = None
-            self.udp_rtp_target = None
-        for udp_sock in sockets:
-            if udp_sock is not None:
-                try:
-                    udp_sock.close()
-                except OSError:
-                    pass
+            self.tracks[track_id].close()
 
     def _send_udp_rtp_packets(
-        self, packets: list[bytes], *, deadline: float | None = None
+        self,
+        packets: list[bytes],
+        *,
+        deadline: float | None = None,
+        track_id: int = 0,
     ) -> bool:
-        sock, target = self.udp_rtp_sock, self.udp_rtp_target
+        track = self.tracks[track_id]
+        sock, target = track.rtp_sock, track.target
         if sock is None or target is None:
             return False
         try:
@@ -239,15 +257,48 @@ class RtspClient:
             )
             return
         if method == "DESCRIBE":
+            if self.server.audio and (
+                not self.server.audio_ready.wait(5.0)
+                or self.server.audio_format is None
+            ):
+                self._send_response(
+                    503,
+                    "Service Unavailable",
+                    cseq=request.cseq,
+                    headers={"Retry-After": "1"},
+                )
+                return
+            if self.server.audio and (
+                not self.server.video_ready.wait(5.0)
+                or not self.server.parameter_sets
+            ):
+                self._send_response(
+                    503,
+                    "Service Unavailable",
+                    cseq=request.cseq,
+                    headers={"Retry-After": "1"},
+                )
+                return
             body = build_h264_sdp(
                 connect_host=self.server.connect_host,
                 payload_type=self.server.payload_type,
+                audio_format=self.server.audio_format,
+                parameter_sets=self.server.parameter_sets,
             )
             self._send_response(
                 200,
                 "OK",
                 cseq=request.cseq,
-                headers={"Content-Type": "application/sdp"},
+                headers={
+                    "Content-Type": "application/sdp",
+                    "Content-Base": urlsplit(request.uri)
+                    ._replace(
+                        path=self.server.path.rstrip("/") + "/",
+                        query="",
+                        fragment="",
+                    )
+                    .geturl(),
+                },
                 body=body,
             )
             return
@@ -256,19 +307,14 @@ class RtspClient:
             return
         if method == "PLAY":
             with self._send_lock:
+                self._waiting_keyframe = self.server.audio
                 self.playing = True
                 self._send_response(
                     200,
                     "OK",
                     cseq=request.cseq,
-                    headers={
-                        "Session": self.server.session_id,
-                        "RTP-Info": (
-                            f"url={self.server.url}/trackID=0;"
-                            f"seq={self.server.sequence_number & 0xFFFF};"
-                            f"rtptime={self.server.rtp_timestamp()}"
-                        ),
-                    },
+                    # Live keyframe gating makes the first RTP packet unknown.
+                    headers={"Session": self.server.session_id},
                 )
             return
         if method == "PAUSE":
@@ -276,7 +322,7 @@ class RtspClient:
                 self.playing = False
                 with self._outgoing_condition:
                     self._outgoing_bytes -= sum(
-                        size for _, size, _ in self._outgoing
+                        size for _, size, _, _ in self._outgoing
                     )
                     self._outgoing.clear()
                 self._send_response(
@@ -302,13 +348,29 @@ class RtspClient:
         with self._send_lock:
             if self._closed:
                 return
+            path = urlsplit(request.uri).path.rstrip("/") or "/"
+            base = self.server.path.rstrip("/")
+            paths = {base or "/": 0, f"{base}/trackID=0": 0}
+            if self.server.audio_format is not None:
+                paths[f"{base}/trackID=1"] = 1
+            track_id = paths.get(path)
+            if track_id is None:
+                self._send_response(404, "Not Found", cseq=request.cseq)
+                return
+            self.tracks.setdefault(
+                track_id, RtpTransport(channel=2 * track_id)
+            )
             transport = request.headers.get("transport", "")
             transport_upper = transport.upper()
             if "RTP/AVP/TCP" in transport_upper:
-                self._setup_tcp_transport(request, transport)
+                self._setup_tcp_transport(
+                    request, transport, track_id=track_id
+                )
                 return
             if "RTP/AVP" in transport_upper:
-                self._setup_udp_transport(request, transport)
+                self._setup_udp_transport(
+                    request, transport, track_id=track_id
+                )
                 return
 
             self._send_response(
@@ -318,17 +380,29 @@ class RtspClient:
             )
 
     def _setup_tcp_transport(
-        self, request: RtspRequest, transport: str
+        self, request: RtspRequest, transport: str, *, track_id: int = 0
     ) -> None:
         channel = interleaved_channel(transport)
+        if "interleaved=" not in transport.lower():
+            channel = track_id * 2
+        if channel is not None and any(
+            other != track_id
+            and self.tracks[other].mode == "tcp"
+            and {channel, channel + 1}
+            & {self.tracks[other].channel, self.tracks[other].channel + 1}
+            for other in self._setup_tracks
+        ):
+            channel = None
         if channel is None:
             self._send_response(
                 461, "Unsupported Transport", cseq=request.cseq
             )
             return
-        self._close_udp_transport()
-        self.transport = "tcp"
-        self.interleaved_rtp_channel = channel
+        self._close_udp_transport(track_id)
+        track = self.tracks[track_id]
+        track.mode = "tcp"
+        track.channel = channel
+        self._setup_tracks.add(track_id)
         self._send_response(
             200,
             "OK",
@@ -336,15 +410,15 @@ class RtspClient:
             headers={
                 "Transport": (
                     "RTP/AVP/TCP;unicast;"
-                    f"interleaved={self.interleaved_rtp_channel}-"
-                    f"{self.interleaved_rtp_channel + 1}"
+                    f"interleaved={track.channel}-"
+                    f"{track.channel + 1}"
                 ),
                 "Session": self.server.session_id,
             },
         )
 
     def _setup_udp_transport(
-        self, request: RtspRequest, transport: str
+        self, request: RtspRequest, transport: str, *, track_id: int = 0
     ) -> None:
         ports = client_ports(transport)
         if ports is None:
@@ -355,8 +429,7 @@ class RtspClient:
             )
             return
 
-        self._close_udp_transport()
-        self.transport = "udp"
+        self._close_udp_transport(track_id)
         with ExitStack() as stack:
             rtp = stack.enter_context(
                 socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -373,8 +446,11 @@ class RtspClient:
             with self._outgoing_condition:
                 if self._closed:
                     return
-                self.udp_rtp_sock, self.udp_rtcp_sock = rtp, rtcp
-                self.udp_rtp_target = (self.address[0], ports[0])
+                track = self.tracks[track_id]
+                track.mode = "udp"
+                track.rtp_sock, track.rtcp_sock = rtp, rtcp
+                track.target = (self.address[0], ports[0])
+                self._setup_tracks.add(track_id)
                 stack.pop_all()
         self._send_response(
             200,
@@ -385,7 +461,7 @@ class RtspClient:
                     "RTP/AVP;unicast;"
                     f"client_port={ports[0]}-{ports[1]};"
                     f"server_port={server_rtp_port}-{server_rtcp_port};"
-                    f"ssrc={self.server.ssrc:08X}"
+                    f"ssrc={self.server.track_ssrc(track_id):08X}"
                 ),
                 "Session": self.server.session_id,
             },

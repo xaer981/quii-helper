@@ -1,4 +1,8 @@
-"""Serve the camera preview as RTSP until interrupted."""
+"""Serve RTSP until interrupted, using CAMERA_CHANNEL and CAMERA_STREAM.
+
+Set CAMERA_STREAM=high (main stream) or low (lower bandwidth) in .env;
+numeric stream ids remain supported. This example does not override quality.
+"""
 
 from quii_helper import Camera, load_config
 from quii_helper.support.log import configure_logging
