@@ -5,7 +5,7 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.3.0 - 2026-10-26
 
 ### Added
 

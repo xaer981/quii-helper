@@ -35,10 +35,10 @@ Call history is **not** a live ringing subscription. Available device fields
 and local commands depend on firmware; an unsupported query does not imply
 that video capture is unsupported.
 
-The source checkout also includes [experimental audio](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#receive-only-audio-experimental):
+Version 0.3.0 adds [experimental receive-only audio](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#receive-only-audio-experimental):
 `Camera.listen_audio()` returns encoded frames, and `serve_rtsp(audio=True)`
 forwards G.711 sound alongside video through one camera connection. Both were
-tested with Tantos on a Raspberry Pi; they are not yet released on PyPI.
+tested with Tantos on a Raspberry Pi. RTSP remains video-only by default.
 MP4 recording also includes available G.711 sound as AAC; without supported
 audio it remains video-only. Microphone/talkback is not implemented.
 

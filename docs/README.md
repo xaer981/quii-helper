@@ -19,7 +19,7 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | Capture an image or video | [Capture methods](api.md#capture-methods). |
 | Obtain a stream key, then play locally | [First-run bootstrap and later local starts](setup.md#stream-key-bootstrap-and-local-reuse), [persistence API](api.md#stream-key-bootstrap-and-persistence). |
 | Watch a live stream in VLC | [RTSP streaming](api.md#rtsp-streaming). |
-| Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); source checkout, tested on Tantos. |
+| Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); available since 0.3.0, tested on Tantos. |
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
 | Read incoming-call history | [Incoming call history](api.md#incoming-call-history-experimental); this is not a live subscription. |
 | Open a connected door | [Door control](api.md#door-control); these calls have physical effects. |

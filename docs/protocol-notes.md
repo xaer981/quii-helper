@@ -147,7 +147,7 @@ If a video duration is correct but the image contains repeated or corrupted fram
 
 ## Receive-Only Audio
 
-`Camera.listen_audio()` is an experimental, unreleased LAN-only API over the
+`Camera.listen_audio()` is an experimental LAN-only API, added in 0.3.0, over the
 unchanged TCP preview handshake/play. It extracts E3 CPacket audio with the
 existing CFrame assembler. It does not use a talk session, change audio
 settings, request microphone transmission, or add audio to MP4. The raw

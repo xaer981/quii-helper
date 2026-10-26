@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quii-helper"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python toolkit for QUII/Qualvision cameras: snapshots, video, RTSP, LAN discovery, device inspection, and explicit door control."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -265,7 +265,7 @@ in its result; it can still raise configuration, connection, or decoder errors.
 
 ## Receive-Only Audio (Experimental)
 
-This API is **unreleased/source-checkout only**. Tantos G.711 A-law reception
+This API is available since **0.3.0**. Tantos G.711 A-law reception
 was tested on a physical Pi; Vimar audio remains unverified. It reads E3 frames from a LAN preview
 using the same saved key/auth pair as video. It never fetches or renews keys,
 contacts cloud, opens a talk connection or activates a microphone/speaker.
@@ -339,7 +339,7 @@ Open `rtsp://127.0.0.1:8554/live` in VLC after media arrives. The helper forward
 the QUII H.264 preview; it does not enable native RTSP on the camera or require
 FFmpeg. Each call opens its own preview session.
 
-In the unreleased source version, pass **`audio=True`** for H.264 plus G.711
+Since 0.3.0, pass **`audio=True`** for H.264 plus G.711
 A-law/mu-law, 8000 Hz mono. Both tracks use **the same camera connection and
 CFrame assembler**; do not open `listen_audio()` as well. No audio decoding,
 resampling, microphone, speaker or talk connection is started by the library.
@@ -845,7 +845,7 @@ from its root after installation/configuration:
 | `python -m examples.serve_rtsp` | Serve RTSP on localhost port `8554`. |
 | `python -m examples.cloud_key_rtsp` | Explicit cloud login/key fetch, save/reload `data/stream_credentials.json`, then serve LAN-only RTSP. Each run contacts cloud first. |
 | `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
-| `python -m examples.listen_audio` | Experimental/unreleased: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
+| `python -m examples.listen_audio` | Experimental: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until
