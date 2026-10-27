@@ -1,8 +1,41 @@
 import re
+import struct
 import time
 from dataclasses import dataclass
 
+from quii_helper.protocols.quii.crypto import aes_cbc_crypt, sha_bytes
 from quii_helper.protocols.quii.live_packets import build_live_play_packet
+
+
+def build_stream_switch_packet(
+    stream: int, *, key: bytes, timestamp_seconds: int | None = None
+) -> bytes:
+    """Encode native SendSwitchStream for the LAN AES-256/SHA256 profile.
+
+    Args:
+        stream: One-based selector (1-256); actual profiles are device-specific.
+        key: The existing session's command encryption key.
+        timestamp_seconds: Unix seconds; defaults to the current time.
+    """
+    if isinstance(stream, bool) or not isinstance(stream, int):
+        raise ValueError("stream must be an integer between 1 and 256")
+    if not 1 <= stream <= 256:
+        raise ValueError("stream must be an integer between 1 and 256")
+    header = bytearray(32)
+    header[0] = 9
+    struct.pack_into(
+        "<QH",
+        header,
+        1,
+        int(time.time()) if timestamp_seconds is None else timestamp_seconds,
+        32,
+    )
+    # Unlike play, native switch stores its selector at byte 11, not byte 16.
+    header[11] = stream - 1
+    plain = bytes(header)
+    return aes_cbc_crypt(plain, key, crypto_mode=2) + aes_cbc_crypt(
+        sha_bytes(plain), key, crypto_mode=2
+    )
 
 
 @dataclass

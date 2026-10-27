@@ -5,6 +5,20 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Internal opt-in LAN stream-switch command, matched to vEye Pro native,
+  with authenticated reply handling, serialized requests and bounded waiting.
+  Normal Camera startup and the public API are unchanged.
+- `examples.diagnose_lan_stream` compares initial-high and switched-high
+  playback in two sequential saved-key LAN sessions, reporting H.264
+  dimensions and E3 audio metadata. Optional `--save-frames` retains bounded
+  private H.264, early/late JPEGs and a JSON report under `data/`, including
+  chroma measurements without declaring the issue fixed. Decoding runs only
+  after disconnecting; no cloud login, talkback or door command is performed.
+
 ## 0.3.0 - 2026-10-26
 
 ### Added

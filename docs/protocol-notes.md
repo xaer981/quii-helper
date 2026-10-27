@@ -9,6 +9,7 @@ findings below refer to the inspected app builds, not every vendor release.
 ## Contents
 
 - [Connection flow](#connection-flow), [LAN TCP](#lan-tcp-session), [media](#media-capture), and [RTSP](#rtsp-streaming).
+- [Experimental LAN stream-switch diagnostic](#experimental-lan-stream-switch-diagnostic).
 - [Runtime limits](#runtime-limits-and-lifecycle).
 - [Receive-only audio](#receive-only-audio).
 - [Cloud history](#cloud-incoming-call-history) and [local device APIs](#local-device-apis).
@@ -72,6 +73,97 @@ without errors. Stream 1 resolutions differed by panel; streams 2 and 3 both
 returned 640x480. This does not prove independent third-profile support or
 simultaneous panel sessions. Earlier probes with the fixed channel-1/stream-1
 header did not validate alternate selector values.
+
+#### Experimental LAN Stream-Switch Diagnostic
+
+Initial play and switching an already playing stream are separate operations.
+The internal `LanTcpSession.request_stream_switch(stream, timeout=5)` sends
+type `0x09` explicitly; normal `Camera` capture/RTSP never calls it. The same
+owner must continue `recv_message()` to deliver media, process the reply and
+enforce the deadline. Only one switch may be pending. A successful authenticated
+reply updates `active_stream`, not configuration. Rejection, expiry or send
+failure closes the session without retries or cloud fallback. Closing on expiry
+avoids confusing a late reply with another request: the wire has no request id.
+
+Rechecked in the exact vEye Pro 1.9.4.0.2 native library via GhidraMCP:
+
+| Address | Behavior |
+| --- | --- |
+| `00510f08`, `SendSwitchStream` | Type 9, Unix seconds at 1, trailer length at 9, zero-based selector at byte 11; no body. SHA256 covers the 32-byte header; header and digest are AES-encrypted independently. |
+| `00512be4`, `OnRecvSwitch` | Reply byte 11 is status (0 means success), not the requested stream index. |
+
+From an installed checkout/source distribution, with an existing saved pair
+and `ffprobe` on PATH, run:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --seconds 20
+```
+
+Replace the example IP with your camera's LAN IP. The default key file is
+`data/stream_credentials.json`; override it with `--credentials PATH`.
+No `.env`, APK assets or cloud settings are loaded. Two sessions run sequentially
+on the same channel/key: A starts directly with stream 1; B starts with stream
+2, switches to 1, then restores 2 before disconnecting. The two high-stream
+windows default to 20 seconds each (`--seconds` accepts 6-30); B's low warmup
+and restoration windows take 6 seconds each. Allow about a minute plus setup
+and analysis. Startup delay is included, so A can receive fewer frames than
+the already-warm B window without indicating a different frame rate.
+The script sends preview/quality commands but no persistent configuration,
+talk/backchannel or door commands. Stop other viewers and test without ringing
+or answering a call first; those states can independently change device behavior.
+
+Without extra flags it saves no files. Each JSON row reports frame counts,
+E3 codec/rate/channel metadata, switch
+status, CPacket sizes and `last_keyframe_h264`. The latter uses only the latest
+bounded H.264 keyframe observed after acknowledgement. `no_h264_keyframe` or
+`ffprobe_failed` means resolution was not established; CPacket is not a fallback.
+An ACK proves command acceptance, not that quality actually changed. Frame
+counts/CPacket sizes can include in-flight frames from the previous profile.
+Redact paths/identifiers and review the output before sharing it.
+
+To compare color in the **same sessions**, add `--save-frames`:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --seconds 20 --save-frames
+```
+
+This additionally requires `ffmpeg` on PATH. It creates a fresh private
+`data/lan-diagnostic-.../` folder and retains `initial_high.h264`,
+`switched_high.h264`, selected JPEGs and `report.json`. Each raw high-stream
+capture is capped at 64 MiB; existing files are never overwritten. Unix run
+folders are owner-only; Windows uses the parent directory's ACL. Files are
+private camera media: **do not attach the folder, H.264/JPEGs, credentials or
+`.env` to a public issue**. A failed/interrupted run can retain partial captures;
+the report marks `completed: false`. Completion means the probe finished, not
+that a firmware defect was fixed.
+
+JPEG samples target the first retained keyframe and approximately 0.5, 1, 5
+and 15 seconds later, using receiver-relative arrival times and decoded frame
+indexes, not exact physical capture timestamps. Only available samples are
+saved; missing times are listed in `missing_sample_seconds`. Inter-frame data
+before the first post-acknowledgement keyframe is not retained. FFmpeg/FFprobe
+analysis runs only after each camera session closes, avoiding receive stalls.
+`saved_frames.status` must be `ok` before interpreting its samples;
+`ffmpeg_failed`/`no_h264_samples` means color was not established by this run.
+
+Compare the `initial_high` and `switched_high` images locally. Report whether
+each starts and remains grayscale or becomes colored, and provide only the
+reviewed text/JSON diagnostics. SATAVG/SATMAX are descriptive saturation
+measurements, not an automatic color-quality or fix verdict: neutral scenes
+and colored overlays can be misleading. An ordinary `Camera.snapshot()` after
+this script is not a substitute, because it opens a fresh session without the
+switch. No original Android app or alternate cloud profile is exercised.
+
+A native-equivalent private probe on Tantos/Pi (2026-10-27) confirmed the
+sequence 640x480 -> 1888x1080 -> 640x480, with E3 in every phase and zero
+CFrame errors. CPacket sizes stayed high after the last switch although H.264
+SPS returned to 640x480. This is why encoded dimensions are reported separately.
+An additional A/B/A check compared published 0.3.0 initial-high, candidate
+switched-high, then 0.3.0 initial-high again on Tantos/Pi. All three supplied
+1888x1080, non-neutral scene color and E3; all recorded H.264 decoded without
+errors. The reported Vimar defect was **not reproduced**, so the switch is not
+a confirmed fix. The original Android binary was not executed; Vimar behavior
+remains unverified.
 
 LAN sends the verified path-form play with `live_inner=False` and
 `live_newcn=False`. Non-default values of these flags or `live_play_payload`

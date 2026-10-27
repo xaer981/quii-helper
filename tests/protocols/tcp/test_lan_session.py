@@ -559,3 +559,173 @@ def test_message_deadline_includes_header_and_body(monkeypatch):
     assert session.recv_message(timeout=1.0)["payload"] == b"body"
     assert sock.timeout == pytest.approx(0.3)
     session.close()
+
+
+def test_stream_switch_preserves_media_and_changes_state_only_after_ack():
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        assert session.active_stream == 1
+        session.request_stream_switch(2)
+        assert len(sock.sent) == 3
+        assert session.stream_switch_pending and session.active_stream == 1
+        sock.chunks.append(
+            media(b"before-ack") + command(9, active=0) + media(b"after-ack")
+        )
+        assert session.recv_message()["payload"] == b"before-ack"
+        assert session.stream_switch_pending
+        assert session.recv_message()["header"].packet_type == 9
+        assert not session.stream_switch_pending
+        assert session.active_stream == 2 and session.config.stream == 1
+        assert session.recv_message()["payload"] == b"after-ack"
+        session.request_stream_switch(1)
+        sock.chunks.append(command(9, active=0))
+        session.recv_message()
+        assert session.active_stream == 1
+    assert session.active_stream is None and not session.stream_switch_pending
+
+
+def test_switch_to_current_selector_is_not_optimized_away():
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        session.request_stream_switch(1)
+        assert session.stream_switch_pending and len(sock.sent) == 3
+        with pytest.raises(QuiiConnectionError, match="pending"):
+            session.request_stream_switch(2)
+        assert not sock.closed and len(sock.sent) == 3
+
+
+@pytest.mark.parametrize("status", [0, 3])
+def test_unsolicited_switch_reply_preserves_existing_receive_behavior(status):
+    session, sock = session_and_socket()
+    sock.chunks.append(command() + command(9, status=status, active=0))
+    with session:
+        session.recv_message()
+        session.recv_message()
+        assert not sock.closed and session.active_stream == 1
+        assert not session.stream_switch_pending and len(sock.sent) == 2
+
+
+@pytest.mark.parametrize(
+    "reply,error",
+    [
+        (command(9, status=2), "status 2"),
+        (command(9, corrupt_sha=True), "SHA256"),
+    ],
+)
+def test_switch_rejection_or_corrupted_ack_fails_closed(reply, error):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2)
+        sock.chunks.append(reply)
+        with pytest.raises(QuiiConnectionError, match=error):
+            session.recv_message()
+        assert sock.closed and not session.stream_switch_pending
+
+
+def test_switch_ack_survives_partial_read_timeout():
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2)
+        reply = command(9, active=0)
+        sock.chunks.extend([reply[:40], TimeoutError(), reply[40:]])
+        with pytest.raises(TimeoutError):
+            session.recv_message()
+        assert session.stream_switch_pending and not sock.closed
+        session.recv_message()
+        assert session.active_stream == 2 and not session.stream_switch_pending
+
+
+def test_switch_deadline_limits_read_and_closes_without_retry(monkeypatch):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    clock = [100.0]
+    monkeypatch.setattr(
+        "quii_helper.protocols.tcp.live.session.time.monotonic",
+        lambda: clock[0],
+    )
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2, timeout=2)
+
+        def blocked_recv(size):
+            clock[0] += sock.timeout
+            raise TimeoutError()
+
+        sock.recv = blocked_recv
+        with pytest.raises(QuiiConnectionError, match="switch timed out"):
+            session.recv_message(timeout=30)
+        assert sock.timeout == pytest.approx(2)
+        assert sock.closed and not session.stream_switch_pending
+        with pytest.raises(QuiiConnectionError):
+            session.request_stream_switch(2)
+        assert len(sock.sent) == 3
+
+
+def test_media_does_not_extend_switch_deadline(monkeypatch):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    clock = [100.0]
+    monkeypatch.setattr(
+        "quii_helper.protocols.tcp.live.session.time.monotonic",
+        lambda: clock[0],
+    )
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2, timeout=2)
+        clock[0] = 101
+        sock.chunks.append(media(b"still-streaming"))
+        assert session.recv_message()["payload"] == b"still-streaming"
+        clock[0] = 102
+        sock.chunks.append(command(9))
+        with pytest.raises(QuiiConnectionError, match="switch timed out"):
+            session.recv_message()
+        assert sock.closed
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
+def test_invalid_switch_timeout_does_not_send_or_close(timeout):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        with pytest.raises(ValueError, match="timeout"):
+            session.request_stream_switch(2, timeout=timeout)
+        assert len(sock.sent) == 2 and not sock.closed
+        assert not session.stream_switch_pending
+
+
+def test_switch_requires_play_acceptance():
+    session, sock = session_and_socket()
+    with pytest.raises(QuiiConnectionError, match="not active"):
+        session.request_stream_switch(2)
+    with session:
+        with pytest.raises(QuiiConnectionError, match="not active"):
+            session.request_stream_switch(2)
+        assert len(sock.sent) == 2 and not session.stream_switch_pending
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_switch_send_failure_or_cancellation_releases_socket(cancelled):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+
+        def send(packet):
+            if cancelled:
+                session.close()
+            else:
+                raise OSError("synthetic send failure")
+
+        session._client.transport.send_all = send
+        with pytest.raises(QuiiConnectionError):
+            session.request_stream_switch(2)
+        assert sock.closed and not session.stream_switch_pending

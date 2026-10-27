@@ -22,6 +22,9 @@ from quii_helper.protocols.tcp.codec.message_codec import (
     decode_tcp_header,
     decode_tcp_payload,
 )
+from quii_helper.protocols.tcp.live.packet_builder import (
+    build_stream_switch_packet,
+)
 from quii_helper.protocols.tcp.transport.client import (
     QuiiClient,
     TcpTransportFactory,
@@ -98,6 +101,8 @@ class LanTcpSession:
     supported initially. Other profiles fail closed rather than guessing keys.
     The caller supplies AUTH_CODE (raw or encoded) and the saved 32-byte key.
     No credentials are loaded, renewed or persisted by this class.
+    Send and receive operations have one owner thread; only close() may run
+    concurrently. Stream switches are explicit and never sent during open().
     """
 
     def __init__(
@@ -121,6 +126,9 @@ class LanTcpSession:
         self._pending_header: DecodedTcpHeader | None = None
         self._opened = False
         self.play_accepted = False
+        self.active_stream: int | None = None
+        self._pending_stream: int | None = None
+        self._switch_deadline: float | None = None
         self._last_keepalive = 0.0
         self._closed = Event()
 
@@ -160,6 +168,51 @@ class LanTcpSession:
                 ) from exc
             raise
 
+    @property
+    def stream_switch_pending(self) -> bool:
+        """Whether an explicit switch still awaits its authenticated reply."""
+        return self._pending_stream is not None
+
+    def request_stream_switch(
+        self, stream: int, *, timeout: float = 5.0
+    ) -> None:
+        """Send an internal, opt-in switch without consuming any media.
+
+        Args:
+            stream: One-based selector; requesting the current one is allowed.
+            timeout: Positive finite deadline covering send and acknowledgement.
+
+        Continue calling recv_message() on the same thread to process the reply
+        and enforce the deadline. Success updates active_stream, not config.
+        Acknowledgement alone does not prove the encoded resolution changed.
+        Rejection, expiry or send failure closes the session; no retry/fallback
+        is attempted. A second request cannot overlap an outstanding one.
+        """
+        packet = build_stream_switch_packet(stream, key=self._key)
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout must be finite and positive")
+        if not self._opened or not self.play_accepted:
+            raise QuiiConnectionError("LAN TCP play is not active")
+        self._check_switch_timeout()
+        if self.stream_switch_pending:
+            raise QuiiConnectionError("a LAN TCP stream switch is pending")
+        self._pending_stream = stream
+        self._switch_deadline = time.monotonic() + timeout
+        try:
+            self._client.transport.set_timeout(timeout)
+            self._client.transport.send_all(packet)
+            self._check_cancelled()
+            self._check_switch_timeout()
+        except BaseException as exc:
+            self.close()
+            if isinstance(exc, (OSError, RuntimeError)) and not isinstance(
+                exc, QuiiConnectionError
+            ):
+                raise QuiiConnectionError(
+                    "LAN TCP stream switch send failed; no retry attempted"
+                ) from exc
+            raise
+
     def recv_message(self, *, timeout: float = 1.0) -> DecodedQuiiMessage:
         """Read one bounded message, preserving header/body state on timeouts.
 
@@ -172,8 +225,14 @@ class LanTcpSession:
             raise QuiiConnectionError("LAN TCP session is not open")
         deadline = time.monotonic() + timeout
         try:
+            self._check_switch_timeout()
+            if self._switch_deadline is not None:
+                deadline = min(deadline, self._switch_deadline)
             self._maybe_send_keepalive()
-            self._client.transport.set_timeout(timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("LAN TCP message read timed out")
+            self._client.transport.set_timeout(remaining)
             header = self._pending_header
             if header is None:
                 header = decode_tcp_header(
@@ -191,6 +250,7 @@ class LanTcpSession:
                 header, raw, crypto_mode=2, key=self._key
             )
             self._pending_header = None
+            self._check_switch_timeout()
             if not header.is_media:
                 self._check_command(header, payload)
             return {
@@ -200,6 +260,7 @@ class LanTcpSession:
                 "plausible": True,
             }
         except TimeoutError:
+            self._check_switch_timeout()
             raise
         except (OSError, ValueError, RuntimeError) as exc:
             self.close()
@@ -255,6 +316,26 @@ class LanTcpSession:
                     f"LAN TCP play rejected with status {header.header.raw[11]}"
                 )
             self.play_accepted = header.header.raw[12] == 1
+            if self.play_accepted and self.active_stream is None:
+                self.active_stream = self.config.stream
+        if header.header.packet_type == 9 and self.stream_switch_pending:
+            status = header.header.raw[11]
+            if status != 0:
+                raise QuiiConnectionError(
+                    f"LAN TCP stream switch rejected with status {status}"
+                )
+            self.active_stream = self._pending_stream
+            self._pending_stream = None
+            self._switch_deadline = None
+
+    def _check_switch_timeout(self) -> None:
+        if (
+            self._switch_deadline is not None
+            and time.monotonic() >= self._switch_deadline
+        ):
+            # There is no switch request id: close rather than misread a late ACK.
+            self.close()
+            raise QuiiConnectionError("LAN TCP stream switch timed out")
 
     def _maybe_send_keepalive(self) -> None:
         interval = self.config.live_keepalive_interval
@@ -282,6 +363,9 @@ class LanTcpSession:
         self._closed.set()
         self._opened = False
         self.play_accepted = False
+        self.active_stream = None
+        self._pending_stream = None
+        self._switch_deadline = None
         self._pending_header = None
         self._client.close()
 

@@ -23,7 +23,7 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
 | Read incoming-call history | [Incoming call history](api.md#incoming-call-history-experimental); this is not a live subscription. |
 | Open a connected door | [Door control](api.md#door-control); these calls have physical effects. |
-| Diagnose a failure | [Troubleshooting](setup.md#troubleshooting) and [error handling](api.md#error-codes). |
+| Diagnose a failure | [Troubleshooting](setup.md#troubleshooting), [error handling](api.md#error-codes), or the [experimental LAN stream-switch diagnostic](protocol-notes.md#experimental-lan-stream-switch-diagnostic). |
 
 ## For Contributors
 

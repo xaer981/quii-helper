@@ -846,6 +846,7 @@ from its root after installation/configuration:
 | `python -m examples.cloud_key_rtsp` | Explicit cloud login/key fetch, save/reload `data/stream_credentials.json`, then serve LAN-only RTSP. Each run contacts cloud first. |
 | `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
 | `python -m examples.listen_audio` | Experimental: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
+| `python -m examples.diagnose_lan_stream --host CAMERA_IP` | Experimental saved-key A/B diagnostic: initial-high versus switched-high, H.264 dimensions and E3 counts. Requires FFprobe; optional `--save-frames` also needs FFmpeg and saves private H.264/JPEG/report files under `data/`. No cloud, talkback or door command. See [instructions](protocol-notes.md#experimental-lan-stream-switch-diagnostic). |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until

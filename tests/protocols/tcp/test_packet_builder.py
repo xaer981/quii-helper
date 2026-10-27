@@ -1,10 +1,15 @@
-"""Native ParseURL/OnSendPlay selector mapping, without camera traffic."""
+"""Native play/switch selector mapping, without camera traffic."""
+
+import hashlib
+import struct
 
 import pytest
 
+from quii_helper.protocols.quii.crypto import aes_cbc_crypt
 from quii_helper.protocols.tcp.codec.message_codec import decode_tcp_header
 from quii_helper.protocols.tcp.live.packet_builder import (
     QuiiLiveOpenPacketBuilder,
+    build_stream_switch_packet,
 )
 
 
@@ -64,3 +69,26 @@ def test_invalid_explicit_stream_flag_is_rejected(stream_flag):
     )
     with pytest.raises(ValueError, match="stream_flag"):
         builder.build_live_open_packet(crypto_mode=0, stream_flag=stream_flag)
+
+
+@pytest.mark.parametrize("stream", [1, 2, 3, 256])
+def test_switch_matches_native_header_and_independent_aes(stream):
+    key = b"K" * 32
+    packet = build_stream_switch_packet(
+        stream, key=key, timestamp_seconds=1700000000
+    )
+    header = aes_cbc_crypt(packet[:32], key, crypto_mode=2, decrypt=True)
+    digest = aes_cbc_crypt(packet[32:], key, crypto_mode=2, decrypt=True)
+    expected = bytearray(32)
+    expected[0] = 9
+    struct.pack_into("<QH", expected, 1, 1700000000, 32)
+    expected[11] = stream - 1
+    assert len(packet) == 64
+    assert header == bytes(expected)
+    assert digest == hashlib.sha256(header).digest()
+
+
+@pytest.mark.parametrize("stream", [0, -1, 257, True, 1.0, "high"])
+def test_switch_rejects_invalid_selectors(stream):
+    with pytest.raises(ValueError, match="stream"):
+        build_stream_switch_packet(stream, key=b"K" * 32)
