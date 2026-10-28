@@ -1,4 +1,4 @@
-"""Observe LAN streams 1/2/3 and switches to stream 1 using a saved key.
+"""Compare LAN selectors or opt-in native handshakes using a saved key.
 
 Run from a checkout: python -m examples.diagnose_lan_stream --host CAMERA_IP.
 Requires ffprobe on PATH. Add --save-frames (and FFmpeg) to retain private
@@ -19,6 +19,7 @@ from collections import Counter
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from quii_helper import AutonomousConfig, CameraStreamCredentials
 from quii_helper.media.frames.assembler_state import (
@@ -26,6 +27,9 @@ from quii_helper.media.frames.assembler_state import (
     access_unit_from_frame,
 )
 from quii_helper.media.frames.cframe_pack import QuiiCFramePack
+from quii_helper.protocols.tcp.live.packet_builder import (
+    validate_live_identity,
+)
 from quii_helper.protocols.tcp.live.session import LanTcpSession
 from quii_helper.support.errors import QuiiConnectionError
 
@@ -45,6 +49,7 @@ def _failure_details(error: BaseException) -> dict[str, Any]:
         "startup failed",
         "invalid LAN TCP packet type",
         "unsupported LAN TCP crypto/SHA profile",
+        "separate media encryption is not supported",
         "setup was rejected",
         "no video frames in probe phase",
         "probe phase was not acknowledged",
@@ -397,7 +402,7 @@ def _observe_phase(
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Compare three sessions; save private samples only with --save-frames.
+    """Compare selectors or handshakes; retain files only on explicit opt-in.
 
     Each selector starts independently. A connection failure stops that session,
     not the remaining selectors. Missing switch ACKs do not stop observation or
@@ -407,6 +412,21 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", required=True, help="Camera LAN IP address")
     parser.add_argument("--channel", type=int, default=1)
     parser.add_argument(
+        "--compare-handshakes",
+        action="store_true",
+        help="Compare path and OEM setup/FastPlay with/without a client ID; no switches",
+    )
+    parser.add_argument(
+        "--oem",
+        help="Original app CAMERA_OEM; required by --compare-handshakes",
+    )
+    parser.add_argument(
+        "--stream",
+        type=int,
+        choices=(1, 2, 3),
+        help="One selector for --compare-handshakes (default: 1)",
+    )
+    parser.add_argument(
         "--credentials",
         type=Path,
         default=Path("data/stream_credentials.json"),
@@ -415,7 +435,7 @@ def main(argv: list[str] | None = None) -> None:
         "--seconds",
         type=float,
         default=20,
-        help="Receive seconds per initial/switch window (6-30)",
+        help="Receive seconds per observation window (6-30)",
     )
     parser.add_argument(
         "--save-frames",
@@ -423,6 +443,17 @@ def main(argv: list[str] | None = None) -> None:
         help="Save private H.264/JPEG/report files under data/; requires FFmpeg",
     )
     args = parser.parse_args(argv)
+    if args.compare_handshakes:
+        if args.oem is None:
+            parser.error("--compare-handshakes requires --oem CAMERA_OEM")
+        try:
+            validate_live_identity(args.oem.replace(",", ""), "")
+        except ValueError:
+            parser.error(
+                "--oem must be nonempty, at most 256 UTF-8 bytes, no NUL"
+            )
+    elif args.oem is not None or args.stream is not None:
+        parser.error("--oem and --stream require --compare-handshakes")
     if not math.isfinite(args.seconds) or not 6 <= args.seconds <= 30:
         parser.error("--seconds must be finite and between 6 and 30")
     ffprobe = shutil.which("ffprobe")
@@ -453,15 +484,45 @@ def main(argv: list[str] | None = None) -> None:
     first_error: QuiiConnectionError | None = None
     stage = "open"
     current_phase: dict[str, Any] | None = None
-    plans = (
-        (1, (("initial_stream_1", None),)),
-        (2, (("initial_stream_2", None), ("switch_2_to_1", 1))),
-        (3, (("initial_stream_3", None), ("switch_3_to_1", 1))),
+    plans: tuple[
+        tuple[int, str, str, tuple[tuple[str, int | None], ...]], ...
+    ] = (
+        (1, "setup_path", "", (("initial_stream_1", None),)),
+        (
+            2,
+            "setup_path",
+            "",
+            (("initial_stream_2", None), ("switch_2_to_1", 1)),
+        ),
+        (
+            3,
+            "setup_path",
+            "",
+            (("initial_stream_3", None), ("switch_3_to_1", 1)),
+        ),
     )
+    if args.compare_handshakes:
+        # Same format as vEye Pro's UUID fallback, not its real Android ID.
+        client_id = uuid4().hex
+        plans = tuple(
+            (args.stream or 1, handshake, identity, ((name, None),))
+            for name, handshake, identity in (
+                ("handshake_setup_path", "setup_path", ""),
+                ("handshake_setup_oem", "setup_oem", ""),
+                ("handshake_fast_oem", "fast_oem", ""),
+                ("handshake_setup_oem_client", "setup_oem", client_id),
+                ("handshake_fast_oem_client", "fast_oem", client_id),
+            )
+        )
     try:
-        for initial_stream, phases in plans:
+        for initial_stream, handshake, client_id, phases in plans:
             stage = "open"
+            profile = {
+                "handshake": handshake,
+                "client_id_present": bool(client_id),
+            }
             current_phase = {
+                **profile,
                 "phase": phases[0][0],
                 "status": "opening",
                 "initial_stream": initial_stream,
@@ -473,6 +534,7 @@ def main(argv: list[str] | None = None) -> None:
                 device_id=saved.device_id,
                 stream_key=saved.stream_key,
                 auth_code=saved.auth_code,
+                oem=args.oem or "",
                 channel=args.channel,
                 stream=initial_stream,
                 connect_timeout=5,
@@ -480,9 +542,12 @@ def main(argv: list[str] | None = None) -> None:
             packer = QuiiCFramePack()
             start = len(captures)
             try:
-                with LanTcpSession(config) as session:
+                with LanTcpSession(
+                    config, handshake=handshake, client_id=client_id
+                ) as session:
                     for name, target in phases:
                         current_phase = {
+                            **profile,
                             "phase": name,
                             "status": "in_progress",
                             "initial_stream": initial_stream,

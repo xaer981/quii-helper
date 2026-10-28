@@ -125,7 +125,7 @@ class ScriptedSocket:
         self.closed = True
 
 
-def session_and_socket(**overrides):
+def session_and_socket(*, handshake="setup_path", client_id="", **overrides):
     sock = ScriptedSocket()
     transport = TcpSocketTransport("127.0.0.1", 34567)
 
@@ -134,9 +134,131 @@ def session_and_socket(**overrides):
 
     transport.connect = connect
     session = LanTcpSession(
-        config(**overrides), transport_factory=lambda host, port: transport
+        config(**overrides),
+        transport_factory=lambda host, port: transport,
+        handshake=handshake,
+        client_id=client_id,
     )
     return session, sock
+
+
+@pytest.mark.parametrize(
+    "handshake,client_id",
+    [
+        ("setup_path", ""),
+        ("setup_oem", ""),
+        ("fast_oem", ""),
+        ("setup_oem", "synthetic-client"),
+        ("fast_oem", "synthetic-client"),
+    ],
+)
+def test_opt_in_handshake_preserves_selectors_and_receives_media(
+    handshake, client_id
+):
+    session, sock = session_and_socket(
+        handshake=handshake,
+        client_id=client_id,
+        oem="G0000",
+        channel=2,
+        stream=3,
+    )
+    fast = handshake == "fast_oem"
+    if fast:
+        sock.chunks.clear()
+    sock.chunks.extend([command(kind=0xAA if fast else 1), media()])
+    with session:
+        assert len(sock.sent) == (1 if fast else 2)
+        if not fast:
+            assert sock.sent[0] == bytes([0xA9]) + bytes(31)
+        packet = sock.sent[-1]
+        header = (
+            packet[:32]
+            if fast
+            else aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True)
+        )
+        assert header[0] == (0xAA if fast else 1)
+        assert header[13:18] == b"\x02\x00\x01\x02\x00"
+        body = aes_cbc_crypt(packet[32:], KEY, crypto_mode=2, decrypt=True)
+        identity = (
+            session._client.path if handshake == "setup_path" else "G0000"
+        )
+        expected = (
+            "adminapp2&&"
+            + encode_device_password("synthetic-auth")
+            + "\x00"
+            + identity
+            + "\x00"
+        ).encode()
+        if client_id:
+            expected += client_id.encode() + b"\x00"
+        assert body[: len(expected)] == expected
+        session.recv_message()
+        assert session.play_accepted and session.active_stream == 3
+        assert session.recv_message()["payload"] == b"native-layout-media"
+    assert sock.closed
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"handshake": "automatic"},
+        {"handshake": "setup_oem"},
+        {"handshake": "fast_oem", "oem": ""},
+        {"handshake": "setup_oem", "oem": None},
+        {"handshake": "setup_oem", "oem": ",,,"},
+        {"handshake": "setup_oem", "oem": "bad\x00id"},
+        {"handshake": "setup_oem", "oem": "x" * 257},
+        {"handshake": "setup_path", "client_id": "unexpected"},
+        {"handshake": "fast_oem", "oem": "G0000", "client_id": "bad\x00id"},
+    ],
+)
+def test_invalid_diagnostic_handshake_fails_before_transport(options):
+    options = dict(options)
+    settings = config(oem=options.pop("oem", ""))
+    factory = Mock(side_effect=AssertionError("network must not start"))
+    with pytest.raises(ConfigurationError):
+        LanTcpSession(settings, transport_factory=factory, **options)
+    factory.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [command(kind=0xAA, status=4), command(kind=0xAA, corrupt_sha=True), b""],
+)
+def test_fastplay_error_closes_without_setup_or_fallback(reply):
+    session, sock = session_and_socket(handshake="fast_oem", oem="G0000")
+    sock.chunks.clear()
+    sock.chunks.append(reply)
+    session.open()
+    with pytest.raises(QuiiConnectionError):
+        session.recv_message()
+    assert sock.closed and len(sock.sent) == 1
+    assert sock.sent[0][0] == 0xAA
+    assert not session.play_accepted
+
+
+def test_oem_is_normalized_like_qvcore_before_native_setcustomid():
+    session, sock = session_and_socket(
+        handshake="setup_oem", oem="G0000,G0001"
+    )
+    with session:
+        packet = sock.sent[1]
+        body = aes_cbc_crypt(packet[32:], KEY, crypto_mode=2, decrypt=True)
+        size = struct.unpack_from(
+            "<H",
+            aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True),
+            11,
+        )[0]
+        assert body[:size].endswith(b"\x00G0000G0001\x00")
+
+
+@pytest.mark.parametrize("handshake", ["setup_oem", "fast_oem"])
+def test_diagnostic_send_failure_closes_session(handshake):
+    session, sock = session_and_socket(handshake=handshake, oem="G0000")
+    sock.sendall = Mock(side_effect=OSError("synthetic send failure"))
+    with pytest.raises(QuiiConnectionError, match="startup failed"):
+        session.open()
+    assert sock.closed and not session.play_accepted
 
 
 def test_close_after_receive_before_buffer_copy_never_returns_short_header():

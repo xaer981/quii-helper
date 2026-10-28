@@ -202,6 +202,70 @@ Frame extraction uses `-fps_mode passthrough`. Only an explicit unsupported
 `fps_mode` option error retries with legacy `-vsync 0` for older FFmpeg;
 decoder errors are not retried, and `-xerror` remains enabled.
 
+#### Experimental LAN Handshake Comparison
+
+A Vimar K40955 report on 2026-10-28 received video at about 20 FPS and 352x288
+with each selector, but no audio or switch replies. That does not establish that
+the firmware supports neither audio nor other profiles. Before repeating selector
+tests, compare the initial connection requests with the original SDK.
+
+This opt-in mode keeps **one channel, selector, key and auth code** for five
+independent connections. It sends no stream-switch, talk or door commands:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --compare-handshakes --oem YOUR_CAMERA_OEM --stream 1 --seconds 10 --save-frames
+```
+
+Replace the IP and `YOUR_CAMERA_OEM` with your camera address and the
+`CAMERA_OEM` value extracted from the **original application**, not the device
+brand/model. This diagnostic does not read `.env`; the OEM must be explicit.
+Commas in an app's OEM list are removed, matching `QvCore.initParams` before
+native `SetCustomID`.
+The saved credentials file and FFprobe/FFmpeg requirements are the same as above.
+Omit `--save-frames` to print JSON without saving any media or report files.
+
+| Phase | Handshake and body |
+| --- | --- |
+| `handshake_setup_path` | Existing setup/type-1 play with credentials and URL path; unchanged baseline. |
+| `handshake_setup_oem` | Same setup/play, replacing only the path body field with OEM/custom ID. |
+| `handshake_fast_oem` | Same OEM body, but native type-`0xAA` FastPlay without setup or client ID. |
+| `handshake_setup_oem_client` | Same OEM request plus a newly generated diagnostic client UUID. |
+| `handshake_fast_oem_client` | Same OEM and UUID, but native type-`0xAA` FastPlay without setup. |
+
+The same temporary 32-hex-character UUID is used in the last two phases, matching
+vEye Pro's `DataUtils.generateUUID` fallback. It is not copied from
+Android, sent to cloud, persisted, or included in the report. Each connection
+has one bounded receive window (default 20 seconds; 6-30 allowed), so this mode
+takes roughly five windows plus setup/analysis. `--stream` is 1 by default and
+accepts 1/2/3 **only in this mode**. No retries or automatic fallback occur.
+An unsupported/rejected FastPlay connection is reported as a failure; other
+independent phases are still attempted. `completed` is not a compatibility
+verdict. Compare actual video FPS, H.264 dimensions, E3 counts and color samples.
+The report names the handshake and whether a client ID was present, never the
+UUID, auth code or key. The existing private-artifact precautions still apply;
+this mode retains at most five 64 MiB H.264 files plus JPEGs. Testing FastPlay
+both with and without a client ID avoids mistaking identity rejection for a
+handshake incompatibility.
+
+Native parity rechecked via GhidraMCP on 2026-10-28:
+
+| Native | Functions | Confirmed behavior |
+| --- | --- | --- |
+| vHome 2.2 | `OnSendPlay` `0047d898`; `SendFastPlay` `0047cf34`; `SetCustomID` `00476dd0` | Body is `username&&password\0custom_id\0`; custom ID is not the URL path. |
+| vEye Pro 1.9.4.0.2 | `OnSendPlay` `0051250c`; `SendFastPlay` `00511af4`; `SetCustomID` `00514ce0`; `SetClientID` `00514d10` | Same fields, plus an optional nonempty `client_id\0`. |
+| Both | The above play/FastPlay functions | Unix seconds, channel at bytes 13-14, zero-based selector at 16. Regular play encrypts header and body separately; FastPlay leaves its header plain and AES-256 encrypts body/SHA. |
+| vEye Pro | `OnStart` `0050d3d0`; Java `QvPlayerCore.startPlay` | App selects FastPlay using `newcn=1` and capability `TYPE_PREVIEW_NEW_SHAKE=84`; the diagnostic explicitly probes it, without claiming the device advertises it. |
+
+Normal `Camera` capture/RTSP still uses the existing setup/path-body profile.
+The internal `LanTcpSession` accepts explicit diagnostic `handshake` and
+`client_id` arguments, but these are not stable Camera options or `.env` settings.
+All profiles retain authenticated reply checks, receive limits, cancellation and
+cleanup. FastPlay replies use the same encrypted AES-256/SHA256 receive path.
+Appearance of audio or a different picture on Vimar remains **unverified** until
+the comparison runs on that device; wire parity alone does not prove a fix.
+
+#### Stream-Switch Evidence And Snapshot Warmup
+
 Compare the `initial_stream_1`, `initial_stream_2`, `initial_stream_3`,
 `switch_2_to_1` and `switch_3_to_1` images locally. Report whether
 each starts and remains grayscale or becomes colored, and provide only the
@@ -244,6 +308,8 @@ but before it copied the result. An identity/length guard now rejects that
 read instead of passing an empty header to decoding. vHome native `OnRecv`
 (`004793fc`) likewise does not decrypt a new header with fewer than 32 bytes.
 This is a host-side cancellation correction, not a change to TCP framing.
+
+#### Supported LAN Profile And Limits
 
 LAN sends the verified path-form play with `live_inner=False` and
 `live_newcn=False`. Non-default values of these flags or `live_play_payload`

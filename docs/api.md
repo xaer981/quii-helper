@@ -867,6 +867,7 @@ from its root after installation/configuration:
 | `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
 | `python -m examples.listen_audio` | Experimental: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
 | `python -m examples.diagnose_lan_stream --host CAMERA_IP` | Experimental saved-key comparison of streams 1/2/3, switches to 1, receive-time FPS, H.264 dimensions and E3 counts. Missing switch ACKs remain unconfirmed while bounded observation continues. Requires FFprobe; optional `--save-frames` also needs FFmpeg and saves private H.264/JPEG/report files under `data/`. No cloud, talkback or door command. See [instructions](protocol-notes.md#experimental-lan-stream-switch-diagnostic). |
+| `python -m examples.diagnose_lan_stream --host CAMERA_IP --compare-handshakes --oem YOUR_CAMERA_OEM` | Experimental five-connection comparison of the existing path-body profile and native OEM setup/FastPlay with/without client identity, on one selector. No quality switches, cloud or talk/door commands. Does not change Camera defaults or claim Vimar audio/quality support. See [instructions](protocol-notes.md#experimental-lan-handshake-comparison). |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until

@@ -24,6 +24,7 @@ from quii_helper.protocols.tcp.codec.message_codec import (
 )
 from quii_helper.protocols.tcp.live.packet_builder import (
     build_stream_switch_packet,
+    validate_live_identity,
 )
 from quii_helper.protocols.tcp.transport.client import (
     QuiiClient,
@@ -103,6 +104,8 @@ class LanTcpSession:
     No credentials are loaded, renewed or persisted by this class.
     Send and receive operations have one owner thread; only close() may run
     concurrently. Stream switches are explicit and never sent during open().
+    The handshake/client_id options are internal diagnostics only; Camera
+    retains setup_path and never selects or falls back to another handshake.
     """
 
     def __init__(
@@ -110,9 +113,26 @@ class LanTcpSession:
         config: AutonomousConfig,
         *,
         transport_factory: TcpTransportFactory = TcpSocketTransport,
+        handshake: str = "setup_path",
+        client_id: str = "",
     ) -> None:
         validate_lan_config(config)
+        if handshake not in ("setup_path", "setup_oem", "fast_oem"):
+            raise ConfigurationError("unsupported LAN diagnostic handshake")
+        custom_id = None
+        if handshake != "setup_path":
+            if not isinstance(config.oem, str):
+                raise ConfigurationError("diagnostic OEM must be a string")
+            # QvCore.initParams removes commas before native SetCustomID.
+            custom_id = config.oem.replace(",", "")
+        try:
+            validate_live_identity(custom_id, client_id)
+        except ValueError as exc:
+            raise ConfigurationError(str(exc)) from None
         self.config = config
+        self._handshake = handshake
+        self._custom_id = custom_id
+        self._client_id = client_id
         self._key = config.stream_key.encode("utf-8")
         self._client = QuiiClient(
             config.device_host,
@@ -143,17 +163,29 @@ class LanTcpSession:
         try:
             self._client.connect(timeout=self.config.connect_timeout)
             self._check_cancelled()
-            self._client.send_setup()
-            setup = self._client.recv_setup()
-            self._check_cancelled()
-            raw = cast(bytes, setup["raw"])
-            if raw[0] != 0xA9 or setup["status"] != 0:
-                raise QuiiConnectionError("LAN TCP setup was rejected")
-            if setup["crypto_mode"] != 2 or raw[11] != 1:
-                raise QuiiConnectionError(
-                    "unsupported LAN TCP crypto/SHA profile; AES-256/SHA256 required"
+            if self._handshake == "fast_oem":
+                self._client.crypto_mode = 2
+            else:
+                self._client.send_setup()
+                setup = self._client.recv_setup()
+                self._check_cancelled()
+                raw = cast(bytes, setup["raw"])
+                if raw[0] != 0xA9 or setup["status"] != 0:
+                    raise QuiiConnectionError("LAN TCP setup was rejected")
+                if setup["crypto_mode"] != 2 or raw[11] != 1:
+                    raise QuiiConnectionError(
+                        "unsupported LAN TCP crypto/SHA profile; AES-256/SHA256 required"
+                    )
+            if self._handshake == "setup_path":
+                self._client.send_live_open()
+            else:
+                packet = self._client.live_open_builder.build_live_open_packet(
+                    crypto_mode=2,
+                    custom_id=self._custom_id,
+                    client_id=self._client_id,
+                    fast_play=self._handshake == "fast_oem",
                 )
-            self._client.send_live_open()
+                self._client.transport.send_all(packet)
             self._opened = True
             self._last_keepalive = time.monotonic()
             self._check_cancelled()

@@ -14,6 +14,128 @@ from quii_helper.support.errors import QuiiConnectionError
 example = importlib.import_module("examples.diagnose_lan_stream")
 
 
+@pytest.mark.parametrize("failed_phase", [None, "handshake_setup_oem"])
+def test_handshake_comparison_is_explicit_bounded_and_never_switches(
+    monkeypatch, capsys, tmp_path, failed_phase
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CAMERA_CONNECTION_MODE", "cloud")
+    saved = CameraStreamCredentials("synthetic-id", "K" * 32, "private-auth")
+    monkeypatch.setattr(
+        example.CameraStreamCredentials, "load", Mock(return_value=saved)
+    )
+    monkeypatch.setattr(example.shutil, "which", lambda name: name)
+    monkeypatch.setattr(
+        example, "uuid4", lambda: Mock(hex="private-diagnostic-client")
+    )
+    factory = MagicMock()
+    session = factory.return_value.__enter__.return_value
+    session.play_accepted = True
+    monkeypatch.setattr(example, "LanTcpSession", factory)
+    monkeypatch.setattr(
+        example,
+        "_keyframe_dimensions",
+        lambda *args: {"status": "no_h264_keyframe"},
+    )
+
+    def observe(session, packer, *, name, seconds, progress, **kwargs):
+        assert seconds == 10
+        if name == failed_phase:
+            raise QuiiConnectionError(
+                "private-diagnostic-client must not be printed"
+            )
+        return {
+            "phase": name,
+            "cpacket_dimensions": {"352x288": 190},
+            "frame_capture": None,
+        }, b""
+
+    monkeypatch.setattr(example, "_observe_phase", observe)
+    args = [
+        "--host",
+        "127.0.0.1",
+        "--compare-handshakes",
+        "--oem",
+        "G0000",
+        "--stream",
+        "2",
+        "--seconds",
+        "10",
+        "--save-frames",
+    ]
+    if failed_phase:
+        with pytest.raises(QuiiConnectionError):
+            example.main(args)
+    else:
+        example.main(args)
+    calls = factory.call_args_list
+    assert len(calls) == 5 and factory.return_value.__exit__.call_count == 5
+    assert [call.kwargs for call in calls] == [
+        {"handshake": "setup_path", "client_id": ""},
+        {"handshake": "setup_oem", "client_id": ""},
+        {"handshake": "fast_oem", "client_id": ""},
+        {"handshake": "setup_oem", "client_id": "private-diagnostic-client"},
+        {"handshake": "fast_oem", "client_id": "private-diagnostic-client"},
+    ]
+    for call in calls:
+        settings = call.args[0]
+        assert settings.connection_mode == "lan" and settings.stream == 2
+        assert (
+            settings.oem == "G0000" and settings.auth_code == saved.auth_code
+        )
+        assert settings.stream_key == saved.stream_key
+        assert not settings.cloud_account and not settings.cloud_password
+    session.request_stream_switch.assert_not_called()
+    report_text = next((tmp_path / "data").glob("*/report.json")).read_text()
+    report = json.loads(report_text)
+    assert report["completed"] is (failed_phase is None)
+    assert [phase["handshake"] for phase in report["phases"]] == [
+        "setup_path",
+        "setup_oem",
+        "fast_oem",
+        "setup_oem",
+        "fast_oem",
+    ]
+    assert [phase["client_id_present"] for phase in report["phases"]] == [
+        False,
+        False,
+        False,
+        True,
+        True,
+    ]
+    assert len(report["failures"]) == (1 if failed_phase else 0)
+    output = capsys.readouterr().out + report_text
+    for secret in (
+        saved.stream_key,
+        saved.auth_code,
+        "private-diagnostic-client",
+    ):
+        assert secret not in output
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--compare-handshakes"],
+        ["--compare-handshakes", "--oem", ""],
+        ["--compare-handshakes", "--oem", ",,,"],
+        ["--compare-handshakes", "--oem", "bad\x00id"],
+        ["--compare-handshakes", "--oem", "x" * 257],
+        ["--compare-handshakes", "--oem", "G0000", "--stream", "4"],
+        ["--oem", "G0000"],
+        ["--stream", "1"],
+    ],
+)
+def test_invalid_handshake_flags_fail_before_loading_credentials(
+    monkeypatch, options
+):
+    load = Mock(side_effect=AssertionError("no credential access"))
+    monkeypatch.setattr(example.CameraStreamCredentials, "load", load)
+    with pytest.raises(SystemExit):
+        example.main(["--host", "127.0.0.1", *options])
+    load.assert_not_called()
+
+
 @pytest.mark.parametrize("failed_phase", [None, "switch_2_to_1"])
 def test_example_is_lan_only_and_runs_all_selectors_after_switch_failure(
     monkeypatch, capsys, tmp_path, failed_phase
