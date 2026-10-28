@@ -1,4 +1,4 @@
-"""Compare initial-high and switched-high LAN playback using a saved key.
+"""Observe LAN streams 1/2/3 and switches to stream 1 using a saved key.
 
 Run from a checkout: python -m examples.diagnose_lan_stream --host CAMERA_IP.
 Requires ffprobe on PATH. Add --save-frames (and FFmpeg) to retain private
@@ -76,6 +76,23 @@ def _failure_details(error: BaseException) -> dict[str, Any]:
             if isinstance(winerror, int):
                 result["winerror"] = winerror
     return result
+
+
+def _record_failure(
+    error: BaseException,
+    stage: str,
+    phase: dict[str, Any] | None,
+    captures: list[tuple[dict[str, Any], bytes]],
+) -> dict[str, Any]:
+    """Retain a safe failure even if opening or sending failed before receive."""
+    failure = {"stage": stage, **_failure_details(error)}
+    if phase is not None:
+        failure["phase"] = phase["phase"]
+        phase.update(status="failed", error=failure)
+        if not any(item is phase for item, _ in captures):
+            captures.append((phase, b""))
+    print(json.dumps({"completed": False, "failure": failure}), flush=True)
+    return failure
 
 
 def _open_private(path: Path, mode: str = "wb") -> Any:
@@ -228,7 +245,7 @@ def _observe_phase(
     capture_path: Path | None = None,
     progress: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bytes]:
-    """Collect one window without running subprocesses or losing ACK media."""
+    """Measure received frames, including media before an optional switch ACK."""
     started = time.monotonic()
     counts: Counter[str] = Counter()
     sizes: Counter[str] = Counter()
@@ -239,9 +256,12 @@ def _observe_phase(
     retained = 0
     retained_bytes = 0
     first_video: float | None = None
+    last_video: float | None = None
+    video_frames = 0
+    first_retained_video: float | None = None
     result = progress if progress is not None else {}
-    active_stream = session.active_stream
     switch_pending = session.stream_switch_pending
+    switch_requested = switch_pending
     try:
         with (
             _open_private(capture_path) if capture_path else nullcontext()
@@ -251,8 +271,8 @@ def _observe_phase(
                     message = session.recv_message(timeout=min(0.5, remaining))
                 except TimeoutError:
                     continue
-                active_stream = session.active_stream
                 switch_pending = session.stream_switch_pending
+                arrived = time.monotonic()
                 header = message["header"]
                 if not message["is_media"]:
                     counts[f"command_{header.packet_type:02x}"] += 1
@@ -263,11 +283,13 @@ def _observe_phase(
                     tag = frame["frame_tag"]
                     counts[f"frame_{tag:02x}"] += 1
                     if tag in VIDEO_FRAME_TAGS:
+                        video_frames += 1
+                        if first_video is None:
+                            first_video = arrived
+                        last_video = arrived
                         sizes[f'{frame["width"]}x{frame["height"]}'] += 1
                         codec = frame["codec"]
-                        if session.stream_switch_pending or not (
-                            codec == 1 or 0x10 <= codec <= 0x1F
-                        ):
+                        if not (codec == 1 or 0x10 <= codec <= 0x1F):
                             continue
                         unit = access_unit_from_frame(frame)
                         if tag == 0xE1 and len(unit) <= 2 * 1024 * 1024:
@@ -284,10 +306,9 @@ def _observe_phase(
                             )
                         output.write(unit)
                         retained_bytes += len(unit)
-                        now = time.monotonic()
-                        if first_video is None:
-                            first_video = now
-                        elapsed = now - first_video
+                        if first_retained_video is None:
+                            first_retained_video = arrived
+                        elapsed = arrived - first_retained_video
                         while (
                             len(samples) < len(SAMPLE_SECONDS)
                             and elapsed >= SAMPLE_SECONDS[len(samples)]
@@ -307,13 +328,51 @@ def _observe_phase(
                             f'{frame["codec"]}/{frame["sample_rate"]}/{frame["channels"]}'
                         ] += 1
     finally:
+        elapsed = time.monotonic() - started
+        span = (
+            last_video - first_video
+            if first_video is not None and last_video is not None
+            else 0.0
+        )
         result.update(
             {
                 "phase": name,
-                "elapsed_seconds": round(time.monotonic() - started, 3),
-                "acknowledged_stream": active_stream,
+                "elapsed_seconds": round(elapsed, 3),
+                "switch_status": (
+                    "not_requested"
+                    if not switch_requested
+                    else (
+                        "acknowledged"
+                        if not switch_pending and 0 in replies
+                        else "unconfirmed"
+                    )
+                ),
                 "switch_pending": switch_pending,
                 "switch_reply_statuses": replies,
+                "video_timing": {
+                    "frames": video_frames,
+                    "first_arrival_seconds": (
+                        round(first_video - started, 4)
+                        if first_video is not None
+                        else None
+                    ),
+                    "last_arrival_seconds": (
+                        round(last_video - started, 4)
+                        if last_video is not None
+                        else None
+                    ),
+                    "arrival_span_seconds": round(span, 4),
+                    "arrival_fps": (
+                        round((video_frames - 1) / span, 3)
+                        if video_frames > 1 and span > 0
+                        else None
+                    ),
+                    "window_fps": (
+                        round(video_frames / elapsed, 3)
+                        if elapsed > 0
+                        else None
+                    ),
+                },
                 "counts": dict(counts),
                 "cpacket_dimensions": dict(sizes),
                 "last_keyframe_h264": {"status": "not_analyzed"},
@@ -338,10 +397,11 @@ def _observe_phase(
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Compare two sessions; save private A/B samples only with --save-frames.
+    """Compare three sessions; save private samples only with --save-frames.
 
-    Only the explicit IP and saved credentials are used. Firmware rejection or
-    missing acknowledgement stops the test without retries or cloud fallback.
+    Each selector starts independently. A connection failure stops that session,
+    not the remaining selectors. Missing switch ACKs do not stop observation or
+    imply success. Only the explicit IP/key are used, with no retries/fallback.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", required=True, help="Camera LAN IP address")
@@ -355,7 +415,7 @@ def main(argv: list[str] | None = None) -> None:
         "--seconds",
         type=float,
         default=20,
-        help="Receive seconds per high comparison (6-30); warmup/restore use 6",
+        help="Receive seconds per initial/switch window (6-30)",
     )
     parser.add_argument(
         "--save-frames",
@@ -389,24 +449,24 @@ def main(argv: list[str] | None = None) -> None:
         )
     captures: list[tuple[dict[str, Any], bytes]] = []
     completed = False
-    failure: dict[str, Any] | None = None
+    failures: list[dict[str, Any]] = []
+    first_error: QuiiConnectionError | None = None
     stage = "open"
     current_phase: dict[str, Any] | None = None
     plans = (
-        (1, (("initial_high", None, args.seconds),)),
-        (
-            2,
-            (
-                ("initial_low", None, 6),
-                ("switched_high", 1, args.seconds),
-                ("switched_back_low", 2, 6),
-            ),
-        ),
+        (1, (("initial_stream_1", None),)),
+        (2, (("initial_stream_2", None), ("switch_2_to_1", 1))),
+        (3, (("initial_stream_3", None), ("switch_3_to_1", 1))),
     )
     try:
         for initial_stream, phases in plans:
             stage = "open"
-            current_phase = {"phase": phases[0][0], "status": "opening"}
+            current_phase = {
+                "phase": phases[0][0],
+                "status": "opening",
+                "initial_stream": initial_stream,
+                "requested_stream": initial_stream,
+            }
             config = AutonomousConfig(
                 connection_mode="lan",
                 device_host=args.host,
@@ -419,52 +479,54 @@ def main(argv: list[str] | None = None) -> None:
             )
             packer = QuiiCFramePack()
             start = len(captures)
-            with LanTcpSession(config) as session:
-                for name, target, seconds in phases:
-                    current_phase = {"phase": name, "status": "in_progress"}
-                    captures.append((current_phase, b""))
-                    print(json.dumps({"starting_phase": name}), flush=True)
-                    if target is not None:
-                        stage = "send_switch"
-                        session.request_stream_switch(target, timeout=5)
-                    capture_path = (
-                        directory / (name + ".h264")
-                        if directory
-                        and name in {"initial_high", "switched_high"}
-                        else None
-                    )
-                    stage = "receive"
-                    result, keyframe = _observe_phase(
-                        session,
-                        packer,
-                        name=name,
-                        seconds=seconds,
-                        capture_path=capture_path,
-                        progress=current_phase,
-                    )
-                    current_phase.update(result)
-                    result = current_phase
-                    captures[-1] = (result, keyframe)
-                    stage = "validate"
-                    if not result["cpacket_dimensions"]:
-                        raise QuiiConnectionError(
-                            "no video frames in probe phase"
+            try:
+                with LanTcpSession(config) as session:
+                    for name, target in phases:
+                        current_phase = {
+                            "phase": name,
+                            "status": "in_progress",
+                            "initial_stream": initial_stream,
+                            "requested_stream": (
+                                initial_stream if target is None else target
+                            ),
+                        }
+                        captures.append((current_phase, b""))
+                        print(json.dumps({"starting_phase": name}), flush=True)
+                        if target is not None:
+                            stage = "send_switch"
+                            # One switch per connection prevents late-ACK ambiguity.
+                            session.request_stream_switch(target, timeout=None)
+                        capture_path = (
+                            directory / (name + ".h264") if directory else None
                         )
-                    if (
-                        not session.play_accepted
-                        or session.stream_switch_pending
-                    ):
-                        raise QuiiConnectionError(
-                            "probe phase was not acknowledged"
+                        stage = "receive"
+                        result, keyframe = _observe_phase(
+                            session,
+                            packer,
+                            name=name,
+                            seconds=args.seconds,
+                            capture_path=capture_path,
+                            progress=current_phase,
                         )
-                    if session.active_stream != (
-                        initial_stream if target is None else target
-                    ):
-                        raise QuiiConnectionError(
-                            "stream switch was not acknowledged"
-                        )
-                    result["cframe"] = dict(packer.stats)
-                    result["status"] = "completed"
+                        current_phase.update(result)
+                        result = current_phase
+                        captures[-1] = (result, keyframe)
+                        stage = "validate"
+                        if not result["cpacket_dimensions"]:
+                            raise QuiiConnectionError(
+                                "no video frames in probe phase"
+                            )
+                        if not session.play_accepted:
+                            raise QuiiConnectionError(
+                                "probe phase was not acknowledged"
+                            )
+                        result["status"] = "completed"
+            except QuiiConnectionError as error:
+                failures.append(
+                    _record_failure(error, stage, current_phase, captures)
+                )
+                if first_error is None:
+                    first_error = error
             # No decoder subprocess runs while a camera socket is open.
             stage = "analyze"
             for result, keyframe in captures[start:]:
@@ -472,7 +534,7 @@ def main(argv: list[str] | None = None) -> None:
                 result["last_keyframe_h264"] = _keyframe_dimensions(
                     ffprobe, keyframe
                 )
-                capture = result["frame_capture"]
+                capture = result.get("frame_capture")
                 if (
                     capture is not None
                     and directory is not None
@@ -484,16 +546,9 @@ def main(argv: list[str] | None = None) -> None:
                         capture["samples"],
                     )
                 print(json.dumps(result), flush=True)
-        completed = True
+        completed = not failures
     except BaseException as error:
-        failure = {"stage": stage, **_failure_details(error)}
-        if current_phase is not None:
-            failure["phase"] = current_phase["phase"]
-            current_phase.update(status="failed", error=failure)
-            if not captures or captures[-1][0] is not current_phase:
-                if not any(item is current_phase for item, _ in captures):
-                    captures.append((current_phase, b""))
-        print(json.dumps({"completed": False, "failure": failure}), flush=True)
+        failures.append(_record_failure(error, stage, current_phase, captures))
         raise
     finally:
         if directory is not None:
@@ -501,13 +556,16 @@ def main(argv: list[str] | None = None) -> None:
                 json.dump(
                     {
                         "completed": completed,
-                        "failure": failure,
+                        "failure": failures[0] if failures else None,
+                        "failures": failures,
                         "phases": [result for result, _ in captures],
                     },
                     report,
                     indent=2,
                 )
-    print(json.dumps({"completed": True}), flush=True)
+    print(json.dumps({"completed": completed}), flush=True)
+    if first_error is not None:
+        raise first_error
 
 
 if __name__ == "__main__":

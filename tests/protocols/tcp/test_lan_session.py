@@ -635,12 +635,13 @@ def test_unsolicited_switch_reply_preserves_existing_receive_behavior(status):
         (command(9, corrupt_sha=True), "SHA256"),
     ],
 )
-def test_switch_rejection_or_corrupted_ack_fails_closed(reply, error):
+@pytest.mark.parametrize("timeout", [5, None])
+def test_switch_rejection_or_corrupted_ack_fails_closed(reply, error, timeout):
     session, sock = session_and_socket()
     sock.chunks.append(command())
     with session:
         session.recv_message()
-        session.request_stream_switch(2)
+        session.request_stream_switch(2, timeout=timeout)
         sock.chunks.append(reply)
         with pytest.raises(QuiiConnectionError, match=error):
             session.recv_message()
@@ -707,6 +708,47 @@ def test_media_does_not_extend_switch_deadline(monkeypatch):
         with pytest.raises(QuiiConnectionError, match="switch timed out"):
             session.recv_message()
         assert sock.closed
+
+
+@pytest.mark.parametrize("late_ack", [False, True])
+def test_diagnostic_switch_keeps_media_without_ack_and_forbids_overlap(
+    monkeypatch, late_ack
+):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    clock = [100.0]
+    monkeypatch.setattr(
+        "quii_helper.protocols.tcp.live.session.time.monotonic",
+        lambda: clock[0],
+    )
+    with session:
+        session.recv_message()
+        session.request_stream_switch(3, timeout=None)
+        assert sock.timeout == session.config.connect_timeout
+        for second in (101, 106, 120):
+            clock[0] = second
+            sock.chunks.append(media(b"still-streaming"))
+            assert session.recv_message()["payload"] == b"still-streaming"
+            assert session.stream_switch_pending and session.active_stream == 1
+        with pytest.raises(QuiiConnectionError, match="pending"):
+            session.request_stream_switch(2, timeout=None)
+        assert not sock.closed
+        if late_ack:
+            sock.chunks.append(command(9, active=0))
+            session.recv_message()
+            assert session.active_stream == 3
+            assert not session.stream_switch_pending
+        else:
+            sock.chunks.append(TimeoutError())
+            with pytest.raises(TimeoutError):
+                session.recv_message(timeout=0.25)
+            assert session.stream_switch_pending and not sock.closed
+        sent_types = [
+            aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True)[0]
+            for packet in sock.sent[2:]
+        ]
+        assert sent_types.count(9) == 1
+    assert sock.closed and not session.stream_switch_pending
 
 
 @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])

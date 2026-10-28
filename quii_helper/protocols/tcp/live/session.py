@@ -174,22 +174,28 @@ class LanTcpSession:
         return self._pending_stream is not None
 
     def request_stream_switch(
-        self, stream: int, *, timeout: float = 5.0
+        self, stream: int, *, timeout: float | None = 5.0
     ) -> None:
         """Send an internal, opt-in switch without consuming any media.
 
         Args:
             stream: One-based selector; requesting the current one is allowed.
             timeout: Positive finite deadline covering send and acknowledgement.
+                None disables only the ACK deadline for bounded diagnostics;
+                sending still uses connect_timeout.
 
         Continue calling recv_message() on the same thread to process the reply
         and enforce the deadline. Success updates active_stream, not config.
         Acknowledgement alone does not prove the encoded resolution changed.
         Rejection, expiry or send failure closes the session; no retry/fallback
         is attempted. A second request cannot overlap an outstanding one.
+        With no ACK deadline, the caller must bound observation and close the
+        session; a missing reply never implies success or permits another switch.
         """
         packet = build_stream_switch_packet(stream, key=self._key)
-        if not math.isfinite(timeout) or timeout <= 0:
+        if timeout is not None and (
+            not math.isfinite(timeout) or timeout <= 0
+        ):
             raise ValueError("timeout must be finite and positive")
         if not self._opened or not self.play_accepted:
             raise QuiiConnectionError("LAN TCP play is not active")
@@ -197,9 +203,13 @@ class LanTcpSession:
         if self.stream_switch_pending:
             raise QuiiConnectionError("a LAN TCP stream switch is pending")
         self._pending_stream = stream
-        self._switch_deadline = time.monotonic() + timeout
+        self._switch_deadline = (
+            time.monotonic() + timeout if timeout is not None else None
+        )
         try:
-            self._client.transport.set_timeout(timeout)
+            self._client.transport.set_timeout(
+                self.config.connect_timeout if timeout is None else timeout
+            )
             self._client.transport.send_all(packet)
             self._check_cancelled()
             self._check_switch_timeout()

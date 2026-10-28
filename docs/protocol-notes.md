@@ -84,6 +84,12 @@ enforce the deadline. Only one switch may be pending. A successful authenticated
 reply updates `active_stream`, not configuration. Rejection, expiry or send
 failure closes the session without retries or cloud fallback. Closing on expiry
 avoids confusing a late reply with another request: the wire has no request id.
+The diagnostic explicitly passes `timeout=None`: only the ACK deadline is
+disabled, sending remains bounded by `connect_timeout`, and the receive window
+still ends after `--seconds`. An unanswered switch remains pending, forbids
+another switch, and never updates `active_stream`. Normal callers retain the
+five-second default. Real rejection, invalid SHA, EOF or I/O failure still closes
+the session. Normal Camera startup/capture/RTSP is unchanged.
 
 Rechecked in the exact vEye Pro 1.9.4.0.2 native library via GhidraMCP:
 
@@ -91,12 +97,14 @@ Rechecked in the exact vEye Pro 1.9.4.0.2 native library via GhidraMCP:
 | --- | --- |
 | `00510f08`, `SendSwitchStream` | Type 9, Unix seconds at 1, trailer length at 9, zero-based selector at byte 11; no body. SHA256 covers the 32-byte header; header and digest are AES-encrypted independently. |
 | `00512be4`, `OnRecvSwitch` | Reply byte 11 is status (0 means success), not the requested stream index. |
+| `0050d908`, `OnPolling`; `0050dfbc`, `OnRecv` | Receive-idle timeout with incoming data refreshing it; no separate five-second switch-ACK deadline in this path. |
 
 Rechecked on 2026-10-28 against both open libraries: vHome uses
 `SendSwitchStream` at `0047c348` and `OnRecvSwitch` at `0047dee8`, with the
-same command layout and status-byte meaning. The diagnostic corrections below
-do not change these wire bytes, reply validation, or the five-second switch
-deadline. A Vimar timeout alone does not prove that the command is unsupported.
+same command layout and status-byte meaning. Its `OnPolling` at `00478d48`
+likewise checks receive inactivity rather than a separate switch-ACK deadline.
+The opt-in observation policy does not change wire bytes or reply validation.
+A Vimar timeout alone does not prove that the command is unsupported.
 
 From an installed checkout/source distribution, with an existing saved pair
 and `ffprobe` on PATH, run:
@@ -107,25 +115,56 @@ python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --second
 
 Replace the example IP with your camera's LAN IP. The default key file is
 `data/stream_credentials.json`; override it with `--credentials PATH`.
-No `.env`, APK assets or cloud settings are loaded. Two sessions run sequentially
-on the same channel/key: A starts directly with stream 1; B starts with stream
-2, switches to 1, then restores 2 before disconnecting. The two high-stream
-windows default to 20 seconds each (`--seconds` accepts 6-30); B's low warmup
-and restoration windows take 6 seconds each. Allow about a minute plus setup
-and analysis. Startup delay is included, so A can receive fewer frames than
-the already-warm B window without indicating a different frame rate.
+No `.env`, APK assets or cloud settings are loaded. Three sessions run
+sequentially on the same channel/key:
+
+| Session | Observation windows |
+| --- | --- |
+| 1 | `initial_stream_1` |
+| 2 | `initial_stream_2`, then `switch_2_to_1` |
+| 3 | `initial_stream_3`, then `switch_3_to_1` |
+
+Every window defaults to 20 seconds (`--seconds` accepts 6-30). Allow roughly
+100 seconds plus setup/analysis, or use `--seconds 10` for a shorter run.
+Each selector starts independently. There is at most one switch per connection;
+no restore/retry is sent, so a missing or late ACK cannot be assigned to a later
+request. Missing ACKs do not abort observation. A connection error ends only
+that session and is retained while the remaining selectors are tested. After
+all sessions, any such error produces an unsuccessful exit and report.
+vEye Pro labels selectors 1/2/3 as high/medium/low for video intercoms, but
+main/sub/third for other cameras. These are selectors, not guaranteed resolutions
+or FPS values. The former diagnostic's `initial_low` was selector 2, not 3.
 The script sends preview/quality commands but no persistent configuration,
 talk/backchannel or door commands. Stop other viewers and test without ringing
 or answering a call first; those states can independently change device behavior.
 
-Without extra flags it saves no files. Each JSON row reports frame counts,
-E3 codec/rate/channel metadata, switch
-status, CPacket sizes and `last_keyframe_h264`. The latter uses only the latest
-bounded H.264 keyframe observed after acknowledgement. `no_h264_keyframe` or
+Without extra flags it saves no files. Each JSON row reports `initial_stream`,
+`requested_stream`, frame counts, E3 codec/rate/channel metadata, switch status,
+CPacket sizes and `last_keyframe_h264`. The latter uses the latest bounded H.264
+keyframe actually received in that window, including before an ACK.
+`switch_status` is `not_requested`, `acknowledged` or `unconfirmed`;
+`switch_reply_statuses` retains authenticated replies. Missing ACKs must not be
+treated as accepted switches. A successful initial play response accepts play,
+not an echoed selector, so the former `acknowledged_stream` field is removed.
+`no_h264_keyframe` or
 `ffprobe_failed` means resolution was not established; CPacket is not a fallback.
-An ACK proves command acceptance, not that quality actually changed. Frame
-counts/CPacket sizes can include in-flight frames from the previous profile.
+An ACK proves command acceptance, not that quality actually changed. All media
+and samples describe the observed window, not a proven target profile; they
+may include in-flight frames from the previous profile even with an ACK.
 Redact paths/identifiers and review the output before sharing it.
+
+`video_timing` measures completed video-frame arrivals with a monotonic clock,
+independently of saving samples or the FPS advertised in CPacket/H.264:
+
+- `frames`, `first_arrival_seconds`, `last_arrival_seconds` and
+  `arrival_span_seconds` describe the measured interval relative to window start.
+- `arrival_fps` is `(frames - 1) / arrival_span_seconds`, excluding startup wait.
+  It is `null` for fewer than two frames or a zero arrival span, including a
+  single batched delivery. Frames in the same received payload share one time.
+- `window_fps` is `frames / elapsed_seconds`, including startup wait and stalls.
+
+These are host-receive rates, not a claim about sensor exposure rate. TCP bursts,
+buffering or pauses can distort them; compare both rates and arrival intervals.
 
 To compare color in the **same sessions**, add `--save-frames`:
 
@@ -134,26 +173,28 @@ python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --second
 ```
 
 This additionally requires `ffmpeg` on PATH. It creates a fresh private
-`data/lan-diagnostic-.../` folder and retains `initial_high.h264`,
-`switched_high.h264`, selected JPEGs and `report.json`. Each raw high-stream
-capture is capped at 64 MiB; existing files are never overwritten. Unix run
+`data/lan-diagnostic-.../` folder and retains a phase-named H.264 file and selected
+JPEGs for every observed window, plus `report.json`. Each raw
+capture is capped at 64 MiB (up to five files/320 MiB per run, plus JPEGs);
+existing files are never overwritten. Unix run
 folders are owner-only; Windows uses the parent directory's ACL. Files are
 private camera media: **do not attach the folder, H.264/JPEGs, credentials or
 `.env` to a public issue**. A failed/interrupted run can retain partial captures;
 the report marks `completed: false`. It retains the failed phase and available
-counters, last-known acknowledged selector and pending-switch state, even when
-the receive error closed the session. `failure` identifies the operation stage,
-phase, exception type and known safe reason/status. Unknown exception text,
+counters, requested selector and pending-switch state, even when the receive
+error closed the session. `failure` retains the first error; `failures` lists
+all session errors with operation stage, phase, exception type and known safe
+reason/status. Unknown exception text,
 raw traceback, credentials and arbitrary FFmpeg stderr are not copied into the
 report. Without `--save-frames`, failure metadata is still printed as JSON.
-Completion means the probe finished, not
-that a firmware defect was fixed.
+Completion means the probe finished, not that every switch was acknowledged
+or a firmware defect was fixed. Check each phase's `switch_status` separately.
 
 JPEG samples target the first retained keyframe and approximately 0.5, 1, 5
 and 15 seconds later, using receiver-relative arrival times and decoded frame
 indexes, not exact physical capture timestamps. Only available samples are
 saved; missing times are listed in `missing_sample_seconds`. Inter-frame data
-before the first post-acknowledgement keyframe is not retained. FFmpeg/FFprobe
+before the first received keyframe of that window is not retained. FFmpeg/FFprobe
 analysis runs only after each camera session closes, avoiding receive stalls.
 `saved_frames.status` must be `ok` before interpreting its samples;
 `ffmpeg_failed`/`no_h264_samples` means color was not established by this run.
@@ -161,7 +202,8 @@ Frame extraction uses `-fps_mode passthrough`. Only an explicit unsupported
 `fps_mode` option error retries with legacy `-vsync 0` for older FFmpeg;
 decoder errors are not retried, and `-xerror` remains enabled.
 
-Compare the `initial_high` and `switched_high` images locally. Report whether
+Compare the `initial_stream_1`, `initial_stream_2`, `initial_stream_3`,
+`switch_2_to_1` and `switch_3_to_1` images locally. Report whether
 each starts and remains grayscale or becomes colored, and provide only the
 reviewed text/JSON diagnostics. SATAVG/SATMAX are descriptive saturation
 measurements, not an automatic color-quality or fix verdict: neutral scenes

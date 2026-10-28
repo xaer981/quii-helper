@@ -14,8 +14,8 @@ from quii_helper.support.errors import QuiiConnectionError
 example = importlib.import_module("examples.diagnose_lan_stream")
 
 
-@pytest.mark.parametrize("failed_phase", [None, "switched_high"])
-def test_example_is_lan_only_and_closes_on_switch_failure(
+@pytest.mark.parametrize("failed_phase", [None, "switch_2_to_1"])
+def test_example_is_lan_only_and_runs_all_selectors_after_switch_failure(
     monkeypatch, capsys, tmp_path, failed_phase
 ):
     monkeypatch.chdir(tmp_path)
@@ -52,10 +52,8 @@ def test_example_is_lan_only_and_closes_on_switch_failure(
     def observe(session, packer, *, name, seconds, capture_path, progress):
         if name == failed_phase:
             raise QuiiConnectionError("synthetic switch rejection")
-        session.active_stream = (
-            1 if name in {"initial_high", "switched_high"} else 2
-        )
         assert capture_path is None
+        assert seconds == 20
         return (
             {
                 "phase": name,
@@ -73,7 +71,7 @@ def test_example_is_lan_only_and_closes_on_switch_failure(
     else:
         example.main(args)
     configs = [call.args[0] for call in factory.call_args_list]
-    assert [config.stream for config in configs] == [1, 2]
+    assert [config.stream for config in configs] == [1, 2, 3]
     for config in configs:
         assert config.connection_mode == "lan"
         assert config.channel == 2 and config.device_host == "127.0.0.1"
@@ -83,8 +81,12 @@ def test_example_is_lan_only_and_closes_on_switch_failure(
     requests = [
         call.args[0] for call in session.request_stream_switch.call_args_list
     ]
-    assert requests == ([1] if failed_phase else [1, 2])
-    assert factory.return_value.__exit__.call_count == 2
+    assert requests == [1, 1]
+    assert all(
+        call.kwargs == {"timeout": None}
+        for call in session.request_stream_switch.call_args_list
+    )
+    assert factory.return_value.__exit__.call_count == 3
     assert not (tmp_path / "data").exists()
     output = capsys.readouterr().out
     for secret in (
@@ -155,8 +157,170 @@ def test_phase_preserves_media_audio_and_defers_h264_analysis(monkeypatch):
     assert result["last_keyframe_h264"] == {"status": "not_analyzed"}
     assert result["audio_codec_rate_channels"] == {"4/8000/1": 1}
     assert result["switch_reply_statuses"] == [0]
+    assert result["switch_status"] == "not_requested"
     assert keyframe == b"synthetic-h264"
     inspect_frame.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "arrivals,expected",
+    [
+        ([2 + index * 0.05 for index in range(21)], 20.0),
+        ([1.0, 3.0, 5.0], 0.5),
+        ([1.0], None),
+        ([1.0, 1.0, 1.0], None),
+        ([], None),
+    ],
+)
+def test_arrival_fps_uses_receive_times_not_headers_or_capture(
+    monkeypatch, arrivals, expected
+):
+    clock = [0.0]
+    monkeypatch.setattr(example.time, "monotonic", lambda: clock[0])
+    session = Mock(stream_switch_pending=False)
+    remaining = list(arrivals)
+
+    def receive(*, timeout):
+        if not remaining or remaining[0] > clock[0] + timeout:
+            clock[0] += timeout
+            raise TimeoutError()
+        clock[0] = remaining.pop(0)
+        return {"is_media": True, "payload": b"video", "header": Mock()}
+
+    session.recv_message.side_effect = receive
+    packer = Mock(stats={})
+    packer.feed.return_value = [
+        {
+            "frame_tag": 0xE1,
+            "width": 352,
+            "height": 288,
+            "codec": 1,
+            "fps": 99,
+            "nal_offset": 0,
+            "bitstream": b"I",
+        }
+    ]
+    result, _ = example._observe_phase(
+        session, packer, name="initial_stream_3", seconds=6
+    )
+    timing = result["video_timing"]
+    assert timing["frames"] == len(arrivals)
+    assert timing["arrival_fps"] == expected
+    assert timing["window_fps"] == round(len(arrivals) / 6, 3)
+    assert timing["first_arrival_seconds"] == (
+        round(arrivals[0], 4) if arrivals else None
+    )
+    assert timing["last_arrival_seconds"] == (
+        round(arrivals[-1], 4) if arrivals else None
+    )
+    assert result["frame_capture"] is None
+
+
+@pytest.mark.parametrize("ack_at", [None, 7.0])
+def test_phase_saves_media_without_ack_and_recognizes_late_reply(
+    monkeypatch, tmp_path, ack_at
+):
+    clock = [0.0]
+    monkeypatch.setattr(example.time, "monotonic", lambda: clock[0])
+    session = Mock(active_stream=2, stream_switch_pending=True)
+
+    def receive(**kwargs):
+        clock[0] += 0.5
+        if clock[0] == ack_at:
+            session.active_stream = 1
+            session.stream_switch_pending = False
+            return {
+                "is_media": False,
+                "header": Mock(packet_type=9, raw=bytes(32)),
+            }
+        return {"is_media": True, "payload": b"video", "header": Mock()}
+
+    session.recv_message.side_effect = receive
+    packer = Mock(stats={})
+    frame = {
+        "frame_tag": 0xE1,
+        "width": 352,
+        "height": 288,
+        "codec": 1,
+        "nal_offset": 0,
+        "bitstream": b"I",
+    }
+    # All frames completed from this payload have the same receive timestamp.
+    packer.feed.return_value = [frame, frame]
+    path = tmp_path / "switch_2_to_1.h264"
+    result, keyframe = example._observe_phase(
+        session, packer, name="switch_2_to_1", seconds=8, capture_path=path
+    )
+    count = 32 if ack_at is None else 30
+    assert path.read_bytes() == b"I" * count
+    assert keyframe == b"I"
+    assert result["frame_capture"]["retained_frames"] == count
+    assert result["video_timing"]["frames"] == count
+    assert result["video_timing"]["first_arrival_seconds"] == 0.5
+    assert result["video_timing"]["last_arrival_seconds"] == 8.0
+    assert result["elapsed_seconds"] == 8
+    assert result["switch_status"] == (
+        "unconfirmed" if ack_at is None else "acknowledged"
+    )
+    assert result["switch_pending"] is (ack_at is None)
+    assert result["switch_reply_statuses"] == ([] if ack_at is None else [0])
+    assert session.active_stream == (2 if ack_at is None else 1)
+
+
+def test_example_completes_all_windows_without_switch_ack(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    saved = CameraStreamCredentials("synthetic-id", "K" * 32, "private-auth")
+    monkeypatch.setattr(
+        example.CameraStreamCredentials, "load", lambda _: saved
+    )
+    monkeypatch.setattr(example.shutil, "which", lambda name: name)
+    monkeypatch.setattr(example, "_keyframe_dimensions", lambda *args: {})
+    monkeypatch.setattr(example, "_save_frames", lambda *args: {})
+    factory = MagicMock()
+    session = factory.return_value.__enter__.return_value
+    session.play_accepted = True
+    monkeypatch.setattr(example, "LanTcpSession", factory)
+
+    def observe(session, packer, *, name, progress, **kwargs):
+        pending = name.startswith("switch_")
+        session.stream_switch_pending = pending
+        progress.update(
+            cpacket_dimensions={"352x288": 1},
+            frame_capture=None,
+            switch_status="unconfirmed" if pending else "not_requested",
+            switch_pending=pending,
+        )
+        return progress, b""
+
+    monkeypatch.setattr(example, "_observe_phase", observe)
+    example.main(["--host", "127.0.0.1", "--save-frames"])
+    report = json.loads(
+        next((tmp_path / "data").glob("*/report.json")).read_text()
+    )
+    assert report["completed"] and report["failures"] == []
+    assert len(report["phases"]) == 5
+    assert [row["requested_stream"] for row in report["phases"]] == [
+        1,
+        2,
+        1,
+        3,
+        1,
+    ]
+    assert [row["initial_stream"] for row in report["phases"]] == [
+        1,
+        2,
+        2,
+        3,
+        3,
+    ]
+    assert all(row["status"] == "completed" for row in report["phases"])
+    assert report["phases"][2]["switch_status"] == "unconfirmed"
+    assert report["phases"][4]["switch_status"] == "unconfirmed"
+    assert session.request_stream_switch.call_count == 2
+    assert factory.return_value.__exit__.call_count == 3
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["completed"]
 
 
 def test_failed_phase_keeps_statistics_and_last_known_switch_state(
@@ -196,7 +360,8 @@ def test_failed_phase_keeps_statistics_and_last_known_switch_state(
     assert progress["counts"] == {"frame_e3": 1}
     assert progress["cframe"] == {"completed": 1}
     assert progress["elapsed_seconds"] == 2
-    assert progress["acknowledged_stream"] == 2
+    assert progress["switch_status"] == "unconfirmed"
+    assert "acknowledged_stream" not in progress
     assert progress["switch_pending"] is True
 
 
@@ -219,12 +384,11 @@ def test_failure_report_contains_phase_and_reason_without_exception_secrets(
     monkeypatch.setattr(example, "_keyframe_dimensions", lambda *args: {})
     error = QuiiConnectionError("LAN TCP stream switch timed out " + secret)
     if stage == "send_switch":
-        session.request_stream_switch.side_effect = error
+        session.request_stream_switch.side_effect = [error, None]
 
     def observe(session, packer, *, name, progress, **kwargs):
-        session.active_stream = 1 if name == "initial_high" else 2
         progress.update(cpacket_dimensions={"352x288": 1}, frame_capture=None)
-        if name == "switched_high":
+        if name == "switch_2_to_1":
             progress["counts"] = {"frame_e0": 4}
             raise error
         return progress, b""
@@ -237,19 +401,23 @@ def test_failure_report_contains_phase_and_reason_without_exception_secrets(
     report = json.loads(text)
     assert not report["completed"]
     assert report["failure"] == {
-        "phase": "switched_high",
+        "phase": "switch_2_to_1",
         "stage": stage,
         "type": "QuiiConnectionError",
         "reason": "stream switch timed out",
     }
-    assert report["phases"][-1]["status"] == "failed"
-    assert len(report["phases"]) == 3
-    assert factory.return_value.__exit__.call_count == 2
-    assert secret not in text and secret not in capsys.readouterr().out
+    assert report["phases"][2]["status"] == "failed"
+    assert report["phases"][-1]["status"] == "completed"
+    assert report["failures"] == [report["failure"]]
+    assert len(report["phases"]) == 5
+    assert factory.return_value.__exit__.call_count == 3
+    output = capsys.readouterr().out
+    assert json.loads(output.splitlines()[-1]) == {"completed": False}
+    assert secret not in text and secret not in output
 
 
 @pytest.mark.parametrize("pending,oversize", [(True, False), (False, True)])
-def test_phase_does_not_probe_pre_ack_or_oversize_keyframes(
+def test_phase_observes_pre_ack_but_does_not_probe_oversize_keyframes(
     monkeypatch, pending, oversize
 ):
     clock = [0.0]
@@ -278,7 +446,10 @@ def test_phase_does_not_probe_pre_ack_or_oversize_keyframes(
         session, packer, name="switched_high", seconds=1
     )
     assert result["counts"]["frame_e1"] == 1
-    assert keyframe == b""
+    assert keyframe == (b"" if oversize else b"old-idr")
+    assert result["switch_status"] == (
+        "unconfirmed" if pending else "not_requested"
+    )
 
 
 def test_ffprobe_uses_only_memory_input_and_returns_dimensions(monkeypatch):
@@ -368,13 +539,22 @@ def test_save_frames_is_private_opt_in_and_writes_report_after_close(
         example, "_keyframe_dimensions", lambda *args: {"status": "ok"}
     )
     paths = []
+    active = [False]
+
+    def enter():
+        active[0] = True
+        return session
+
+    def leave(*args):
+        active[0] = False
+        return False
+
+    factory.return_value.__enter__.side_effect = enter
+    factory.return_value.__exit__.side_effect = leave
 
     def observe(session, packer, *, name, seconds, capture_path, progress):
-        if interrupted and name == "switched_high":
+        if interrupted and name == "switch_2_to_1":
             raise KeyboardInterrupt()
-        session.active_stream = (
-            1 if name in {"initial_high", "switched_high"} else 2
-        )
         capture = None
         if capture_path is not None:
             paths.append(capture_path)
@@ -389,8 +569,7 @@ def test_save_frames_is_private_opt_in_and_writes_report_after_close(
         )
 
     def render(*args):
-        # Both context exits have occurred before B rendering; A needs only one.
-        assert factory.return_value.__exit__.call_count >= len(paths)
+        assert not active[0], "decoder must run only after disconnect"
         return {"status": "no_h264_samples"}
 
     monkeypatch.setattr(example, "_observe_phase", observe)
@@ -401,15 +580,23 @@ def test_save_frames_is_private_opt_in_and_writes_report_after_close(
             example.main(args)
     else:
         example.main(args)
-    assert factory.return_value.__exit__.call_count == 2
+    assert factory.return_value.__exit__.call_count == (
+        2 if interrupted else 3
+    )
     reports = list((tmp_path / "data").glob("lan-diagnostic-*/report.json"))
     assert len(reports) == 1
     result = json.loads(reports[0].read_text())
     assert result["completed"] is not interrupted
     assert [path.name for path in paths] == (
-        ["initial_high.h264"]
+        ["initial_stream_1.h264", "initial_stream_2.h264"]
         if interrupted
-        else ["initial_high.h264", "switched_high.h264"]
+        else [
+            "initial_stream_1.h264",
+            "initial_stream_2.h264",
+            "switch_2_to_1.h264",
+            "initial_stream_3.h264",
+            "switch_3_to_1.h264",
+        ]
     )
     if example.os.name != "nt":
         assert reports[0].stat().st_mode & 0o077 == 0
@@ -608,9 +795,10 @@ def test_startup_error_report_identifies_initial_phase(monkeypatch, tmp_path):
         next((tmp_path / "data").glob("*/report.json")).read_text()
     )
     assert report["failure"]["stage"] == "open"
-    assert report["failure"]["phase"] == "initial_high"
+    assert report["failure"]["phase"] == "initial_stream_1"
     assert report["failure"]["reason"] == "setup was rejected"
     assert report["phases"][0]["status"] == "failed"
+    assert len(report["failures"]) == len(report["phases"]) == 3
 
 
 def test_failure_metadata_keeps_safe_status_and_socket_errno():

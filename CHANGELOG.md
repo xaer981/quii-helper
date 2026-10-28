@@ -12,8 +12,10 @@ being stabilized.
 - Internal opt-in LAN stream-switch command, matched to vEye Pro native,
   with authenticated reply handling, serialized requests and bounded waiting.
   Normal Camera startup is unchanged.
-- `examples.diagnose_lan_stream` compares initial-high and switched-high
-  playback in two sequential saved-key LAN sessions, reporting H.264
+- `examples.diagnose_lan_stream` compares selectors 1/2/3 in three sequential
+  saved-key LAN sessions, then observes one switch to 1 in the sessions that
+  started at 2/3. Reports distinguish requested selectors from switch ACKs,
+  measure receive-time FPS independently of nominal FPS, and retain H.264
   dimensions and E3 audio metadata. Optional `--save-frames` retains bounded
   private H.264, early/late JPEGs and a JSON report under `data/`, including
   chroma measurements without declaring the issue fixed. Decoding runs only
@@ -29,9 +31,15 @@ being stabilized.
 - Preserve failed diagnostic phase statistics and structured error metadata
   instead of saving only completed phases. Reports omit arbitrary exception
   messages, credentials and raw FFmpeg stderr.
+- Continue bounded diagnostic observation and retain pre-ACK media when no
+  switch reply arrives, without claiming acceptance or sending another switch
+  on that connection. Independent selectors are still tested after a session
+  failure; the final report/exit preserves failures. The internal opt-in
+  `timeout=None` disables only the ACK deadline; normal callers retain five
+  seconds, bounded sending and authenticated rejection handling are unchanged.
 - Use modern FFmpeg frame synchronization for diagnostic JPEG extraction,
   with a narrow unsupported-option fallback for older builds. Preserve strict
-  decoder-error handling; no stream-switch protocol or timeout changes.
+  decoder-error handling; stream-switch wire bytes are unchanged.
 - Reject a short TCP read if concurrent closure clears the receive buffer
   before it is copied, rather than passing an empty header to the decoder.
 
