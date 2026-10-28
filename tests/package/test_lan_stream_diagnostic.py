@@ -49,7 +49,7 @@ def test_example_is_lan_only_and_closes_on_switch_failure(
 
     monkeypatch.setattr(example, "_keyframe_dimensions", inspect)
 
-    def observe(session, packer, *, name, seconds, capture_path):
+    def observe(session, packer, *, name, seconds, capture_path, progress):
         if name == failed_phase:
             raise QuiiConnectionError("synthetic switch rejection")
         session.active_stream = (
@@ -117,7 +117,7 @@ def test_phase_preserves_media_audio_and_defers_h264_analysis(monkeypatch):
     clock = [0.0]
     monkeypatch.setattr(example.time, "monotonic", lambda: clock[0])
     session = Mock(active_stream=1, stream_switch_pending=False)
-    packer = Mock()
+    packer = Mock(stats={})
     frame = {
         "frame_tag": 0xE1,
         "width": 1920,
@@ -159,6 +159,95 @@ def test_phase_preserves_media_audio_and_defers_h264_analysis(monkeypatch):
     inspect_frame.assert_not_called()
 
 
+def test_failed_phase_keeps_statistics_and_last_known_switch_state(
+    monkeypatch,
+):
+    clock = [0.0]
+    monkeypatch.setattr(example.time, "monotonic", lambda: clock[0])
+    session = Mock(active_stream=2, stream_switch_pending=True)
+    packer = Mock(stats={"completed": 1})
+    packer.feed.return_value = [
+        {"frame_tag": 0xE3, "codec": 4, "sample_rate": 8000, "channels": 1}
+    ]
+    reads = [
+        {"is_media": True, "payload": b"audio", "header": Mock()},
+        QuiiConnectionError("LAN TCP stream switch timed out"),
+    ]
+
+    def receive(**kwargs):
+        clock[0] += 1
+        value = reads.pop(0)
+        if isinstance(value, Exception):
+            session.active_stream = None
+            session.stream_switch_pending = False
+            raise value
+        return value
+
+    session.recv_message.side_effect = receive
+    progress = {}
+    with pytest.raises(QuiiConnectionError, match="timed out"):
+        example._observe_phase(
+            session,
+            packer,
+            name="switched_high",
+            seconds=10,
+            progress=progress,
+        )
+    assert progress["counts"] == {"frame_e3": 1}
+    assert progress["cframe"] == {"completed": 1}
+    assert progress["elapsed_seconds"] == 2
+    assert progress["acknowledged_stream"] == 2
+    assert progress["switch_pending"] is True
+
+
+@pytest.mark.parametrize("stage", ["send_switch", "receive"])
+def test_failure_report_contains_phase_and_reason_without_exception_secrets(
+    monkeypatch, tmp_path, capsys, stage
+):
+    monkeypatch.chdir(tmp_path)
+    secret = "private-auth-value-never-publish"
+    saved = CameraStreamCredentials("synthetic-id", "K" * 32, secret)
+    monkeypatch.setattr(
+        example.CameraStreamCredentials, "load", lambda _: saved
+    )
+    monkeypatch.setattr(example.shutil, "which", lambda name: name)
+    factory = MagicMock()
+    session = factory.return_value.__enter__.return_value
+    session.play_accepted = True
+    session.stream_switch_pending = False
+    monkeypatch.setattr(example, "LanTcpSession", factory)
+    monkeypatch.setattr(example, "_keyframe_dimensions", lambda *args: {})
+    error = QuiiConnectionError("LAN TCP stream switch timed out " + secret)
+    if stage == "send_switch":
+        session.request_stream_switch.side_effect = error
+
+    def observe(session, packer, *, name, progress, **kwargs):
+        session.active_stream = 1 if name == "initial_high" else 2
+        progress.update(cpacket_dimensions={"352x288": 1}, frame_capture=None)
+        if name == "switched_high":
+            progress["counts"] = {"frame_e0": 4}
+            raise error
+        return progress, b""
+
+    monkeypatch.setattr(example, "_observe_phase", observe)
+    with pytest.raises(QuiiConnectionError):
+        example.main(["--host", "127.0.0.1", "--save-frames"])
+    report_path = next((tmp_path / "data").glob("*/report.json"))
+    text = report_path.read_text()
+    report = json.loads(text)
+    assert not report["completed"]
+    assert report["failure"] == {
+        "phase": "switched_high",
+        "stage": stage,
+        "type": "QuiiConnectionError",
+        "reason": "stream switch timed out",
+    }
+    assert report["phases"][-1]["status"] == "failed"
+    assert len(report["phases"]) == 3
+    assert factory.return_value.__exit__.call_count == 2
+    assert secret not in text and secret not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("pending,oversize", [(True, False), (False, True)])
 def test_phase_does_not_probe_pre_ack_or_oversize_keyframes(
     monkeypatch, pending, oversize
@@ -172,7 +261,7 @@ def test_phase_does_not_probe_pre_ack_or_oversize_keyframes(
         return {"is_media": True, "payload": b"video", "header": Mock()}
 
     session.recv_message.side_effect = receive
-    packer = Mock()
+    packer = Mock(stats={})
     packer.feed.return_value = [
         {
             "frame_tag": 0xE1,
@@ -280,7 +369,7 @@ def test_save_frames_is_private_opt_in_and_writes_report_after_close(
     )
     paths = []
 
-    def observe(session, packer, *, name, seconds, capture_path):
+    def observe(session, packer, *, name, seconds, capture_path, progress):
         if interrupted and name == "switched_high":
             raise KeyboardInterrupt()
         session.active_stream = (
@@ -337,7 +426,7 @@ def test_capture_starts_at_keyframe_and_maps_bursty_arrivals(
     monkeypatch.setattr(example.time, "monotonic", lambda: clock[0])
     session = Mock(active_stream=1, stream_switch_pending=False)
     tags = iter([0xE0, 0xE1, 0xE0, 0xE0])
-    packer = Mock()
+    packer = Mock(stats={})
 
     def receive(**kwargs):
         clock[0] += 1
@@ -380,7 +469,7 @@ def test_capture_limit_stops_before_overflow(monkeypatch, tmp_path):
     monkeypatch.setattr(example.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(example, "MAX_CAPTURE_BYTES", 1)
     session = Mock(active_stream=1, stream_switch_pending=False)
-    packer = Mock()
+    packer = Mock(stats={})
     packer.feed.return_value = [
         {
             "frame_tag": 0xE1,
@@ -419,6 +508,8 @@ def test_frame_extraction_deduplicates_indexes_but_keeps_sample_times(
         (directory / "frame_01.jpg").write_bytes(b"jpeg1")
         (directory / "frame_02.jpg").write_bytes(b"jpeg2")
         assert command[command.index("-protocol_whitelist") + 1] == "file,pipe"
+        assert command[command.index("-fps_mode") + 1] == "passthrough"
+        assert "-vsync" not in command and "-xerror" in command
         assert kwargs["timeout"] == 60
         return subprocess.CompletedProcess(
             command,
@@ -449,7 +540,97 @@ def test_frame_extraction_errors_are_reported(monkeypatch, tmp_path, failure):
     monkeypatch.setattr(example.subprocess, "run", Mock(side_effect=failure))
     assert example._save_frames(
         "ffmpeg", tmp_path / "high.h264", [{"frame_index": 0}]
-    ) == {"status": "ffmpeg_failed"}
+    ) == {"status": "ffmpeg_failed", "error": {"type": type(failure).__name__}}
+
+
+def test_old_ffmpeg_falls_back_only_for_missing_fps_mode(
+    monkeypatch, tmp_path
+):
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(list(command))
+        if len(commands) == 1:
+            raise subprocess.CalledProcessError(
+                1, command, stderr="Unrecognized option 'fps_mode'."
+            )
+        assert command[command.index("-vsync") + 1] == "0"
+        assert "-fps_mode" not in command and "-xerror" in command
+        (tmp_path / "high_frames" / "frame_01.jpg").write_bytes(b"jpeg")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "frame:0\nlavfi.signalstats.SATAVG=0\nlavfi.signalstats.SATMAX=0\n",
+            "",
+        )
+
+    monkeypatch.setattr(example.subprocess, "run", run)
+    result = example._save_frames(
+        "ffmpeg", tmp_path / "high.h264", [{"frame_index": 0}]
+    )
+    assert result["status"] == "ok" and len(commands) == 2
+    assert "-fps_mode" in commands[0]
+
+
+def test_ffmpeg_decode_error_is_not_retried_or_dumped(monkeypatch, tmp_path):
+    run = Mock(
+        side_effect=subprocess.CalledProcessError(
+            1, "ffmpeg", stderr="private/path/secret invalid H.264 data"
+        )
+    )
+    monkeypatch.setattr(example.subprocess, "run", run)
+    result = example._save_frames(
+        "ffmpeg", tmp_path / "high.h264", [{"frame_index": 0}]
+    )
+    assert run.call_count == 1
+    assert result == {
+        "status": "ffmpeg_failed",
+        "error": {"type": "CalledProcessError", "returncode": 1},
+    }
+    assert "secret" not in json.dumps(result)
+
+
+def test_startup_error_report_identifies_initial_phase(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    saved = CameraStreamCredentials("synthetic-id", "K" * 32, "private-auth")
+    monkeypatch.setattr(
+        example.CameraStreamCredentials, "load", lambda _: saved
+    )
+    monkeypatch.setattr(example.shutil, "which", lambda name: name)
+    factory = MagicMock()
+    factory.return_value.__enter__.side_effect = QuiiConnectionError(
+        "LAN TCP setup was rejected"
+    )
+    monkeypatch.setattr(example, "LanTcpSession", factory)
+    with pytest.raises(QuiiConnectionError):
+        example.main(["--host", "127.0.0.1", "--save-frames"])
+    report = json.loads(
+        next((tmp_path / "data").glob("*/report.json")).read_text()
+    )
+    assert report["failure"]["stage"] == "open"
+    assert report["failure"]["phase"] == "initial_high"
+    assert report["failure"]["reason"] == "setup was rejected"
+    assert report["phases"][0]["status"] == "failed"
+
+
+def test_failure_metadata_keeps_safe_status_and_socket_errno():
+    error = QuiiConnectionError("LAN TCP receive failed; private-auth")
+    error.__cause__ = OSError(10054, "private/path")
+    assert example._failure_details(error) == {
+        "type": "QuiiConnectionError",
+        "reason": "receive failed",
+        "cause_type": type(error.__cause__).__name__,
+        "errno": 10054,
+    }
+    assert example._failure_details(
+        QuiiConnectionError(
+            "LAN TCP stream switch rejected with status 2 private-auth"
+        )
+    ) == {
+        "type": "QuiiConnectionError",
+        "reason": "stream switch rejected",
+        "status": 2,
+    }
 
 
 @pytest.mark.parametrize(
@@ -467,9 +648,11 @@ def test_missing_or_invalid_chroma_does_not_claim_success(
         return subprocess.CompletedProcess(command, 0, stdout, "")
 
     monkeypatch.setattr(example.subprocess, "run", render)
-    assert example._save_frames(
+    result = example._save_frames(
         "ffmpeg", tmp_path / "high.h264", [{"frame_index": 0}]
-    ) == {"status": "ffmpeg_failed"}
+    )
+    assert result["status"] == "ffmpeg_failed"
+    assert result["error"]["type"] == "ValueError"
 
 
 def test_real_ffmpeg_extracts_grayscale_then_color_without_network(tmp_path):

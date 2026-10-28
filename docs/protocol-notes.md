@@ -92,6 +92,12 @@ Rechecked in the exact vEye Pro 1.9.4.0.2 native library via GhidraMCP:
 | `00510f08`, `SendSwitchStream` | Type 9, Unix seconds at 1, trailer length at 9, zero-based selector at byte 11; no body. SHA256 covers the 32-byte header; header and digest are AES-encrypted independently. |
 | `00512be4`, `OnRecvSwitch` | Reply byte 11 is status (0 means success), not the requested stream index. |
 
+Rechecked on 2026-10-28 against both open libraries: vHome uses
+`SendSwitchStream` at `0047c348` and `OnRecvSwitch` at `0047dee8`, with the
+same command layout and status-byte meaning. The diagnostic corrections below
+do not change these wire bytes, reply validation, or the five-second switch
+deadline. A Vimar timeout alone does not prove that the command is unsupported.
+
 From an installed checkout/source distribution, with an existing saved pair
 and `ffprobe` on PATH, run:
 
@@ -134,7 +140,13 @@ capture is capped at 64 MiB; existing files are never overwritten. Unix run
 folders are owner-only; Windows uses the parent directory's ACL. Files are
 private camera media: **do not attach the folder, H.264/JPEGs, credentials or
 `.env` to a public issue**. A failed/interrupted run can retain partial captures;
-the report marks `completed: false`. Completion means the probe finished, not
+the report marks `completed: false`. It retains the failed phase and available
+counters, last-known acknowledged selector and pending-switch state, even when
+the receive error closed the session. `failure` identifies the operation stage,
+phase, exception type and known safe reason/status. Unknown exception text,
+raw traceback, credentials and arbitrary FFmpeg stderr are not copied into the
+report. Without `--save-frames`, failure metadata is still printed as JSON.
+Completion means the probe finished, not
 that a firmware defect was fixed.
 
 JPEG samples target the first retained keyframe and approximately 0.5, 1, 5
@@ -145,6 +157,9 @@ before the first post-acknowledgement keyframe is not retained. FFmpeg/FFprobe
 analysis runs only after each camera session closes, avoiding receive stalls.
 `saved_frames.status` must be `ok` before interpreting its samples;
 `ffmpeg_failed`/`no_h264_samples` means color was not established by this run.
+Frame extraction uses `-fps_mode passthrough`. Only an explicit unsupported
+`fps_mode` option error retries with legacy `-vsync 0` for older FFmpeg;
+decoder errors are not retried, and `-xerror` remains enabled.
 
 Compare the `initial_high` and `switched_high` images locally. Report whether
 each starts and remains grayscale or becomes colored, and provide only the
@@ -164,6 +179,29 @@ switched-high, then 0.3.0 initial-high again on Tantos/Pi. All three supplied
 errors. The reported Vimar defect was **not reproduced**, so the switch is not
 a confirmed fix. The original Android binary was not executed; Vimar behavior
 remains unverified.
+
+The Vimar owner's 2026-10-28 report completed initial-high and initial-low
+observations, but not the switched-high phase. Initial-high H.264 was 352x288;
+there were no E3 audio frames in the completed phases and no CFrame errors.
+The owner reported a grayscale first JPEG and colored later samples. Their
+vEye Pro JPEG exports were also 352x288; this does not establish the app's
+encoded video resolution. No stream-key lifetime can be inferred from one
+failed connection.
+
+Snapshot warmup is host-side capture/selection policy, not another camera
+command. The vEye Pro Java snapshot path reaches `QvJniFunc.snapShot`
+(`0043a404`) with an already-open player handle; it does not start a new preview
+for the click. Optional helper warmup therefore retains the initial keyframe
+and subsequent references before selecting a later JPEG. Offline tests use a
+synthetic grayscale IDR followed by colored P-frames. This is not physical
+Vimar acceptance; default snapshot timing and normal RTSP remain unchanged.
+
+The same verification exposed a pre-existing concurrent-close race: TCP
+`close()` could clear the receive buffer after `recv_exact()` finished reading
+but before it copied the result. An identity/length guard now rejects that
+read instead of passing an empty header to decoding. vHome native `OnRecv`
+(`004793fc`) likewise does not decrypt a new header with fewer than 32 bytes.
+This is a host-side cancellation correction, not a change to TCP framing.
 
 LAN sends the verified path-form play with `live_inner=False` and
 `live_newcn=False`. Non-default values of these flags or `live_play_payload`

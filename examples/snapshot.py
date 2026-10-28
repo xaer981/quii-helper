@@ -13,6 +13,7 @@ def main() -> Path:
     """Capture one snapshot and print the written path."""
     configure_logging(replace_existing=True)
     camera = Camera(config=load_config())
+    # If startup frames are grayscale, add warmup_seconds=1.0 (within the timeout).
     path = camera.snapshot(timeout_seconds=10)
     print(path)
     return path

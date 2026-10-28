@@ -37,6 +37,7 @@ class PreviewOutputWriter:
     output_base: str | Path | None = None
     render_snapshot: bool = True
     render_video: bool = True
+    last_snapshot_frame: bool = False
 
     def __post_init__(self) -> None:
         self.data_dir = resolve_data_dir(self.data_dir)
@@ -57,6 +58,7 @@ class PreviewOutputWriter:
                     render_snapshot=self.render_snapshot,
                     render_video=self.render_video,
                     target_duration_seconds=target_duration_seconds,
+                    last_snapshot_frame=self.last_snapshot_frame,
                 )
                 if decoded_messages
                 else None

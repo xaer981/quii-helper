@@ -14,6 +14,8 @@ class PreviewCaptureSettings:
         save_diagnostic_artifacts: Whether to write diagnostic JSONL artifacts.
         capture_seconds: Default capture duration.
         stop_when_decodable: Stop early when enough H.264 data is available.
+        snapshot_warmup_seconds: Wait for a later video frame after the first
+            decodable frame; included in capture_seconds, not an extra delay.
         min_media_messages: Minimum media message target before stopping.
         max_media_messages: Hard media message cap for one capture.
         pending_quii_drain_seconds: Drain window after capture for pending QUII
@@ -32,6 +34,7 @@ class PreviewCaptureSettings:
     max_media_messages: int = 160
     pending_quii_drain_seconds: float = 12.0
     pending_quii_drain_timeout: float = 0.25
+    snapshot_warmup_seconds: float = 0.0
 
 
 DEFAULT_PREVIEW_CAPTURE_SETTINGS = PreviewCaptureSettings()

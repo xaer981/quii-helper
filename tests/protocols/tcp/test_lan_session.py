@@ -139,6 +139,25 @@ def session_and_socket(**overrides):
     return session, sock
 
 
+def test_close_after_receive_before_buffer_copy_never_returns_short_header():
+    transport = TcpSocketTransport("127.0.0.1", 1)
+    sock = ScriptedSocket()
+    sock.chunks.clear()
+    sock.chunks.append(b"x" * 32)
+    transport.sock = sock
+    calls = []
+
+    def restore_timeout(timeout):
+        calls.append(timeout)
+        if len(calls) == 2:
+            transport.close()
+
+    sock.settimeout = restore_timeout
+    with pytest.raises(RuntimeError, match="socket is closed"):
+        transport.recv_exact(32)
+    assert sock.closed and transport.sock is None
+
+
 @pytest.mark.parametrize("channel", [1, 2])
 @pytest.mark.parametrize(
     "stream,expected", [("high", 1), ("low", 2), ("3", 3)]

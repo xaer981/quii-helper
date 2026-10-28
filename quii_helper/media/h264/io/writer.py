@@ -33,6 +33,7 @@ def write_h264_stream(
     render_video: bool = True,
     keep_raw_h264: bool = False,
     target_duration_seconds: float | None = None,
+    last_snapshot_frame: bool = False,
 ) -> MediaArtifactSummary:
     return write_assembled_h264_stream(
         base_name,
@@ -44,6 +45,7 @@ def write_h264_stream(
         render_video=render_video,
         keep_raw_h264=keep_raw_h264,
         target_duration_seconds=target_duration_seconds,
+        last_snapshot_frame=last_snapshot_frame,
     )
 
 
@@ -57,6 +59,7 @@ def write_assembled_h264_stream(
     keep_raw_h264: bool = False,
     target_duration_seconds: float | None = None,
     input_fps: float | None = None,
+    last_snapshot_frame: bool = False,
 ) -> MediaArtifactSummary:
     """Render assembled access units; explicit camera FPS overrides retiming."""
     stream_path, mp4_path, snapshot_path = h264_output_paths(
@@ -143,6 +146,15 @@ def write_assembled_h264_stream(
             snapshot_path,
             mp4_ok=mp4_ok,
             ffmpeg_skipped_reason=ffmpeg_skipped_reason,
+            **(
+                {
+                    "frame_index": max(
+                        0, int(summary.get("assembled_units", 0)) - 1
+                    )
+                }
+                if last_snapshot_frame
+                else {}
+            ),
         )
 
     if should_remove_raw_h264(

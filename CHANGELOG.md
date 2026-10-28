@@ -11,13 +11,29 @@ being stabilized.
 
 - Internal opt-in LAN stream-switch command, matched to vEye Pro native,
   with authenticated reply handling, serialized requests and bounded waiting.
-  Normal Camera startup and the public API are unchanged.
+  Normal Camera startup is unchanged.
 - `examples.diagnose_lan_stream` compares initial-high and switched-high
   playback in two sequential saved-key LAN sessions, reporting H.264
   dimensions and E3 audio metadata. Optional `--save-frames` retains bounded
   private H.264, early/late JPEGs and a JSON report under `data/`, including
   chroma measurements without declaring the issue fixed. Decoding runs only
   after disconnecting; no cloud login, talkback or door command is performed.
+- Optional `Camera.snapshot(warmup_seconds=...)` waits for a fresh video frame
+  after initial decoding, within the existing capture timeout. Zero preserves
+  the original snapshot behavior; LAN and cloud retain H.264 references and
+  select a later JPEG without a new connection. Advanced `capture()` also
+  accepts warmup with snapshot rendering enabled.
+
+### Fixed
+
+- Preserve failed diagnostic phase statistics and structured error metadata
+  instead of saving only completed phases. Reports omit arbitrary exception
+  messages, credentials and raw FFmpeg stderr.
+- Use modern FFmpeg frame synchronization for diagnostic JPEG extraction,
+  with a narrow unsupported-option fallback for older builds. Preserve strict
+  decoder-error handling; no stream-switch protocol or timeout changes.
+- Reject a short TCP read if concurrent closure clears the receive buffer
+  before it is copied, rather than passing an empty header to the decoder.
 
 ## 0.3.0 - 2026-10-26
 

@@ -178,7 +178,7 @@ does not retain diagnostic JSONL files; failed rendering can retain raw H.264.
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
-| `snapshot(timeout_seconds=5.0, output_path=None)` | `Path` | Save one JPEG; stop when enough decodable media is available. |
+| `snapshot(timeout_seconds=5.0, output_path=None, warmup_seconds=0.0)` | `Path` | Save one JPEG, optionally waiting for a later frame. |
 | `save_video(duration_seconds, output_path=None)` | `Path` | Collect video for the requested window and render MP4. |
 | `record(duration_seconds, output_path=None)` | `Path` | Alias for `save_video()`. |
 | `capture(...)` | `CameraCaptureResult` | Select artifacts and inspect the structured summary. |
@@ -203,6 +203,25 @@ and FFmpeg rendering can make the call take longer than the requested window.
 call including connection and rendering. `save_video()` disables early stopping;
 the requested duration is a collection target, not a guarantee of frame count,
 delivery quality, or an exact wall-clock return time.
+
+If a camera starts with grayscale or otherwise unsettled frames, opt into
+snapshot warmup (available in the source candidate, not in 0.3.0):
+
+```python
+image_path = camera.snapshot(timeout_seconds=5, warmup_seconds=1.0)
+```
+
+Warmup starts at the **first decodable video frame** and waits for a new video
+frame at least that many seconds later, in the same LAN or cloud preview.
+The timeout still starts with the collection loop: warmup is included, not
+added to it. Zero preserves the original first-frame behavior. The value must
+be finite, nonnegative, and strictly less than the timeout. If no eligible
+frame arrives in time, `CameraCaptureError` is raised rather than returning an
+earlier image. Idle time, audio packets and a burst of frames at one instant
+do not finish warmup. H.264 references are retained and decoded from the start;
+the JPEG is selected from the end of the collected video, not from a new
+connection. This does not force color or establish a higher-resolution profile.
+Cloud capture's media-message limit also remains in force during warmup.
 
 LAN MP4 uses the first accepted video frame's FPS (or FFmpeg's H.264 timing
 when it is zero); sparse frames are **not stretched** to the collection window.
@@ -247,6 +266,7 @@ do not retain an audio recording. Live cloud/Vimar MP4 audio remains unverified.
 | `render_snapshot=True` | Request JPEG rendering. |
 | `render_video=True` | Request MP4 rendering. |
 | `save_diagnostic_artifacts=None` | Inherit diagnostic saving, disabled by default. |
+| `warmup_seconds=None` | Inherit `preview_settings.snapshot_warmup_seconds` (zero by default). Nonzero requires `render_snapshot=True`; the JPEG uses the last collected video frame. |
 
 To request both files across a full collection window, disable early stopping:
 

@@ -16,6 +16,7 @@ from quii_helper.media.frames.assembler_state import (
     frame_info_from_parsed_frame,
 )
 from quii_helper.media.frames.parsing import QuiiCFramePack
+from quii_helper.media.frames.selection import SnapshotWarmup
 from quii_helper.media.h264.core.analysis import analyze_h264_annexb_stream
 from quii_helper.media.h264.io.writer import write_assembled_h264_stream
 from quii_helper.models.capture import CaptureSummary, MediaFrameSummary
@@ -54,12 +55,14 @@ def capture_lan_summary(
     decoded_count = media_count = 0
     decodable = False
     waiting_for_keyframe = True
+    warmup = SnapshotWarmup(settings.snapshot_warmup_seconds)
     status("Opening LAN preview session")
     with connector.create_lan_session() as session:
         status("Connected")
         status("Receiving media packets")
         started = time.monotonic()
         deadline = started + settings.capture_seconds
+        warmup.deadline = deadline
         while (remaining := deadline - time.monotonic()) > 0:
             try:
                 message = session.recv_message(timeout=min(1.0, remaining))
@@ -108,9 +111,17 @@ def capture_lan_summary(
             decodable = all(
                 nal_counts[name] for name in ("sps", "pps", "idr_slice")
             )
-            if settings.stop_when_decodable and decodable:
+            ready = warmup.observe(
+                len(frames), decodable=decodable, now=time.monotonic()
+            )
+            if settings.stop_when_decodable and ready:
                 break
         elapsed = time.monotonic() - started
+
+    if settings.snapshot_warmup_seconds and not warmup.ready:
+        raise CameraCaptureError(
+            "snapshot warmup did not finish within the capture timeout"
+        )
 
     media_summary = build_media_summary(
         frames, assembled_units=len(frames), cframe_stats=dict(packer.stats)
@@ -154,6 +165,7 @@ def capture_lan_summary(
                 render_snapshot=render_snapshot,
                 render_video=render_video,
                 input_fps=float(frames[0]["fps"]) or None,
+                last_snapshot_frame=bool(settings.snapshot_warmup_seconds),
             )
         finally:
             reservation = base.with_name(base.name + ".h264")

@@ -70,5 +70,7 @@ class TcpSocketTransport:
                 except OSError:
                     pass
         result = bytes(self._receive_buffer[:size])
+        if self.sock is not sock or len(result) != size:
+            raise RuntimeError("socket is closed")
         del self._receive_buffer[:size]
         return result
