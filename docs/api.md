@@ -15,6 +15,9 @@ before I/O. Local CGI methods remain available without a stream key; door
 
 LAN `capture()`, `snapshot()`, `save_video()`, `record()`, `serve_rtsp()` and
 `listen_audio()` use the direct TCP session and shared CFrame components.
+Experimental `talk()` opens a separate active LAN TCP talk connection; it is
+never started by preview, recording or RTSP. Experimental `converse()` adds
+explicit local microphone/headphones I/O on top of `talk()`.
 Invalid LAN settings
 fail before connecting (and before RTSP binds a listener). Invalid keys,
 unsupported profiles and connection failures never trigger a cloud fallback.
@@ -40,6 +43,8 @@ file, changes `.env`, or renews expired credentials.
 - [Stream-key bootstrap and persistence](#stream-key-bootstrap-and-persistence).
 - [Capture](#capture-methods), [RTSP](#rtsp-streaming), and [logging](#logging).
 - [Receive-only audio](#receive-only-audio-experimental); no talkback or playback.
+- [LAN talk](#lan-talk-experimental); explicit active operation, not RTSP backchannel.
+- [Computer conversation](#computer-conversation-experimental); microphone and headphones.
 - [Cloud queries](#cloud-read-only-methods) and [call history](#incoming-call-history-experimental).
 - [LAN discovery](#lan-discovery) and [local inspection](#local-device-read-only-methods).
 - [Archive queries](#archive-queries), [door control](#door-control), and [errors](#error-codes).
@@ -316,6 +321,192 @@ For combined A/V, use `serve_rtsp(audio=True)` instead of opening a separate
 `listen_audio()` connection. JPEG has no audio; MP4 recording automatically
 includes supported audio as described in [MP4 Audio](#mp4-audio).
 
+## LAN Talk (Experimental)
+
+**Unreleased.** A saved-key Pi probe on Tantos confirmed sound from panel 2
+with preview active and generic talk selector `65535`; this updated API
+coordinator has offline/native checks, not a fresh hardware test. Vimar talk,
+normal conversation and echo cancellation remain unverified.
+`talk()` is **not read-only**: opening the
+session reserves audio resources and may interrupt an intercom call even
+before samples are sent. It never opens the door or starts a local microphone
+or speaker. Receive-only users should keep using `listen_audio()` or RTSP.
+
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `talk(channel=None, full_duplex=False)` | `CameraTalkSession` | Own two LAN connections: selected-panel preview for receiving audio, generic talk for sending. Saved credentials only; no cloud fallback. |
+
+| Parameter / field | Meaning |
+| --- | --- |
+| `channel` | Preview panel, `1-65535`, defaulting to the Camera's channel. The Camera configuration is not mutated. Talk always uses `65535`; `channel=0` is no longer a generic-talk override. `stream`/quality affects preview only, not the outgoing codec. |
+| `full_duplex=False` | SDK-style talk-side receive disable/restore requests around each `send_pcm()` batch, with ACK checks. Preview audio continues to be drained and remains available to the caller. |
+| `full_duplex=True` | Skip talk-side receive toggles. Incoming audio still comes from preview, not talk; this does not guarantee hardware duplex or echo cancellation. |
+| `talk.send_pcm(pcm)` | Block while sending **640-16000 bytes**, a multiple of **640**, signed PCM16 little-endian, **8000 Hz mono**. The library encodes G.711 and paces 320-sample frames at 40 ms, without catch-up bursts. |
+| `talk.recv_frame(timeout=5.0)` | Return encoded G.711 from the selected panel's preview, never mixed with talk-socket media. A finite positive read timeout preserves both connections. May run alongside the single sender. |
+| `talk.codec` | Negotiated outgoing codec: `4` (A-law) or `5` (mu-law). Unsupported codec masks fail before audio transmission. |
+| `talk.frames_sent`, `talk.dropped_frames` | Outgoing frame count and incoming queue losses. At most 64 received frames are retained; a slow reader loses the oldest. |
+| `talk.close()` | Interrupt both sockets, wake waiting callers, discard buffers and join both workers. Idempotent; a closed session cannot reopen. |
+
+Startup opens preview first and waits at most `connect_timeout` for its first
+supported audio frame after preview transport startup. That frame is queued,
+not consumed solely as a readiness signal; the normal 64-frame drop policy
+still applies during talk startup. Only then does generic talk connect and negotiate. Video and
+control traffic cannot extend the audio-readiness deadline. Missing audio,
+invalid data or failure of either connection closes **both**; there is no
+fallback to talk-side reception. Each handle owns its own preview; do not
+open `listen_audio()` as well for the same conversation.
+
+Use the Camera configured with the saved key/auth pair from the LAN example
+above. Supply your own already converted PCM; the core API does not decode
+WAV/MP3, resample, pad incomplete blocks or capture a microphone:
+
+```python
+# Active operation: this sound will be sent to the intercom speaker.
+pcm = bytes(640)  # 40 ms of silence; replace with your converted PCM source.
+with camera.talk(channel=2) as talk:
+    talk.send_pcm(pcm)
+    incoming = talk.recv_frame(timeout=5.0)
+    print(incoming.codec_name, len(incoming.data))
+```
+
+Only one sending caller is allowed. One bounded batch is retained; callers
+must buffer/chunk their source and avoid unbounded producer queues. A return
+from `send_pcm()` confirms transport completion and the receive-restoration
+ACK, **not audible playback**. In full-duplex mode there is no restoration
+request. Connection/protocol errors raise `QuiiConnectionError`, close the
+pair and wake both directions; no automatic reconnect or retransmission
+occurs. `connect_timeout` bounds each transport startup, the initial preview
+audio wait, and each talk control/send operation; it is not one aggregate
+deadline for the entire two-connection startup.
+
+The supported wire profile is AES-256/SHA256, G.711 A-law/mu-law at 8000 Hz
+mono, CPacket incoming audio, and either compact or full CPacket outgoing
+audio as negotiated by Open. Other codecs/profiles fail explicitly. The
+native client's optional vEye Pro `client_id`/`uhid` metadata and legacy
+HS/GLNK fallback are not implemented. See [native parity notes](protocol-notes.md#lan-talk).
+
+`python -m examples.talk` sends **`data/talk.wav`** using saved credentials.
+It validates an uncompressed PCM16 LE, 8000 Hz mono WAV before connecting,
+reads at most one second per batch and explicitly pads the last block with
+less than 40 ms of silence. `CAMERA_CHANNEL` selects its preview panel;
+generic talk is selected automatically. It does not run from the default main. Test on
+your own hardware only when talk activation is safe; do not assume a working
+video or receive-only audio stream proves outgoing talk support.
+
+## Computer Conversation (Experimental)
+
+**Unreleased source checkout.** Start preview normally with `serve_rtsp()`,
+then explicitly enable conversation through its returned session. Video and
+incoming sound share **one preview, one reader and one CFrame packer**; only
+generic talk `65535` is added for sending microphone audio. No WAV, FFmpeg,
+cloud request or door command is needed. Starting preview alone neither
+accesses audio devices nor reserves talk. Physical PC duplex/Vimar quality
+has not been confirmed; current session integration checks are offline.
+
+Install the optional dependency in your checkout's virtual environment:
+
+```shell
+python -m pip install -e ".[audio]"
+python -m examples.converse --list-devices
+python -m examples.converse --channel 2
+```
+
+The example uses `data/stream_credentials.json` and the same LAN `.env`
+settings as `examples.lan_rtsp`. It serves video-only RTSP first. Open that URL
+in VLC after media is ready, then press Enter to enable the microphone and
+local incoming-audio playback. Press Enter again to stop conversation; video
+continues until Ctrl+C. `--seconds N` limits conversation instead of the second
+Enter; it still requires the first confirmation. `--port` defaults to 8554.
+Default devices come from the OS. To choose a headset explicitly, copy exact
+names from `--list-devices`:
+
+```shell
+python -m examples.converse --channel 2 --input-device "Headset microphone" --output-device "Headphones"
+```
+
+For library use, configure `camera` with a local IP and saved key/auth pair as
+in [LAN setup](#connection-modes). The preview's panel/stream are used for
+conversation too; configure `Camera(channel=2, ...)` to select panel 2, not
+`start_talk(channel=2)`. Your application decides when to activate talk:
+
+```python
+with camera.serve_rtsp(port=8554) as session:
+    # The application can call start_talk() from its Talk button.
+    conversation = session.start_talk()
+    try:
+        conversation.wait(timeout=10)
+    finally:
+        session.stop_talk()  # Microphone off; video is still running.
+    session.wait()
+```
+
+| Preview session | Meaning |
+| --- | --- |
+| `session.start_talk(input_device=None, output_device=None)` | Wait for audio/talk readiness, then return a nonblocking `CameraConversationSession`. Explicitly activates the PC microphone/playback; adds only generic talk, no second preview. LAN only. |
+| `session.stop_talk()` | Stop/cancel microphone, local playback and talk, leaving preview/RTSP alive. Idempotent. A later start creates a fresh talk session. |
+| `session.talk_active` | Whether local audio is active; False during startup/after stop. |
+| `session.talk_error` | Last isolated talk failure, cleared on the next start attempt. Preview failure is separate and raised by `session.wait()`. |
+| `conversation.wait(timeout=None)` | Wait interruptibly and raise asynchronous talk/audio errors. A finite nonnegative timeout leaves the handle active; it is not a recording duration. |
+| `conversation.active`, `conversation.error` | Active state and first asynchronous error of this particular handle. |
+| `conversation.close()` | Same ownership boundary as `stop_talk()`; also called by `with session.start_talk() as conversation:`. Never closes the parent preview. |
+
+Duplicate/parallel starts are rejected rather than opening multiple
+microphones or talk connections. Starting from a producer/status callback
+is rejected because a blocking readiness wait would deadlock that reader;
+call it from the application's control thread. Missing audio times out before
+the talk handshake: the shared-preview first-audio gate allows at most
+`2 * connect_timeout`, including an already-starting preview. The subsequent
+talk handshake has its own `connect_timeout`. Stopping during startup cancels
+talk without closing preview. Local device initialization follows OS/driver
+timing; it has no separate hard cancellation guarantee.
+
+Talk/device failures close only conversation and remain available through
+`conversation.wait()` / `session.talk_error`; `session.wait()` still waits for
+the preview, not talk. Parent preview failure or `session.close()` stops both.
+No automatic restart occurs. If RTSP has `audio=True`, mute VLC while the
+conversation plays incoming sound locally to avoid hearing it twice.
+RTSP `audio=True` retains its own strict codec/timestamp checks; an invalid
+RTSP audio profile can still stop the parent independently of talk.
+
+For a standalone blocking conversation without RTSP, `Camera.converse()` is
+still available. It creates its own preview; **do not start it alongside an
+existing RTSP session** when you want shared media. The lower-level `talk()`
+API remains for application-supplied PCM without local audio devices.
+
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `converse(channel=None, input_device=None, output_device=None, duration_seconds=None, stop_event=None)` | `None` | Blocking computer conversation until Ctrl+C, cancellation, duration or error. Both local audio and the two LAN sessions are closed on exit. |
+
+| Parameter | Meaning |
+| --- | --- |
+| `channel` | Selected preview panel, defaulting to the Camera's channel; same validation as `talk()`. |
+| `input_device`, `output_device` | Exact OS device names, or `None` for defaults. Missing/ambiguous explicit names are errors, not silent fallback. |
+| `duration_seconds` | Standalone `Camera.converse()` only: finite positive duration after audio starts. Session `start_talk()` has no duration; stop it explicitly. |
+| `stop_event` | Optional `threading.Event`; set it from another thread to stop. A pre-set event starts neither audio nor a connection. Startup TCP stages still have their own `connect_timeout` bounds. |
+
+**Use headphones.** This is simultaneous transmit/receive (`full_duplex=True`),
+not push-to-talk, and does not implement acoustic echo cancellation, automatic
+gain control or noise suppression. Speakers can produce feedback. Firmware
+may impose its own half-duplex behavior; the physical PC path still needs
+validation. OS microphone permission and working local audio drivers are
+required. The optional `miniaudio` backend handles device-rate conversion to
+8000 Hz mono signed PCM16. A missing physical backend is an error, not a
+successful silent session.
+
+Native audio callbacks never wait for network I/O. Each PCM queue is bounded
+to 200ms and drops the oldest samples on overload; when capture falls behind,
+only its newest complete 40ms block is sent, not a burst of stale speech.
+Capture is clocked by the audio device, without adding the raw PCM sender's
+playback wait a second time. This is real-time voice, not lossless recording.
+Microphone capture starts only after talk is ready.
+Ctrl+C propagates as `KeyboardInterrupt` after cleanup (the example catches
+it for a quiet exit). Local failures raise `AudioDeviceError`; camera failures
+retain `QuiiConnectionError`. Neither causes automatic reconnect/replay.
+Captured audio is not saved or logged. Other Camera methods and imports do
+not activate local audio and do not require the optional dependency.
+Audio devices belong to the machine running Python, not the RTSP viewer.
+Running this on a headless Pi does not give it access to a laptop microphone.
+
 ## RTSP Streaming
 
 | Method | Returns | Purpose |
@@ -341,8 +532,9 @@ FFmpeg. Each call opens its own preview session.
 
 Since 0.3.0, pass **`audio=True`** for H.264 plus G.711
 A-law/mu-law, 8000 Hz mono. Both tracks use **the same camera connection and
-CFrame assembler**; do not open `listen_audio()` as well. No audio decoding,
-resampling, microphone, speaker or talk connection is started by the library.
+CFrame assembler**; do not open `listen_audio()` as well. `serve_rtsp()` alone
+starts no audio decoding, resampling, microphone, speaker or talk connection;
+those are explicit opt-ins through `session.start_talk()`.
 The library default remains video-only; `quii_helper.main` opts into audio.
 
 RTSP paths are normalized (`"/live/"` becomes `"/live"`; `"/"` is supported).
@@ -366,9 +558,10 @@ Vimar/cloud audio and subjective sound quality remain unverified.
 | Stream handle | Meaning |
 | --- | --- |
 | `session.url` | Address, **not** a readiness check. |
-| `session.stats` | Current RTSP/H.264 counters. |
+| `session.stats` | Current RTSP/H.264 counters and `talk_active`. |
 | `session.wait(timeout=None)` | Wait for completion; re-raise producer failure; remain responsive to `Ctrl+C`. A timeout alone does not close the stream. |
 | `session.close()` | Request cancellation and release the listener; also called by the context manager. |
+| `session.start_talk()` / `session.stop_talk()` | Explicit PC conversation on the same LAN preview; see [computer conversation](#computer-conversation-experimental). Preview alone never opens audio devices. |
 
 The `RTSP stream ready` log appears after the first assembled H.264 access
 unit (and known audio format/SPS/PPS when enabled), if library logging is enabled.
@@ -818,6 +1011,7 @@ Exceptions and firmware rejection are different outcomes:
 | `QuiiConnectionError` | Cloud/device transport, malformed response, or terminal receive failure; also an `OSError`. |
 | `CameraCaptureError` | Requested media artifact could not be produced. |
 | `MediaRenderError` | Rendering failed; subclass of `CameraCaptureError`. |
+| `AudioDeviceError` | Explicit computer conversation could not initialize or maintain microphone/speaker I/O; no automatic retry. |
 | Nonzero response `error` | The device answered but rejected/does not support that command. Inspect the response instead of assuming an exception. |
 
 `QuiiHelperError` is the common domain base class; not every low-level Python
@@ -846,6 +1040,8 @@ from its root after installation/configuration:
 | `python -m examples.cloud_key_rtsp` | Explicit cloud login/key fetch, save/reload `data/stream_credentials.json`, then serve LAN-only RTSP. Each run contacts cloud first. |
 | `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
 | `python -m examples.listen_audio` | Experimental: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
+| `python -m examples.talk` | Unreleased active talk: start preview of `CAMERA_CHANNEL`, then send user-provided `data/talk.wav` through generic talk 65535. Not read-only; no microphone or door command. |
+| `python -m examples.converse` | Unreleased shared-preview RTSP plus explicit PC conversation. Enter starts/stops talk; video continues afterwards. Requires saved LAN credentials and the `audio` extra; `--list-devices` only enumerates names. |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until

@@ -11,6 +11,7 @@ findings below refer to the inspected app builds, not every vendor release.
 - [Connection flow](#connection-flow), [LAN TCP](#lan-tcp-session), [media](#media-capture), and [RTSP](#rtsp-streaming).
 - [Runtime limits](#runtime-limits-and-lifecycle).
 - [Receive-only audio](#receive-only-audio).
+- [LAN talk](#lan-talk).
 - [Cloud history](#cloud-incoming-call-history) and [local device APIs](#local-device-apis).
 - [Receive parity](#receive-buffer-parity) and [failure/backpressure](#receiver-failure-and-backpressure).
 - [Native asset validation](#native-crypto-asset-validation) and [package layout](#package-layout).
@@ -183,6 +184,84 @@ mono, 95360 payload bytes, no incomplete CFrame resets or malformed headers.
 G.711 decoded in memory;
 no audio file, cloud request, device setting or outgoing audio was involved.
 Vimar audio and legacy non-CPacket audio formats remain unverified.
+
+## LAN Talk
+
+The unreleased `Camera.talk()` owns two connections: `LanTcpSession` preview
+of the selected panel for incoming audio, then a separate `LanTalkSession`
+with selector 65535 for outgoing audio. Neither uses RBUDP. GhidraMCP
+comparison on 2026-10-27 covered both original
+arm64 binaries: vHome `liblive_player.so` (SHA-256
+`22b2b4f14dc8d0886a2f35865876b1db30c3ab4d146ed0c7282d3b3fc4c11556`)
+and vEye Pro 1.9.4.0.2 (SHA-256
+`574573d0bcd7125fdfed5fd992d6de61219e90c3528167cb8bbb2174054aa61b`).
+
+| Function | vHome | vEye Pro | Shared behavior |
+| --- | --- | --- | --- |
+| `ParseURL` | `0051b3d4` | `005151f8` | Generic channel 0 becomes 65535. |
+| `SendSetup` | `0051b598` | `005153bc` | Plain 32-byte A9; byte 9 is 2 for talk. |
+| `SendOpen` | `0051b6ac` | `005154d0` | Type 0B, channel at 13, byte 15 zero; `adminapp2&&password` followed by empty custom id, SHA256 over header/body. |
+| `OnRecvOpen` / `GetCodecType` | `0051bd08` / `0051bc68` | `00515cac` / `00515c0c` | Status at 11, codec mask at 12; indices 0/1 map to native codec 4/5. Byte 14 selects compact vs full CPacket output. |
+| `SendPlay` / `OnSendRequest` | `0051bf1c` / `0051bfa0` | `00515ec0` / `00515f44` | Send C1 then D1. Request channel at 11, enabled at 13; C includes codec selector at 14 and rate at 15. SHA256 covers the header only. |
+| `OnRecvPlay` | `0051c444` | `005163e8` | Check C/D status; successful D, not C alone, establishes ready state. |
+| `OnSendData` | `0051ca80` | `00516a24` | A2 header, independently encrypted first 32 body bytes, clear remainder, no media digest. Compact F0 uses tags 0E/0A for A-law/mu-law; full format preserves the E3 CPacket header. |
+| `PackFrame` | `0047b1ec` | `0050fdac` | Decrypt a declared aligned prefix, then pass payload to CFramePack; this implementation supports media flag 15 equal to zero only. |
+| `OnStop` | `0051b2bc` | `005150e0` | Stop the base transport and release queued packets. |
+| JNI `audioToggleEx` | `0042be60` | `0043a220` | With talk-listen disabled, select `QVPlayerListen` and disable `QVTalkListen`; preview and talk are distinct receive sources. |
+
+vEye adds optional client-id/uhid strings in Open when client-id is nonempty;
+the no-client-id path matches vHome. This implementation uses that common
+path, not vendor-specific HS/IP-device or GLNK fallback. In both Java builds,
+`QvPlayerCore.buildTalkConnection()` defaults to `65535`, separately from the
+preview panel. `AudioPlayerManager.startSendVoice` disables incoming talk
+audio during half-duplex transmission and restores it afterwards; full-duplex
+leaves it enabled. These toggles do not stop preview reads in our API.
+
+The coordinator waits for the first supported preview audio frame before
+opening talk, queueing that frame and preserving any partial CFrame. The
+normal queue bound also applies during startup. A dedicated
+preview worker then keeps draining video/audio while the talk worker handles
+send pacing, control ACKs and keepalive. Talk-side media is consumed but never
+mixed into the incoming preview queue. A missing-audio startup deadline or
+failure in either worker closes both sockets and wakes both callers; startup
+and thread-start failures release partially opened resources too.
+The first-audio gate is host-side readiness policy matching the successful
+Pi probe; native Java can preconnect talk once preview reaches state 4 and
+does not itself require an E3 frame before that preconnection.
+
+Codec policy is deliberately narrower than native: choose the supported
+intersection (A-law first, then mu-law), not the SDK's preference for codec
+8 when mask bit 4 is present. No supported bit means negotiation failure.
+Outgoing PCM is fixed at 8000 Hz mono, 320 samples/40 ms per frame. Those
+chunk sizes and the bounds below are implementation policy, not a claim that
+every native codec/device uses them. G.711 has exhaustive PCM16 regression
+vectors frozen from CPython 3.11.14 `audioop`, without a runtime dependency.
+
+Each socket has one I/O owner; the preview worker never shares timeouts with
+the sender. Partial TCP headers/bodies survive ordinary read timeouts. The
+first-audio wait and talk handshake/toggle deadlines cannot be extended by
+incoming video/control traffic. Startup bounds apply per stage, not as one
+aggregate timeout. Host bounds are 16 early talk messages, 65555 bytes per
+talk media message, 5 MiB per preview message/partial CFrame and completed
+frame payload, 65535 bytes per audio frame, 64 queued audio frames and one
+second of PCM per send call. The larger preview bound permits normal HD video
+keyframes; video is discarded after reassembly. Slow audio readers drop the
+oldest frames with an explicit counter. This is not lossless recording.
+Unknown outcomes are never retried automatically.
+
+Offline tests cover both codecs and outgoing layouts, malformed/NACK/SHA
+replies, partial reads, deadlines, pacing, queue limits and shutdown, including
+real two-connection loopback TCP. A preceding Pi probe on 2026-10-27 kept
+panel-2 preview active (327 audio frames received) and sent 250 G.711 A-law
+frames through generic talk 65535. The owner confirmed approximately ten
+seconds of tones from that panel. Talk itself returned zero media frames.
+Talk selector 2 without preview had ACKs but no audible sound. Preview and
+selector were changed together, so their individual necessity is not proven.
+
+The refactored coordinator implements that observed profile but was checked
+**offline only** after adaptation. No new camera/cloud requests or sounds
+were used for that refactor. Physical speaker quality, normal conversation,
+echo cancellation, full-duplex and Vimar compatibility are not established.
 
 ## RTSP Streaming
 
@@ -528,6 +607,51 @@ Regression tests use real AES decoding, every 1-31-byte final tail in all
 capture phases, every single split/one-byte input, encrypted media and metadata,
 independent streams, chained remainders and 1500 seeded command/media/mixed
 partitions. These are synthetic parity checks, not new live camera evidence.
+
+## Desktop Conversation Boundary
+
+`Camera.converse()` adds no packet format. It reuses the two-connection talk
+coordinator with `full_duplex=True`, selected-panel preview reception and
+generic talk 65535 transmission. Both apps' `AudioPlayerManager.startSendVoice`
+Java loops skip requestAudio disable/restore in their full-duplex branch.
+`audioToggleEx` was rechecked via GhidraMCP at `0042be60` (vHome) and `0043a220`
+(vEye Pro): preview and talk reception remain separate sources. This is static
+parity, not proof of physical firmware duplex support.
+
+Optional miniaudio supplies local capture/playback and native rate/layout
+conversion; the bridge exchanges signed PCM16 LE, 8000 Hz mono. G.711 decode
+vectors cover all 256 codewords for both laws against frozen CPython 3.11
+audioop results, without depending on audioop at runtime. The 200ms PCM
+queue bounds/drop-oldest policy are host-side latency limits, not native
+constants. Callback threads perform no socket I/O. Unlike the original
+client's optional WebRTC DSP path, this bridge has no AEC/AGC/noise suppression.
+Hardware testing and subjective audio/duplex quality remain outstanding.
+
+`CameraRtspStream.start_talk()` reuses the already-running preview. Its single
+H264LiveAssembler/CFrame packer forwards completed E3 frame dictionaries to
+the attached talk handle; no second socket reader or CFrame assembler is run
+for receiving conversation audio. Only generic talk 65535 is opened. Local
+microphone/playback is explicit and stops with `stop_talk()`; RTSP is unaffected.
+The standalone `Camera.talk()` / `converse()` retain their own-preview behavior.
+
+Both native `audioToggleEx` functions were rechecked, as were talk `OnStop`
+(`0051b2bc` / `005150e0`): each stops its base talk transport and releases its
+queued packets. Java `QvPlayerCore.breakTalkConnection()` calls `stopTalking`
+and resets talk state independently of preview. The shared Python owner follows
+that resource boundary. Duplicate starts are rejected; talk failures detach
+only conversation, while a parent failure/close cancels it. These host-side
+lifecycle/fan-out changes add no wire command or encoding change. Tests cover
+startup cancellation, fresh talk restart, unsupported audio isolation and a
+still-answering RTSP listener after talk stops. Native comparison remains
+static; no device/cloud command was issued for this pass.
+
+Both native `OnSendData` implementations (`0051ca80` / `00516a24`) frame and
+send already captured data. Java's blocking `AudioRecord.read()` clocks the
+capture loop. Accordingly, the desktop bridge sends one hardware-clocked
+640-byte block without an additional 40ms completion wait; on backlog it drops
+older complete blocks instead of replaying them in a burst. The public raw
+`send_pcm()` path still paces application/WAV input and waits its playback
+window. Packet encoding, ACK validation and network deadlines are unchanged.
 
 ## Native Crypto Asset Validation
 

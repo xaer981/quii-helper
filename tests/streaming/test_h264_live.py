@@ -17,6 +17,28 @@ def _cpacket(bitstream: bytes, *, frame_tag: int = 0xE1) -> bytes:
 
 
 class H264LiveAssemblerTests:
+    def test_audio_observer_shares_fragment_assembly_without_requiring_audio_decode(
+        self,
+    ):
+        from tests.media.audio.test_frames import audio_cpacket
+
+        observed, video = [], []
+        assembler = H264LiveAssembler(
+            sink=video.append,
+            wait_for_keyframe=True,
+            audio_frame_observer=observed.append,
+        )
+        # Invalid sound metadata must not affect ordinary video-only consumers.
+        payload = audio_cpacket(ms=1000) + _cpacket(b"\x00\x00\x01\x65idr")
+        for chunk in (payload[:7], payload[7:21], payload[21:]):
+            assembler.feed_message(
+                {"header": SimpleNamespace(packet_type=0xA0), "payload": chunk}
+            )
+        assert len(observed) == 1 and observed[0]["frame_ms"] == 1000
+        assert video == [b"\x00\x00\x01\x65idr"]
+        assert assembler.packer.stats["completed"] == 2
+        assert assembler.audio_frame_count == 0
+
     def test_audio_and_video_use_one_packer_even_before_first_keyframe(self):
         from tests.media.audio.test_frames import audio_cpacket
 

@@ -36,6 +36,15 @@ a scanner and rotate affected credentials after an exposure.
   point contains such an override. See [TLS guidance](docs/setup.md#cloud-region-and-auth-url).
 - Door commands have physical effects. An acknowledged command is not proof
   of movement; a timeout may leave an unknown outcome. Do not retry blindly.
+- Experimental LAN talk is an active operation that reserves audio resources
+  and can interrupt an intercom call. Explicit `talk()` sends caller-supplied
+  sound; explicit `converse()` additionally activates the computer microphone
+  and playback devices until stopped. Neither records or logs captured PCM.
+  The same opt-in applies to preview `session.start_talk()`; `stop_talk()`
+  releases local audio and talk without stopping video. Duplicate starts are
+  rejected. Audio devices are local to the Python host, not the RTSP viewer.
+  Starting preview/RTSP alone never activates the microphone/talk path. Use headphones: no
+  acoustic echo cancellation is provided.
 - Cloud history is not a live subscription or a sufficient access-control
   signal by itself. Authentication, freshness/deduplication, and authorization
   policy belong to the embedding application.

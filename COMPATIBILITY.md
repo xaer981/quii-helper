@@ -39,8 +39,30 @@ guarantee nor delivery with Android fully disconnected.
 The report confirms LAN video with a saved cloud key/auth pair, not every
 Camera API. JPEG/MP4 capture, door control, cloud call history, two-way audio,
 reboot persistence, and playback with the intercom's WAN blocked remain
-unverified on this model. Two-way audio and local-only call detection are not
-implemented by this library.
+unverified on this model. Local-only call detection is not implemented.
+The unreleased `Camera.talk()` has offline tests and native comparison for
+both apps; Vimar talk remains untested.
+
+On 2026-10-27 a saved-key Tantos/Pi probe kept panel-2 preview active and sent
+250 G.711 A-law frames (8000 Hz mono, approximately ten seconds) through
+generic talk selector 65535. The owner confirmed audible tones from panel 2;
+327 incoming audio frames arrived through preview, while talk itself returned
+none. No cloud requests, door commands or service changes were made. The
+subsequent two-connection API coordinator implements this profile but has
+offline validation only, not a fresh physical-device run. Normal conversation,
+echo cancellation and hardware full-duplex quality remain unverified.
+
+The unreleased `Camera.converse()` PC bridge is covered by fake-device,
+G.711-vector and miniaudio NULL-backend tests, not physical PC microphone or
+speaker testing. Its optional `audio` extra is independent of normal server,
+capture and RTSP dependencies. miniaudio 1.71 publishes Windows/macOS/Linux
+x86_64 wheels; Linux ARM64 may require a local build/system audio development
+libraries. Installing/running this extra on ARM64 has not been verified.
+Session-level `start_talk()` / `stop_talk()` reuse the existing RTSP preview
+and are covered by fake-device and real loopback TCP tests for both G.711
+laws and both talk packet formats, not a new physical camera test. Stopping
+talk without stopping video is therefore implementation-checked, not yet
+confirmed on Tantos or Vimar hardware with a live computer microphone.
 
 The unreleased `Camera.listen_audio()` API and `serve_rtsp(audio=True)` were
 tested on Tantos via a Raspberry Pi on 2026-10-26. A 15-second receive probe

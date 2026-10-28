@@ -32,6 +32,7 @@ Documentation = "https://github.com/xaer981/quii-helper/blob/main/docs/README.md
 Changelog = "https://github.com/xaer981/quii-helper/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+audio = ["miniaudio>=1.71,<2"]
 dev = [
     "black==26.10.1",
     "coverage==7.6.12",

@@ -40,7 +40,19 @@ Version 0.3.0 adds [experimental receive-only audio](https://github.com/xaer981/
 forwards G.711 sound alongside video through one camera connection. Both were
 tested with Tantos on a Raspberry Pi. RTSP remains video-only by default.
 MP4 recording also includes available G.711 sound as AAC; without supported
-audio it remains video-only. Microphone/talkback is not implemented.
+audio it remains video-only.
+
+The unreleased source also includes [experimental LAN talk](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#lan-talk-experimental)
+via `Camera.talk()`: send application-supplied PCM and receive encoded audio
+using panel preview plus generic talk `65535`. That connection profile produced
+audible tones on Tantos panel 2 in a Pi probe; the updated API coordinator has
+offline/native checks only. For a ready-to-use PC microphone/headphones bridge,
+see [`session.start_talk()` / `stop_talk()`](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental)
+on the handle from `serve_rtsp()`, and `python -m examples.converse --channel 2`.
+Video and conversation share one preview; stopping talk leaves video running.
+The optional `audio` extra is needed only for explicit PC audio. Vimar talk and physical
+PC duplex quality remain unverified. No RTSP backchannel or echo cancellation
+is provided; use headphones.
 
 ## Compatibility 🔍
 
@@ -270,6 +282,8 @@ to enable progress messages or diagnostics.
   preview/cloud credentials do not automatically configure local access.
 - `open_door()` sends a **real command**. Acknowledgement is not proof of
   physical movement, and an uncertain outcome must not be retried automatically.
+- `talk()` is also active: it reserves an intercom audio connection and can
+  interrupt a call. Run the talk example only when transmitting sound is safe.
 - The package is pre-`1.0`; experimental APIs and firmware compatibility have
   explicit limits. See the [Security Policy](https://github.com/xaer981/quii-helper/blob/main/SECURITY.md)
   and [Changelog](https://github.com/xaer981/quii-helper/blob/main/CHANGELOG.md).

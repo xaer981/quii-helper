@@ -1,7 +1,7 @@
 import importlib
 import re
 from pathlib import Path
-from unittest.mock import patch, sentinel
+from unittest.mock import MagicMock, Mock, patch, sentinel
 
 import pytest
 
@@ -20,7 +20,10 @@ class ExampleModuleTests:
             re.DOTALL,
         )
         source = next(
-            block for block in blocks if "camera.serve_rtsp(" in block
+            block
+            for block in blocks
+            if "camera.serve_rtsp(" in block
+            and "session.start_talk(" not in block
         )
         with (
             patch("quii_helper.Camera", autospec=True) as camera_cls,
@@ -41,6 +44,41 @@ class ExampleModuleTests:
             stream.wait.assert_called_once_with()
             context.__exit__.assert_called_once()
             camera_cls.return_value.open_door.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "failure", [None, RuntimeError("talk failed"), KeyboardInterrupt()]
+    )
+    def test_documented_shared_conversation_stops_talk_on_every_exit(
+        self, failure
+    ):
+        root = Path(__file__).resolve().parents[2]
+        blocks = re.findall(
+            r"```python\n(.*?)\n```",
+            (root / "docs/api.md").read_text(encoding="utf-8"),
+            re.DOTALL,
+        )
+        source = next(
+            block for block in blocks if "session.start_talk()" in block
+        )
+        camera, session = Mock(), Mock()
+        context = MagicMock()
+        context.__enter__.return_value = session
+        camera.serve_rtsp.return_value = context
+        session.start_talk.return_value.wait.side_effect = failure
+        if failure is not None:
+            with pytest.raises(type(failure)):
+                exec(
+                    compile(source, "docs/api.md", "exec"), {"camera": camera}
+                )
+        else:
+            exec(compile(source, "docs/api.md", "exec"), {"camera": camera})
+            session.wait.assert_called_once_with()
+        camera.serve_rtsp.assert_called_once_with(port=8554)
+        session.start_talk.assert_called_once_with()
+        session.stop_talk.assert_called_once_with()
+        context.__exit__.assert_called_once()
+        camera.talk.assert_not_called()
+        camera.converse.assert_not_called()
 
     def test_discover_env_values_module_is_importable(self) -> None:
         module = importlib.import_module("examples.discover_env_values")

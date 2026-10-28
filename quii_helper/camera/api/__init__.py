@@ -1,7 +1,9 @@
 """High-level camera API for media, device inspection, and explicit control."""
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
+from threading import Event
 
 from quii_helper.camera.connection.credentials import CameraStreamCredentials
 from quii_helper.camera.connection.session import (
@@ -192,7 +194,12 @@ from quii_helper.camera.settings.options import (
     resolve_capture_request,
     validate_output_path,
 )
-from quii_helper.camera.streaming import CameraAudioStream, CameraRtspStream
+from quii_helper.camera.streaming import (
+    CameraAudioStream,
+    CameraRtspStream,
+    CameraTalkSession,
+)
+from quii_helper.camera.streaming.conversation import converse
 from quii_helper.cloud.alarms import CameraCallEventPage, fetch_call_events
 from quii_helper.cloud.devices import (
     fetch_cloud_device_list,
@@ -3461,6 +3468,89 @@ class Camera:
         """
         return self.save_video(duration_seconds, output_path=output_path)
 
+    def talk(
+        self, *, channel: int | None = None, full_duplex: bool = False
+    ) -> CameraTalkSession:
+        """Open an experimental active LAN talk session with saved credentials.
+
+        Args:
+            channel: Preview panel, defaulting to this Camera's channel. Must
+                be 1-65535; talk itself always uses generic selector 65535.
+            full_duplex: Keep talk-side reception enabled while transmitting.
+                False sends SDK-style disable/restore requests on talk. Both
+                values receive audio from preview, never from the talk socket.
+                Hardware duplex behavior and echo cancellation are not guaranteed.
+
+        Returns:
+            Opened context-managed CameraTalkSession. send_pcm() accepts signed
+            PCM16 LE, 8000 Hz mono in 640-byte blocks (up to one second/call);
+            recv_frame() returns encoded G.711 CameraAudioFrame values from
+            preview. Startup waits for its first audio frame before opening talk.
+
+        Raises:
+            ConfigurationError: Cloud mode or missing/invalid LAN credentials.
+            ValueError: full_duplex is not a boolean.
+            QuiiConnectionError: Authorization, negotiation or transport failed.
+
+        This actively reserves a talk connection, even before PCM is sent, and
+        can interfere with an intercom call. No microphone, speaker, cloud,
+        door control or automatic reconnect is started. Use a context manager.
+        Ordinary preview/RTSP behavior is unchanged; this is not RTSP backchannel.
+        """
+        if self.config.connection_mode != "lan":
+            raise ConfigurationError("talk requires connection_mode='lan'")
+        if not isinstance(full_duplex, bool):
+            raise ValueError("full_duplex must be a boolean")
+        preview = self.connector.create_lan_session(channel=channel)
+        session = self.connector.create_lan_talk_session()
+        return CameraTalkSession(
+            session, preview=preview, full_duplex=full_duplex
+        ).open()
+
+    def converse(
+        self,
+        *,
+        channel: int | None = None,
+        input_device: str | None = None,
+        output_device: str | None = None,
+        duration_seconds: float | None = None,
+        stop_event: Event | None = None,
+    ) -> None:
+        """Talk using the computer microphone and headphones until stopped.
+
+        Args:
+            channel: Preview panel, defaulting to this Camera's channel.
+            input_device: Exact microphone name, or the OS default.
+            output_device: Exact playback device name, or the OS default.
+            duration_seconds: Optional positive run time after audio starts.
+            stop_event: Optional threading.Event for programmatic cancellation.
+
+        Requires the optional ``audio`` extra and saved LAN credentials. This
+        blocking call explicitly starts local capture/playback, converts PCM
+        and G.711, and runs both directions. Ctrl+C propagates after cleanup.
+        It uses preview of the selected panel plus generic talk 65535, with
+        continuous transmit (no per-batch listen toggles). No echo cancellation
+        is provided: headphones are strongly recommended. Hardware duplex is
+        device-dependent. Nothing is recorded, renewed in cloud or retried.
+
+        Raises:
+            ConfigurationError: Invalid LAN/options or missing audio extra.
+            AudioDeviceError: Local device initialization/streaming failed.
+            QuiiConnectionError: Camera connection or transport failed.
+        """
+        validate_lan_config(
+            self.config
+            if channel is None
+            else replace(self.config, channel=channel)
+        )
+        converse(
+            lambda: self.talk(channel=channel, full_duplex=True),
+            input_device=input_device,
+            output_device=output_device,
+            duration_seconds=duration_seconds,
+            stop_event=stop_event,
+        )
+
     def listen_audio(self) -> CameraAudioStream:
         """Open a receive-only LAN stream of encoded camera audio frames.
 
@@ -3501,6 +3591,8 @@ class Camera:
         packet producer. Call `close()` when the stream is no longer needed, or
         use the returned object as a context manager.
         The default LAN source uses only the supplied IP/auth code/stream key.
+        The LAN handle also offers explicit start_talk()/stop_talk() with PC
+        audio from the same preview; serving RTSP alone never activates it.
 
         Example:
             ```python
@@ -3520,6 +3612,9 @@ class Camera:
         Returns:
             Started `CameraRtspStream` handle. The client URL is available as
             `handle.url`.
+            Optional LAN `handle.start_talk()` requires the audio extra and
+            returns a CameraConversationSession. Stopping it leaves RTSP
+            active; closing the parent releases both.
         """
         if self.config.connection_mode == "lan":
             validate_lan_config(self.config)

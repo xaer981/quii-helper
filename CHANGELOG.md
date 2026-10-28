@@ -5,6 +5,41 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Experimental LAN-only `Camera.talk()` and context-managed `CameraTalkSession`:
+  send caller-supplied PCM16 LE (8000 Hz mono) as paced G.711 A-law/mu-law and
+  receive encoded CPacket audio through preview of the selected panel. Wait
+  for the first preview audio frame, then transmit over generic talk selector
+  65535. `talk(channel=...)` selects the preview panel, not the talk selector;
+  zero is no longer a high-level generic-talk override. Half-duplex is the
+  default; both modes continue draining preview audio.
+- Native-checked talk setup/Open/C/D negotiation, compact/full outgoing
+  packets, bounded buffers, validated ACKs/digests, cancellation and worker
+  error propagation across both sockets/workers. No cloud fallback, microphone, speaker, automatic
+  retransmission, RTSP backchannel or change to existing preview behavior.
+- Explicit `examples.talk` WAV transmission and offline/loopback regressions.
+  Compared with both vHome and vEye Pro native via GhidraMCP. A preceding
+  Tantos/Pi probe confirmed audible tones with panel-2 preview and generic
+  talk. The adapted API coordinator has offline checks only; normal duplex
+  conversation and Vimar talk remain untested.
+- Explicit `Camera.converse()` PC microphone/headphones bridge and
+  `examples.converse`, with optional `audio` extra (`miniaudio`), device
+  selection, G.711 decoding, 200ms PCM buffers, cancellation/Ctrl+C cleanup
+  and `AudioDeviceError`. No audio capture on import or ordinary preview;
+  no recording, cloud fallback or acoustic echo cancellation. Offline/fake
+  and virtual-device tests only; physical duplex quality remains unverified.
+- LAN RTSP session `start_talk()` / `stop_talk()` with an active
+  `CameraConversationSession` handle. Reuse the existing preview reader and
+  completed audio frames; add only the generic talk connection. Talk stop,
+  startup failure and local audio errors leave preview running, while parent
+  close/failure shuts down both. Explicit PC audio only; ordinary RTSP opens
+  no microphone or talk socket. The interactive example now starts preview
+  first and toggles conversation on Enter. Native checked for both apps;
+  offline/loopback validation only, no fresh physical-device claim.
+
 ## 0.3.0 - 2026-10-26
 
 ### Added

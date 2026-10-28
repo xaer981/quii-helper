@@ -4,10 +4,13 @@ import quii_helper
 
 ROOT_PUBLIC_API = [
     "AssetMissingError",
+    "AudioDeviceError",
     "AutonomousConfig",
     "Camera",
     "CameraAudioFrame",
     "CameraAudioStream",
+    "CameraConversationSession",
+    "CameraTalkSession",
     "CameraCallEvent",
     "CameraCallEventPage",
     "CameraCaptureError",
@@ -236,6 +239,8 @@ class PublicApiTests:
             "get_device_info",
             "fetch_stream_credentials",
             "listen_audio",
+            "talk",
+            "converse",
             "get_call_events",
             "get_device_shadow_info",
             "get_iot_command_support",

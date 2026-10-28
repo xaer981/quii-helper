@@ -29,6 +29,7 @@ class H264LiveAssembler:
     audio_sink: Callable[[CameraAudioFrame], None] | None = None
     audio_frame_count: int = 0
     frame_sink: Callable[[bytes, dict[str, Any]], None] | None = None
+    audio_frame_observer: Callable[[dict[str, Any]], None] | None = None
 
     def feed_message(self, decoded: Mapping[str, Any]) -> list[bytes]:
         header = decoded.get("header")
@@ -41,6 +42,11 @@ class H264LiveAssembler:
 
         access_units = []
         for frame in self.packer.feed(payload):
+            if (
+                frame["frame_tag"] == 0xE3
+                and self.audio_frame_observer is not None
+            ):
+                self.audio_frame_observer(frame)
             if self.audio_sink is not None and frame["frame_tag"] == 0xE3:
                 self.audio_sink(CameraAudioFrame.from_cpacket(frame))
                 self.audio_frame_count += 1

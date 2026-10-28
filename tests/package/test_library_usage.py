@@ -28,6 +28,7 @@ with patch('dotenv.dotenv_values', side_effect=AssertionError('dotenv read')), \
      patch('socket.socket.connect', side_effect=AssertionError('network')), \\
      patch('threading.Thread.start', side_effect=AssertionError('thread')):
     from quii_helper import Camera
+    assert 'miniaudio' not in sys.modules
     from quii_helper.config.settings_loader import has_default_settings_cache
     assert not has_default_settings_cache()
 logger.info('host sink survived')
