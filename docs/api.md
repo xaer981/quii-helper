@@ -915,9 +915,15 @@ These are queries, not firmware-update commands.
 
 ## Archive Queries
 
-These are local CGI methods with the same common arguments and credentials as
-[local inspection](#local-device-read-only-methods). They list archive metadata;
-they do not download or play stored recordings.
+The archive queries are local CGI methods with the same common arguments and
+credentials as [local inspection](#local-device-read-only-methods). They list
+archive metadata. The unreleased source additionally exposes a separate,
+experimental LAN TCP method to download an archived picture or video as bytes.
+Archived H.264 + G.711 video downloads were verified on Tantos/Pi; the owner
+also confirmed correct image and sound in a downloaded MP4. Archived JPEG
+downloads and other firmware remain unverified. See
+[archive compatibility](../COMPATIBILITY.md#tantos-archive-downloads).
+Interactive archive playback/seek is not exposed.
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
@@ -926,17 +932,92 @@ they do not download or play stored recordings.
 | `get_record_message_info(session_id=...)` | `CameraDeviceRecordMessageInfo` | Read one page for the returned search-session id. |
 | `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Search and collect pages up to a safety cap. |
 | `get_record_alarm_info(timestamp=...)` | `CameraDeviceRecordAlarmInfo` | Read archive entries associated with an alarm timestamp. |
+| `download_record(entry, timeout=30.0, max_bytes=16777216)` | `bytes` | Download an archived JPEG or H.264 MP4 over LAN TCP, without live preview. |
 
 Time/session arguments shown as `...` are **required strings**. The search
 methods and `get_record_alarm_info()` also accept `channel_id=1`,
-`file_type="all"`, `occur_type="all"`, and `stream="all"` (or `"main"` / `"sub"`).
+`file_type="all"` (or `"picture"` / `"video"`), `occur_type="all"`, and
+`stream="all"` (or `"main"` / `"sub"`).
 The alarm query additionally accepts `alarm_type=None` and `alarm_id=None`.
 Preserve the device's timestamp convention; archive strings and cloud-history
 time bounds are different interfaces and must not be assumed interchangeable.
 
 The list result exposes `records`, fetched `pages`, session/status fields, and
 completion information. A page cap is not proof of a complete archive search.
-Calendar/day/month queries and archive downloading are not exposed by this API.
+Calendar/day/month queries are not exposed by this API.
+
+Entries preserve `picture_index` (`idx`, including zero/leading zeros),
+`frame_rate` (`idf`), and `stream` (`ids=1/2` maps to `main/sub` if no explicit
+stream is provided), alongside the complete `raw` metadata. `file_size` keeps
+the original CGI value (KiB in the inspected apps), not an exact JPEG byte
+count. Native `record/datalist/data` entries and `record/page` status are
+recognized; an empty `datalist` does not create a phantom file.
+
+`download_record()` requires `connection_mode="lan"`, the device IP/native
+`stream_port` (normally `34567`, not the CGI port), and a saved `stream_key` /
+`auth_code` pair. Pass an entry from the same device with
+`file_type="picture"` or `"video"` and a native `file_name`; pictures also
+require `picture_index` (native `idx`).
+`entry.url` is ignored. It never opens a preview, contacts the cloud, refreshes
+credentials, or saves a permanent result file. JPEG does not need FFmpeg or
+temporary files. Video requires FFmpeg on PATH and uses private temporary
+files under `Camera(data_dir=...)`, removed on success, failure, and interrupt.
+
+The native `file_name` selects the file and channel; `entry.start_time` selects
+the initial Seek when supplied, otherwise the filename start time is used.
+Accepted `start_time` syntax is `YYYY-MM-DD[tT ]HH:MM:SS[zZ]?`: device-local
+calendar fields, with no timezone conversion even when a `z`/`Z` suffix is
+present. UTC offsets are not accepted.
+
+The native sequence is Setup `A9` (byte 9 = 1), Open `02`, Seek `05`, playback
+mode `15` (1/1), CPacket payloads, then authenticated EOF `08`.
+Only LAN-live AES-256/SHA256 is supported, without separately encrypted media.
+Integrity checks cover complete CPacket framing and JPEG SOI/EOI markers,
+**not full JPEG decoding**. The transport is closed on success and failure.
+
+Video is remuxed to MP4 without re-encoding H.264. Native per-frame timestamps
+are retained, including variable frame intervals; the search interval or
+filename duration is never used to stretch frames. Only the final frame's
+duration is inferred from its reported FPS, or previous positive frame intervals
+when FPS is absent. Equal timestamps are accepted without dropping frames;
+the MP4 muxer may separate them by one container tick. If all timestamps are
+equal and FPS is unknown, export fails rather than inventing a duration.
+Supported G.711 A-law/mu-law, 8000 Hz mono audio is converted to
+AAC; clips without audio remain video-only. Unsupported codecs (including
+H.265/AAC input), backwards timestamps or gaps over 30 seconds, or parameter-set and
+resolution changes fail explicitly instead of returning a misleading clip.
+The retained video-frame count is capped at 65,536 and each access unit at
+4,096 NAL units. Native non-media metadata frames E7/E8 are ignored, but their
+payload still counts toward the transfer limit.
+
+`timeout` is a positive finite total deadline, including setup, transfer and
+MP4 export, not a per-read timeout. `max_bytes` limits received media payload
+and the final JPEG/MP4 size, defaulting to 16 MiB. Increase both limits for
+longer/larger clips. It is not a limit on peak RAM or temporary disk usage.
+An incomplete or oversized clip is rejected, never silently size-truncated.
+`ConfigurationError` reports invalid/unsupported metadata, configuration,
+or limits before transport; `QuiiConnectionError` reports transport failure or
+device rejection; `CameraCaptureError` reports missing, truncated, oversized,
+or invalid media, or expiry of the total deadline. `MediaRenderError` reports
+missing FFmpeg or failed MP4 export.
+
+With an already configured LAN `camera`, query pictures and download their
+bytes without assuming the archive is nonempty or saving anything to disk:
+
+```python
+pictures = camera.list_record_files(
+    start_time="2026-10-29T00:00:00",
+    end_time="2026-10-29T23:59:59",
+    file_type="picture",
+)
+for entry in pictures.records:
+    jpeg_bytes = camera.download_record(entry)
+```
+
+Use the device's own timestamp convention for the query bounds above.
+For videos, query with `file_type="video"`, then pass a returned entry to the
+same method, for example `camera.download_record(entry, timeout=120, max_bytes=67108864)`.
+The returned bytes are MP4, not a copy of an on-device MP4 file.
 
 ## Door Control
 

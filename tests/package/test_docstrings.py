@@ -184,6 +184,7 @@ DOCUMENTED_OBJECTS = (
     Camera.list_record_files,
     Camera.get_record_message_info,
     Camera.get_record_session_info,
+    Camera.download_record,
     Camera.get_wifi_list,
     Camera.get_screen_flip_info,
     Camera.get_video_switch_info,

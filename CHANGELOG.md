@@ -9,6 +9,14 @@ being stabilized.
 
 ### Added
 
+- Experimental LAN-only `Camera.download_record(entry) -> bytes` for archived
+  pictures (original JPEG) and H.264 video (MP4, with optional G.711 converted
+  to AAC). Uses a saved stream key/auth pair, without cloud requests or live
+  preview. Bounded transfers validate framing and authenticated EOF; video
+  export requires FFmpeg and cleans private temporary files. Native layouts
+  were compared with both vHome and vEye Pro through GhidraMCP. Refs #20.
+- Archive metadata preserves native picture `idx` and reported FPS, with
+  explicit parsing of nested `record/datalist/data` and `record/page`.
 - Experimental LAN-only `Camera.talk()` and context-managed `CameraTalkSession`:
   send caller-supplied PCM16 LE (8000 Hz mono) as paced G.711 A-law/mu-law and
   receive encoded CPacket audio through preview of the selected panel. Wait
@@ -44,12 +52,19 @@ being stabilized.
 
 ### Fixed
 
+- Preserve native archive filename selectors independently of CGI media type,
+  including nonzero-selector video files. Accept equal video timestamps
+  without dropping frames or stretching the timeline; when FPS is absent,
+  infer the final sample duration from positive observed intervals only.
 - Prevent concurrent TCP session close from clearing an in-flight receive
   buffer and returning a truncated header or payload. Interrupted reads now
   fail with the existing connection error instead of leaking `IndexError`.
 
 ### Documentation
 
+- Record two successful Tantos/Pi archive-video downloads and owner-confirmed
+  image/sound playback on 2026-10-29. Archived JPEG downloads and Intelbras /
+  Allo Plus compatibility remain unverified; this does not close issue #20.
 - Record the Tantos shared-preview conversation acceptance test and separate
   it from physical PC audio-device and Vimar coverage. Preserve experimental,
   unreleased status until a new package release.

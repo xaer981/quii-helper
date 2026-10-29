@@ -33,6 +33,7 @@ def h264_mp4_command(
     audio_format: str = "alaw",
     audio_offset_seconds: float = 0,
     duration_seconds: float | None = None,
+    input_format: str = "h264",
 ) -> list[str]:
     command = [
         "ffmpeg",
@@ -41,7 +42,7 @@ def h264_mp4_command(
         "error",
         *input_rate_args,
         "-f",
-        "h264",
+        input_format,
         "-i",
         str(stream_path),
     ]
