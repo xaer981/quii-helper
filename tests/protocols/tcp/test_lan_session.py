@@ -459,6 +459,40 @@ def test_tcp_read_deadline_stops_drip_feed_and_preserves_partial_bytes(
     transport.close()
 
 
+def test_close_after_buffering_never_returns_a_short_read(monkeypatch):
+    transport = TcpSocketTransport("127.0.0.1", 1)
+    sock = ScriptedSocket()
+    transport.sock = sock
+    transport._receive_buffer.extend(b"buffered")
+    monkeypatch.setattr(sock, "settimeout", lambda timeout: transport.close())
+
+    with pytest.raises(RuntimeError, match="closed"):
+        transport.recv_exact(8)
+
+    assert transport.sock is None
+    assert not transport._receive_buffer
+
+
+def test_close_after_header_read_is_a_domain_error(monkeypatch):
+    session, sock = session_and_socket()
+    session.open()
+    sock.chunks.append(command())
+    transport = session._client.transport
+    set_timeout = sock.settimeout
+
+    def close_after_buffering(timeout):
+        set_timeout(timeout)
+        if len(transport._receive_buffer) == 32:
+            session.close()
+
+    monkeypatch.setattr(sock, "settimeout", close_after_buffering)
+
+    with pytest.raises(QuiiConnectionError, match="receive failed"):
+        session.recv_message()
+
+    assert sock.closed
+
+
 def test_close_interrupts_a_blocked_socket_read():
     local, peer = socket.socketpair()
     transport = TcpSocketTransport("127.0.0.1", 1)

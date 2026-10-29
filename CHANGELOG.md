@@ -42,6 +42,12 @@ being stabilized.
   adapter on 2026-10-29. Both directions were intelligible to the owner; physical
   PC microphones/headphones and overlapping-speech quality remain unverified.
 
+### Fixed
+
+- Prevent concurrent TCP session close from clearing an in-flight receive
+  buffer and returning a truncated header or payload. Interrupted reads now
+  fail with the existing connection error instead of leaking `IndexError`.
+
 ### Documentation
 
 - Record the Tantos shared-preview conversation acceptance test and separate

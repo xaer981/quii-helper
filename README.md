@@ -15,7 +15,8 @@ information, and explicitly open a connected door.
 [Quick Start](https://github.com/xaer981/quii-helper#quick-start-) ·
 [RTSP](https://github.com/xaer981/quii-helper#rtsp-streaming-) ·
 [Documentation](https://github.com/xaer981/quii-helper#documentation-) ·
-[Safety](https://github.com/xaer981/quii-helper#safety-and-limitations-)
+[Safety](https://github.com/xaer981/quii-helper#safety-and-limitations-) ·
+[Support](https://github.com/xaer981/quii-helper#support-the-project)
 
 ## Features ✨
 
@@ -293,6 +294,17 @@ to enable progress messages or diagnostics.
 - The package is pre-`1.0`; experimental APIs and firmware compatibility have
   explicit limits. See the [Security Policy](https://github.com/xaer981/quii-helper/blob/main/SECURITY.md)
   and [Changelog](https://github.com/xaer981/quii-helper/blob/main/CHANGELOG.md).
+
+## Support The Project
+
+If quii-helper is useful to you, you can
+[support its development on Boosty](https://boosty.to/xaer981) with a one-time
+donation. Support helps fund protocol research, device testing, documentation,
+and ongoing maintenance.
+
+The project remains free and open source. Donations are optional and do not
+purchase features, delivery dates, or priority support. Bug reports,
+compatibility testing, and contributions are also welcome.
 
 <p align="center">
   <a href="https://github.com/xaer981"><img src="https://raw.githubusercontent.com/xaer981/xaer981/0aa64a3f8982d7dd0f90d5eaf2254ccc3d614994/main_cat.gif" alt="Animated cat" height="40" width="128"></a>
