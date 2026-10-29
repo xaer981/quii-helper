@@ -4,6 +4,7 @@ Run from a checkout: python -m examples.diagnose_lan_stream --host CAMERA_IP.
 Requires ffprobe on PATH. Add --save-frames (and FFmpeg) to retain private
 H.264/JPEG samples under data/. No .env/assets, cloud, talk or door commands
 are used. The lower-level session API is internal, not a stable Camera method.
+FE metadata is passive; --query-device-info opts into read-only queries 5/6/2.
 """
 
 import argparse
@@ -17,6 +18,7 @@ import tempfile
 import time
 from collections import Counter
 from contextlib import nullcontext
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -31,10 +33,58 @@ from quii_helper.protocols.tcp.live.packet_builder import (
     validate_live_identity,
 )
 from quii_helper.protocols.tcp.live.session import LanTcpSession
+from quii_helper.protocols.tcp.live.transparent import (
+    READONLY_DEVICE_QUERIES,
+    describe_transparent_reply,
+)
 from quii_helper.support.errors import QuiiConnectionError
 
 SAMPLE_SECONDS = (0.0, 0.5, 1.0, 5.0, 15.0)
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
+
+
+@dataclass
+class _ReadonlyDeviceInfoProbe:
+    """One opt-in native 5 -> 6 -> 2 sequence per connection; no timers/retries."""
+
+    sent: list[int] = field(default_factory=list)
+    observed: list[int] = field(default_factory=list)
+
+    def advance(
+        self, session: LanTcpSession, reply_command: int | None = None
+    ) -> None:
+        """Start after play; advance only on the outstanding FE subcommand.
+
+        Like QvPlayerCore's callbacks, replies to 5 and 6 advance even if their
+        contents cannot be decoded. Unrelated/duplicate replies do not advance.
+        The wire has no request ID, so observation is not a correlated ACK.
+        """
+        if not session.play_accepted or len(self.observed) == 3:
+            return
+        if len(self.sent) > len(self.observed):
+            if reply_command != self.sent[-1]:
+                return
+            self.observed.append(self.sent[-1])
+        if len(self.sent) < 3:
+            command = READONLY_DEVICE_QUERIES[len(self.sent)]
+            session.request_device_query(command)
+            self.sent.append(command)
+
+    def summary(self) -> dict[str, Any]:
+        """Report bounded progress, never infer success from a missing reply."""
+        waiting = (
+            self.sent[-1] if len(self.sent) > len(self.observed) else None
+        )
+        return {
+            "status": (
+                "responses_observed"
+                if len(self.observed) == 3
+                else "waiting_for_reply" if waiting else "waiting_for_play"
+            ),
+            "sent_commands": list(self.sent),
+            "observed_commands": list(self.observed),
+            "waiting_for": waiting,
+        }
 
 
 def _failure_details(error: BaseException) -> dict[str, Any]:
@@ -44,6 +94,7 @@ def _failure_details(error: BaseException) -> dict[str, Any]:
     for reason in (
         "stream switch timed out",
         "stream switch send failed",
+        "device query send failed",
         "command SHA256 check failed",
         "receive failed",
         "startup failed",
@@ -249,6 +300,7 @@ def _observe_phase(
     seconds: float,
     capture_path: Path | None = None,
     progress: dict[str, Any] | None = None,
+    readonly_info: _ReadonlyDeviceInfoProbe | None = None,
 ) -> tuple[dict[str, Any], bytes]:
     """Measure received frames, including media before an optional switch ACK."""
     started = time.monotonic()
@@ -256,6 +308,7 @@ def _observe_phase(
     sizes: Counter[str] = Counter()
     audio: Counter[str] = Counter()
     replies: list[int] = []
+    transparent: dict[str, dict[str, Any]] = {}
     keyframe = b""
     samples: list[dict[str, Any]] = []
     retained = 0
@@ -271,6 +324,8 @@ def _observe_phase(
         with (
             _open_private(capture_path) if capture_path else nullcontext()
         ) as output:
+            if readonly_info is not None:
+                readonly_info.advance(session)
             while (remaining := seconds - (time.monotonic() - started)) > 0:
                 try:
                     message = session.recv_message(timeout=min(0.5, remaining))
@@ -281,8 +336,21 @@ def _observe_phase(
                 header = message["header"]
                 if not message["is_media"]:
                     counts[f"command_{header.packet_type:02x}"] += 1
+                    reply_command = None
+                    if header.packet_type == 0xFE:
+                        detail = describe_transparent_reply(
+                            header, message["payload"]
+                        )
+                        reply_command = detail["command"]
+                        entry = transparent.setdefault(
+                            f"{reply_command:02x}", {"count": 0}
+                        )
+                        entry["count"] += 1
+                        entry["last"] = detail
                     if header.packet_type == 9:
                         replies.append(header.raw[11])
+                    if readonly_info is not None:
+                        readonly_info.advance(session, reply_command)
                     continue
                 for frame in packer.feed(message["payload"]):
                     tag = frame["frame_tag"]
@@ -379,6 +447,10 @@ def _observe_phase(
                     ),
                 },
                 "counts": dict(counts),
+                "transparent_commands": transparent,
+                "readonly_device_info": (
+                    readonly_info.summary() if readonly_info else None
+                ),
                 "cpacket_dimensions": dict(sizes),
                 "last_keyframe_h264": {"status": "not_analyzed"},
                 "audio_codec_rate_channels": dict(audio),
@@ -411,6 +483,11 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", required=True, help="Camera LAN IP address")
     parser.add_argument("--channel", type=int, default=1)
+    parser.add_argument(
+        "--query-device-info",
+        action="store_true",
+        help="After play, query version/channels/FPS (FE 5/6/2) once; never FPS_SET",
+    )
     parser.add_argument(
         "--compare-handshakes",
         action="store_true",
@@ -545,6 +622,11 @@ def main(argv: list[str] | None = None) -> None:
                 with LanTcpSession(
                     config, handshake=handshake, client_id=client_id
                 ) as session:
+                    readonly_info = (
+                        _ReadonlyDeviceInfoProbe()
+                        if args.query_device_info
+                        else None
+                    )
                     for name, target in phases:
                         current_phase = {
                             **profile,
@@ -572,6 +654,7 @@ def main(argv: list[str] | None = None) -> None:
                             seconds=args.seconds,
                             capture_path=capture_path,
                             progress=current_phase,
+                            readonly_info=readonly_info,
                         )
                         current_phase.update(result)
                         result = current_phase

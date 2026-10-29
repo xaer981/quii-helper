@@ -264,6 +264,66 @@ cleanup. FastPlay replies use the same encrypted AES-256/SHA256 receive path.
 Appearance of audio or a different picture on Vimar remains **unverified** until
 the comparison runs on that device; wire parity alone does not prove a fix.
 
+#### Transparent Commands And Read-Only Startup Queries
+
+Every diagnostic window now summarizes authenticated `0xFE` messages under
+`transparent_commands`, keyed by the hexadecimal **nested command** (for example,
+`02` means `FPS_GET`, not top-level QUII type `2`). Each entry stores a count and
+only its latest safe description, so repeated OSD updates do not accumulate
+payloads. The allowlisted fields are version byte, channel counts, FPS mode and
+OSD timestamp. Unknown commands and attachment/OSD text retain only command
+ID/name, declared length and decode status: no body, header dump or strings.
+SHA/padding bytes are never interpreted as the declared body. Short or unknown
+replies do not stop media observation.
+
+The default remains **passive**: receiving an `0xFE` does not trigger a reply or
+any new request. To opt into vEye Pro's read-only startup queries, add
+`--query-device-info` to either diagnostic mode:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --seconds 10 --query-device-info
+```
+
+The normal selector comparison still performs its documented stream switches.
+For a comparison without stream switches, use the existing handshake mode:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --compare-handshakes --oem YOUR_CAMERA_OEM --stream 1 --seconds 10 --query-device-info
+```
+
+After authenticated play acceptance, send `VERSION_GET (5)` with body `00`.
+On an `0xFE/5` reply, send `CHANNELS_GET (6)` with body `00`; on an `0xFE/6`
+reply, send `FPS_GET (2)` with body `00`. This runs once per connection, not
+again after a stream switch. Like the original Java callback, an error/short
+reply to 5 or 6 still advances the read-only chain; its `decode_status` remains
+`device_error`/`malformed`, not success. Unrelated or duplicate replies do not
+advance the outstanding step. There are no retries, FPS_SET, talk, door, cloud
+or automatic fallback commands. Ordinary `Camera` behavior is unchanged.
+
+`readonly_device_info` records sent/observed command IDs and `waiting_for`.
+Without the flag it is `null`. With the flag its status is `waiting_for_play`,
+`waiting_for_reply` or `responses_observed`. A missing reply remains outstanding
+while the same bounded media window continues. `responses_observed` means all
+three command IDs were seen, **not** that all replies were valid or uniquely
+correlated: the wire format has no request ID. Inspect `decode_status` for each
+reply. A socket/send/authentication failure still closes that connection and is
+reported normally.
+
+Native parity checked via GhidraMCP against the exact vEye Pro 1.9.4.0.2 library
+on 2026-10-29: `OnSendData` `005139b8` places the nested command at header byte
+13, raw length at bytes 11-12 and body after byte 32, hashes header plus raw
+body, then encrypts header and padded body/SHA separately. JNI `transparentEx`
+`0043a144` supplies no inline header parameters. `OnRecvTransprent` `005143d0`
+forwards the response without a generic ACK. Java `QvPlayerCore.onPlayComplete`
+and `onDeviceCallBack`, plus `DeviceOrderHelper`, establish the `5 -> 6 -> 2`
+order and single-zero-byte query bodies.
+
+In the video-intercom UI, FPS modes `0/1/2` mean High/Low/Picture and FPS_SET is
+gated by capability 17. These are **not** the one-based stream selectors
+`1/2/3`. This diagnostic only reads the mode; it never sends FPS_SET (`3`).
+Neither this metadata nor an accepted query proves that Vimar supports higher
+resolution or enables audio. Those results still require device evidence.
+
 #### Stream-Switch Evidence And Snapshot Warmup
 
 Compare the `initial_stream_1`, `initial_stream_2`, `initial_stream_3`,

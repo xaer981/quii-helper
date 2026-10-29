@@ -48,7 +48,9 @@ def setup_reply(status=0, crypto=2, sha=1, kind=0xA9):
     return bytes(header)
 
 
-def command(kind=1, *, status=0, active=1, body=b"", corrupt_sha=False):
+def command(
+    kind=1, *, status=0, active=1, body=b"", corrupt_sha=False, subcommand=0
+):
     header = bytearray(32)
     header[0] = kind
     body = body if kind == 0xFE else b""
@@ -56,6 +58,7 @@ def command(kind=1, *, status=0, active=1, body=b"", corrupt_sha=False):
     struct.pack_into("<H", header, 9, size)
     if kind == 0xFE:
         struct.pack_into("<H", header, 11, len(body))
+        header[13] = subcommand
     else:
         header[11], header[12] = status, active
     digest = hashlib.sha256(header + body).digest()
@@ -459,6 +462,63 @@ def test_header_and_body_timeouts_preserve_every_byte():
         decoded = session.recv_message()
         assert decoded["header"].packet_type == 0xFE
         assert decoded["payload"].startswith(b"transparent-content")
+
+
+def test_readonly_query_requires_play_and_never_starts_automatically():
+    session, sock = session_and_socket()
+    with pytest.raises(QuiiConnectionError, match="not active"):
+        session.request_device_query(5)
+    sock.chunks.extend([command(), command(0xFE, subcommand=8, body=b"time")])
+    with session:
+        with pytest.raises(QuiiConnectionError, match="not active"):
+            session.request_device_query(5)
+        session.recv_message()
+        session.recv_message()
+        assert len(sock.sent) == 2
+        for query in (5, 6, 2):
+            session.request_device_query(query)
+            header = aes_cbc_crypt(
+                sock.sent[-1][:32], KEY, crypto_mode=2, decrypt=True
+            )
+            assert header[0] == 0xFE and header[13] == query
+        assert len(sock.sent) == 5
+    with pytest.raises(QuiiConnectionError, match="not active"):
+        session.request_device_query(5)
+
+
+@pytest.mark.parametrize("query", [True, False, 3, 4, 1, 15, "5", 5.0])
+def test_disallowed_query_never_opens_or_writes_socket(query):
+    session, sock = session_and_socket()
+    with pytest.raises(ValueError, match="read-only"):
+        session.request_device_query(query)
+    assert not sock.sent
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("private"), TimeoutError("private")]
+)
+def test_readonly_query_send_failure_closes_without_retry(error):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        sock.sendall = Mock(side_effect=error)
+        with pytest.raises(
+            QuiiConnectionError, match="device query send failed"
+        ):
+            session.request_device_query(5)
+        sock.sendall.assert_called_once()
+        assert sock.closed and not session.play_accepted
+
+
+def test_transparent_body_must_authenticate_before_diagnostics_receive_it():
+    session, sock = session_and_socket()
+    sock.chunks.append(
+        command(0xFE, subcommand=5, body=b"\x00\x01", corrupt_sha=True)
+    )
+    with session, pytest.raises(QuiiConnectionError, match="SHA256"):
+        session.recv_message()
+    assert sock.closed and len(sock.sent) == 2
 
 
 def test_coalesced_command_and_media_keep_packet_boundaries():

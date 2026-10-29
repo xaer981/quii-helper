@@ -26,6 +26,9 @@ from quii_helper.protocols.tcp.live.packet_builder import (
     build_stream_switch_packet,
     validate_live_identity,
 )
+from quii_helper.protocols.tcp.live.transparent import (
+    build_readonly_device_query,
+)
 from quii_helper.protocols.tcp.transport.client import (
     QuiiClient,
     TcpTransportFactory,
@@ -204,6 +207,30 @@ class LanTcpSession:
     def stream_switch_pending(self) -> bool:
         """Whether an explicit switch still awaits its authenticated reply."""
         return self._pending_stream is not None
+
+    def request_device_query(self, command: int) -> None:
+        """Send one internal diagnostic query (5/6/2) on an accepted play.
+
+        This does not wait for a reply, retry or send a generic transparent ACK.
+        The caller owns query ordering and bounded observation via recv_message.
+        Camera never calls this automatically; write commands are rejected.
+        """
+        packet = build_readonly_device_query(command, key=self._key)
+        if not self._opened or not self.play_accepted:
+            raise QuiiConnectionError("LAN TCP play is not active")
+        try:
+            self._client.transport.set_timeout(self.config.connect_timeout)
+            self._client.transport.send_all(packet)
+            self._check_cancelled()
+        except BaseException as exc:
+            self.close()
+            if isinstance(exc, (OSError, RuntimeError)) and not isinstance(
+                exc, QuiiConnectionError
+            ):
+                raise QuiiConnectionError(
+                    "LAN TCP device query send failed; no retry attempted"
+                ) from exc
+            raise
 
     def request_stream_switch(
         self, stream: int, *, timeout: float | None = 5.0

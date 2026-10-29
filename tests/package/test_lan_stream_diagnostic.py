@@ -86,6 +86,7 @@ def test_handshake_comparison_is_explicit_bounded_and_never_switches(
         assert settings.stream_key == saved.stream_key
         assert not settings.cloud_account and not settings.cloud_password
     session.request_stream_switch.assert_not_called()
+    session.request_device_query.assert_not_called()
     report_text = next((tmp_path / "data").glob("*/report.json")).read_text()
     report = json.loads(report_text)
     assert report["completed"] is (failed_phase is None)
@@ -171,7 +172,17 @@ def test_example_is_lan_only_and_runs_all_selectors_after_switch_failure(
 
     monkeypatch.setattr(example, "_keyframe_dimensions", inspect)
 
-    def observe(session, packer, *, name, seconds, capture_path, progress):
+    def observe(
+        session,
+        packer,
+        *,
+        name,
+        seconds,
+        capture_path,
+        progress,
+        readonly_info,
+    ):
+        assert readonly_info is None
         if name == failed_phase:
             raise QuiiConnectionError("synthetic switch rejection")
         assert capture_path is None
@@ -209,6 +220,7 @@ def test_example_is_lan_only_and_runs_all_selectors_after_switch_failure(
         for call in session.request_stream_switch.call_args_list
     )
     assert factory.return_value.__exit__.call_count == 3
+    session.request_device_query.assert_not_called()
     assert not (tmp_path / "data").exists()
     output = capsys.readouterr().out
     for secret in (
@@ -674,7 +686,17 @@ def test_save_frames_is_private_opt_in_and_writes_report_after_close(
     factory.return_value.__enter__.side_effect = enter
     factory.return_value.__exit__.side_effect = leave
 
-    def observe(session, packer, *, name, seconds, capture_path, progress):
+    def observe(
+        session,
+        packer,
+        *,
+        name,
+        seconds,
+        capture_path,
+        progress,
+        readonly_info,
+    ):
+        assert readonly_info is None
         if interrupted and name == "switch_2_to_1":
             raise KeyboardInterrupt()
         capture = None
