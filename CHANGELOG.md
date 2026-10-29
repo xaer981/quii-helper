@@ -23,8 +23,8 @@ being stabilized.
 - Explicit `examples.talk` WAV transmission and offline/loopback regressions.
   Compared with both vHome and vEye Pro native via GhidraMCP. A preceding
   Tantos/Pi probe confirmed audible tones with panel-2 preview and generic
-  talk. The adapted API coordinator has offline checks only; normal duplex
-  conversation and Vimar talk remain untested.
+  talk. Shared-preview speech and reply were later confirmed on Tantos panel 2
+  with a file-backed audio adapter; Vimar talk remains untested.
 - Explicit `Camera.converse()` PC microphone/headphones bridge and
   `examples.converse`, with optional `audio` extra (`miniaudio`), device
   selection, G.711 decoding, 200ms PCM buffers, cancellation/Ctrl+C cleanup
@@ -38,7 +38,18 @@ being stabilized.
   close/failure shuts down both. Explicit PC audio only; ordinary RTSP opens
   no microphone or talk socket. The interactive example now starts preview
   first and toggles conversation on Enter. Native checked for both apps;
-  offline/loopback validation only, no fresh physical-device claim.
+  physical Tantos/Pi speech/reply and stop-with-video coverage with a file-backed
+  adapter on 2026-10-29. Both directions were intelligible to the owner; physical
+  PC microphones/headphones and overlapping-speech quality remain unverified.
+
+### Documentation
+
+- Record the Tantos shared-preview conversation acceptance test and separate
+  it from physical PC audio-device and Vimar coverage. Preserve experimental,
+  unreleased status until a new package release.
+- Document observed saved-key replacement: a key worked for about four days
+  but failed by day six, while a freshly fetched key restored LAN media.
+  No fixed TTL or automatic cloud renewal is implied.
 
 ## 0.3.0 - 2026-10-26
 

@@ -258,10 +258,13 @@ seconds of tones from that panel. Talk itself returned zero media frames.
 Talk selector 2 without preview had ACKs but no audible sound. Preview and
 selector were changed together, so their individual necessity is not proven.
 
-The refactored coordinator implements that observed profile but was checked
-**offline only** after adaptation. No new camera/cloud requests or sounds
-were used for that refactor. Physical speaker quality, normal conversation,
-echo cancellation, full-duplex and Vimar compatibility are not established.
+The shared-preview coordinator was subsequently checked on physical Tantos/Pi
+on 2026-10-29: the owner confirmed intelligible transmitted speech and its
+recorded reply, and stopping talk left video running. The probe replaced the
+desktop audio device with a clocked PCM file source/sink; it did not test a
+physical PC microphone or headphones. Standalone API hardware coverage,
+overlapping-speech quality and Vimar talk are not established; echo cancellation
+is not implemented. See [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply).
 
 ## RTSP Streaming
 
@@ -625,7 +628,7 @@ audioop results, without depending on audioop at runtime. The 200ms PCM
 queue bounds/drop-oldest policy are host-side latency limits, not native
 constants. Callback threads perform no socket I/O. Unlike the original
 client's optional WebRTC DSP path, this bridge has no AEC/AGC/noise suppression.
-Hardware testing and subjective audio/duplex quality remain outstanding.
+Physical PC audio-device testing and overlapping-speech quality remain outstanding.
 
 `CameraRtspStream.start_talk()` reuses the already-running preview. Its single
 H264LiveAssembler/CFrame packer forwards completed E3 frame dictionaries to
@@ -652,6 +655,14 @@ capture loop. Accordingly, the desktop bridge sends one hardware-clocked
 older complete blocks instead of replaying them in a burst. The public raw
 `send_pcm()` path still paces application/WAV input and waits its playback
 window. Packet encoding, ACK validation and network deadlines are unchanged.
+
+The 2026-10-29 Tantos/Pi acceptance test used this same shared-preview path
+from PR #19 (`679ef71`) with a clocked file adapter, not a physical audio
+backend. The owner confirmed clear speech from panel 2 and a clear recorded
+reply. Video continued after `stop_talk()`, the RTSP listener still answered,
+and parent shutdown released the workers and both camera sockets. No cloud
+request, door command or service change occurred during that LAN talk run.
+It verifies this device/profile and lifecycle, not Vimar or every PC backend.
 
 ## Native Crypto Asset Validation
 

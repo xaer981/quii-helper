@@ -44,9 +44,9 @@ audio it remains video-only.
 
 The unreleased source also includes [experimental LAN talk](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#lan-talk-experimental)
 via `Camera.talk()`: send application-supplied PCM and receive encoded audio
-using panel preview plus generic talk `65535`. That connection profile produced
-audible tones on Tantos panel 2 in a Pi probe; the updated API coordinator has
-offline/native checks only. For a ready-to-use PC microphone/headphones bridge,
+using panel preview plus generic talk `65535`. Shared-preview speech transmission
+and reception were confirmed on Tantos panel 2 using a Raspberry Pi and a
+file-backed audio adapter. For a PC microphone/headphones bridge,
 see [`session.start_talk()` / `stop_talk()`](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental)
 on the handle from `serve_rtsp()`, and `python -m examples.converse --channel 2`.
 Video and conversation share one preview; stopping talk leaves video running.
@@ -58,13 +58,15 @@ is provided; use headphones.
 
 - **Tantos Marilyn Wi-Fi s** with **vHome 2.2**: snapshots, MP4 capture, RTSP,
   door opening in `auto` mode, and incoming-call history on the tested backend.
+  Unreleased shared-preview speech/reply was also confirmed on panel 2.
 - **Vimar K40955**, firmware **V401R001B002**, with **vEye Pro 1.9.4.0.2**:
   saved-key LAN RTSP, [confirmed by a user](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080)
   on 2026-10-25. Other features on this model remain unverified.
 
 Tantos LAN playback and cloud-key bootstrap were also checked on a physical
-Raspberry Pi (Linux ARM64). Its saved key still worked after more than 55 hours
-without a client-side cloud request; the actual expiry remains unknown.
+Raspberry Pi (Linux ARM64). A saved key worked for about four days but no longer
+worked by day six; explicitly fetching a new key restored LAN playback.
+This is not a fixed expiry guarantee; see the compatibility notes.
 
 Related devices may return the HTTP header `Server: Qualvision -HTTPServer`
 or expose TCP port `34567`. These are discovery hints, not proof of support.
@@ -158,6 +160,9 @@ This saves `data/stream_credentials.json` without starting a preview or changing
 `.env`. A failure here must be resolved before proceeding. Re-running this code
 contacts cloud again and replaces the file; do not include it in normal LAN
 startup. The library never fetches or renews a key automatically.
+Saved keys can stop working. If a previously working LAN session stops receiving
+media, check connectivity and settings, then explicitly repeat bootstrap if
+needed; loading an old file or increasing a timeout does not renew its key.
 
 ### 4. Later Runs: LAN-Only Playback
 
@@ -258,6 +263,7 @@ includes `examples.cloud_key_rtsp` (fetch/save, then RTSP) and
 | Set up an account, assets, and `.env` | [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md) |
 | Find methods, parameters, results, and errors | [Camera API Reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md) |
 | Read call history | [Incoming Call History](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental) |
+| View video and explicitly start/stop conversation | [Computer Conversation](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental) (unreleased source checkout) |
 | Open a door explicitly | [Door Control](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#door-control) |
 | Resolve a setup failure | [Troubleshooting](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#troubleshooting) |
 | Check platforms or report a device | [Compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md) |

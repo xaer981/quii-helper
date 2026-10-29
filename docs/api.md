@@ -29,7 +29,7 @@ decoded, silently padded, fetched through CGI, or loaded implicitly from a file.
 AUTH_CODE may be raw or already encoded according to the native client rule.
 No cloud account, device id, APK assets or TLS bypass is needed for TCP itself.
 Initially only AES-256/SHA256 with media flag 15 equal to zero is supported.
-Other profiles fail explicitly; key lifetime and reboot persistence are unknown.
+Other profiles fail explicitly; maximum key lifetime and reboot persistence are unknown.
 
 Use the separate [cloud bootstrap API](#stream-key-bootstrap-and-persistence)
 to obtain/save the key explicitly, then create a LAN Camera with the loaded
@@ -323,10 +323,13 @@ includes supported audio as described in [MP4 Audio](#mp4-audio).
 
 ## LAN Talk (Experimental)
 
-**Unreleased.** A saved-key Pi probe on Tantos confirmed sound from panel 2
-with preview active and generic talk selector `65535`; this updated API
-coordinator has offline/native checks, not a fresh hardware test. Vimar talk,
-normal conversation and echo cancellation remain unverified.
+**Unreleased.** The selected-panel preview / generic talk `65535` profile has
+native/offline coverage. On 2026-10-29 the owner confirmed intelligible speech
+and a recorded reply on Tantos panel 2 through the shared-preview
+`session.start_talk()` API, using a file-backed audio adapter on a Pi. This
+does not constitute a physical PC microphone test or a new hardware run of
+standalone `Camera.talk()`. See [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply).
+Vimar talk remains unverified; acoustic echo cancellation is not implemented.
 `talk()` is **not read-only**: opening the
 session reserves audio resources and may interrupt an intercom call even
 before samples are sent. It never opens the door or starts a local microphone
@@ -400,8 +403,11 @@ then explicitly enable conversation through its returned session. Video and
 incoming sound share **one preview, one reader and one CFrame packer**; only
 generic talk `65535` is added for sending microphone audio. No WAV, FFmpeg,
 cloud request or door command is needed. Starting preview alone neither
-accesses audio devices nor reserves talk. Physical PC duplex/Vimar quality
-has not been confirmed; current session integration checks are offline.
+accesses audio devices nor reserves talk. The shared-preview speech/reply and
+stop lifecycle were checked on Tantos/Pi with a file-backed audio adapter;
+the owner confirmed intelligibility in both directions. Physical PC audio
+devices, overlapping speech and Vimar talk remain unverified. See
+[hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply).
 
 Install the optional dependency in your checkout's virtual environment:
 
@@ -709,15 +715,16 @@ forces LAN mode, honoring the configured camera IP/channel/stream. The usual
 key/auth pair from configuration, not this file. None implicitly searches for
 a saved file or fetches a missing key.
 
-On the tested Tantos/Pi, a fresh cloud fetch returned the same key/encoded-auth
-pair as the older cache, and independent LAN sessions worked without cloud
-requests. The original saved key still worked after 55 h 13 m in a later
-capture check. A Vimar K40955 owner also confirmed saved-key LAN RTSP; the same
-key lifetime has not been measured on that device. These are observations,
-not an immutability/rotation guarantee. Maximum key lifetime, reboot persistence
-and the effect of fetching another key on existing sessions are unknown.
-A load/playback failure must not cause an automatic cloud login. Call the
-bootstrap API again only explicitly.
+Saved credentials are reusable, not guaranteed permanent. On Tantos/Pi, a
+key obtained on 2026-10-23 still worked on October 27 but failed by October 29.
+An explicit fetch returned a different key with the same encoded authCode;
+new/old/new LAN tests restored media only with the new key. This establishes
+neither a fixed TTL nor the reason for the change. Vimar's key lifetime, reboot
+persistence and effects on existing sessions remain unknown. See
+[saved-key observations](../COMPATIBILITY.md#saved-key-lifetime).
+A load/playback failure must not cause an automatic cloud login. After
+checking reachability, port and panel/profile, call the bootstrap API again
+only explicitly if needed; reconnecting with an unusable pair does not renew it.
 LAN-only applies to this client; the camera's own WAN access was not blocked
 in these tests. See [Validation Scope](../COMPATIBILITY.md#validation-scope).
 

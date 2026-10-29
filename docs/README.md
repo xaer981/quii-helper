@@ -20,7 +20,7 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | Obtain a stream key, then play locally | [First-run bootstrap and later local starts](setup.md#stream-key-bootstrap-and-local-reuse), [persistence API](api.md#stream-key-bootstrap-and-persistence). |
 | Watch a live stream in VLC | [RTSP streaming](api.md#rtsp-streaming). |
 | Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); available since 0.3.0, tested on Tantos. |
-| Send sound to an intercom | [Experimental LAN talk](api.md#lan-talk-experimental); unreleased, selected-panel preview plus generic talk, with limited Tantos probe evidence. |
+| Send sound to an intercom | [Experimental LAN talk](api.md#lan-talk-experimental); unreleased. Shared-preview speech/reply was confirmed on Tantos panel 2 with a file-backed adapter; see [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply). |
 | Watch and talk from a computer | [Computer conversation](api.md#computer-conversation-experimental); unreleased, `session.start_talk()` / `stop_talk()` share the RTSP preview. Optional audio extra, microphone and headphones. |
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
 | Read incoming-call history | [Incoming call history](api.md#incoming-call-history-experimental); this is not a live subscription. |

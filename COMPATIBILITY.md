@@ -11,14 +11,14 @@ app name. Maintainer tests and community reports are distinguished below.
 
 | Device | App | Confirmed features and evidence |
 | --- | --- | --- |
-| Tantos Marilyn Wi-Fi s | vHome 2.2 | Maintainer media tests and user-confirmed door/call checks: JPEG snapshot, MP4 capture, RTSP, physical door opening in `auto` mode, and incoming-call history on the tested account/backend. |
+| Tantos Marilyn Wi-Fi s | vHome 2.2 | JPEG snapshot, MP4 capture, RTSP, physical door opening in `auto` mode, and incoming-call history. Unreleased shared-preview LAN talk: intelligible speech in both directions on panel 2, confirmed by the owner on 2026-10-29; file-backed audio adapter, not a physical PC microphone. |
 | Vimar K40955, firmware `V401R001B002` | vEye Pro 1.9.4.0.2 | Saved-key LAN RTSP through `lan_rtsp`, [reported by luigi-pi on 2026-10-25](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080). Not independently tested by the maintainer. |
 
 Physical Pi checks with Tantos on 2026-10-23 also verified direct LAN capture,
 saved-key RTSP, cloud bootstrap/save/load, and independent LAN reconnect without
 client cloud requests. These tests did not send a door command.
 
-An unreleased source-checkout check on 2026-10-26 verified corrected LAN TCP
+A source-checkout check on 2026-10-26 verified corrected LAN TCP
 selector headers on Tantos/Pi. Channel 1 showed an outdoor view and channel 2
 an indoor corridor. Stream 1 produced 960x576 and 1888x1080 respectively;
 streams 2 and 3 both produced 640x480 on each channel. Six 15-second MP4
@@ -43,14 +43,31 @@ unverified on this model. Local-only call detection is not implemented.
 The unreleased `Camera.talk()` has offline tests and native comparison for
 both apps; Vimar talk remains untested.
 
-On 2026-10-27 a saved-key Tantos/Pi probe kept panel-2 preview active and sent
-250 G.711 A-law frames (8000 Hz mono, approximately ten seconds) through
-generic talk selector 65535. The owner confirmed audible tones from panel 2;
-327 incoming audio frames arrived through preview, while talk itself returned
-none. No cloud requests, door commands or service changes were made. The
-subsequent two-connection API coordinator implements this profile but has
-offline validation only, not a fresh physical-device run. Normal conversation,
-echo cancellation and hardware full-duplex quality remain unverified.
+Local `get.device.streamkey` has not succeeded in the reported Vimar tests or
+our Tantos investigation; this does not establish a firmware-level ban.
+Initial key acquisition still uses cloud. The reporter's cloud TLS workaround
+disabled hostname checking, so strict-TLS cloud success is not established.
+See [TLS troubleshooting](docs/setup.md#cloud-region-and-auth-url); do not
+treat a CA file or disabled verification as proof of server identity.
+
+### Tantos LAN Talk: Speech And Reply
+
+On 2026-10-29, the owner confirmed intelligible speech in both directions on
+panel 2 using the unreleased `session.start_talk()` / `stop_talk()` API from
+PR #19, commit `679ef71`. The physical Raspberry Pi ran the existing RTSP
+preview; a clocked file-backed PCM adapter replaced the computer audio device.
+It transmitted about 13 seconds of recorded speech, then recorded the owner's
+reply for 20 seconds. This was not a physical PC microphone/headphones test.
+
+The session used one panel-2/stream-1 preview for incoming video/audio and one
+generic talk connection (`65535`) for outgoing G.711 A-law at 8000 Hz mono.
+It received 874 audio frames with no talk-queue drops. After `stop_talk()`,
+video access units increased from 662 to 701 and the RTSP listener still
+answered requests. Parent shutdown released all test workers/connections.
+The LAN test made no cloud requests, door commands or service changes;
+recordings stayed private. The owner also reviewed the saved reply and
+confirmed it was clear. An earlier 2026-10-27 probe had confirmed audible tones
+with the same panel-preview/generic-talk connection profile.
 
 The unreleased `Camera.converse()` PC bridge is covered by fake-device,
 G.711-vector and miniaudio NULL-backend tests, not physical PC microphone or
@@ -60,12 +77,15 @@ x86_64 wheels; Linux ARM64 may require a local build/system audio development
 libraries. Installing/running this extra on ARM64 has not been verified.
 Session-level `start_talk()` / `stop_talk()` reuse the existing RTSP preview
 and are covered by fake-device and real loopback TCP tests for both G.711
-laws and both talk packet formats, not a new physical camera test. Stopping
-talk without stopping video is therefore implementation-checked, not yet
-confirmed on Tantos or Vimar hardware with a live computer microphone.
+laws and both talk packet formats. The physical test above confirms the
+shared-preview path and stop lifecycle for Tantos/A-law. It does not establish
+Vimar talk, physical PC audio-device support, simultaneous overlapping speech,
+echo cancellation, long-run stability, or every codec/packet profile.
 
-The unreleased `Camera.listen_audio()` API and `serve_rtsp(audio=True)` were
-tested on Tantos via a Raspberry Pi on 2026-10-26. A 15-second receive probe
+### Tantos Receive-Only Audio And Recording
+
+The `Camera.listen_audio()` API and `serve_rtsp(audio=True)`, available since
+0.3.0, were tested on Tantos via a Raspberry Pi on 2026-10-26. A 15-second receive probe
 collected 298 G.711 A-law frames, 8000 Hz mono, decoded in memory. FFprobe
 identified H.264 960x576 and `pcm_alaw` audio in the combined RTSP stream;
 FFmpeg decoded both tracks over TCP and UDP to a null output without errors
@@ -88,12 +108,22 @@ saved-key TCP session with cloud/HTTP and door calls blocked; no service or
 device settings changed. Temporary audio was removed after muxing. Subjective
 sound quality, exact lip-sync and cloud/Vimar MP4 audio remain unverified.
 
-Local `get.device.streamkey` has not succeeded in the reported Vimar tests or
-our Tantos investigation; this does not establish a firmware-level ban.
-Initial key acquisition still uses cloud. The reporter's cloud TLS workaround
-disabled hostname checking, so strict-TLS cloud success is not established.
-See [TLS troubleshooting](docs/setup.md#cloud-region-and-auth-url); do not
-treat a CA file or disabled verification as proof of server identity.
+### Saved-Key Lifetime
+
+The Tantos pair obtained on 2026-10-23 still worked on 2026-10-27, but stopped
+producing media by 2026-10-29: setup succeeded, then play received no reply.
+An explicitly authorized cloud fetch returned a different stream key with
+the same encoded authCode. In a controlled new/old/new sequence, the new key
+received video/audio, the old key still failed, and a fresh LAN-only RTSP
+process with the new key worked. No protocol change was required.
+
+This confirms that the saved key was no longer usable, not why it changed.
+There is no established four-day, six-day or other fixed TTL. Expiry, rotation,
+reboot persistence and effects on existing sessions remain unverified; do not
+assume cached keys are permanent. Bootstrap is explicit, never an automatic
+LAN fallback. The one cloud refresh used an expressly authorized temporary
+TLS bypass after certificate verification failed; the later LAN tests used
+only the saved file. The same lifetime has not been established on Vimar.
 
 ## Discovery Hints
 
@@ -126,9 +156,8 @@ Direct LAN TCP playback uses supplied IP/auth code/stream key and
 does not require that asset. Only the AES-256/SHA256 profile without separate
 media encryption is implemented. Both isolated probes and the current Camera
 integration have physical Pi validation, in addition to offline loopback tests.
-The Tantos key has been reused after more than 55 hours, but maximum key
-lifetime, reboot persistence, and playback with the camera's WAN blocked are
-not established. The same lifetime has not been verified on Vimar.
+See [saved-key observations](#saved-key-lifetime) for reuse and replacement
+evidence. Playback with the camera's WAN blocked remains unverified.
 
 ## Validation Scope
 
@@ -142,6 +171,8 @@ not established. The same lifetime has not been verified on Vimar.
 | Published `0.1.0`, 2026-10-22 | Fresh Windows Python 3.11 wheel/sdist installs and default pip resolution; dependency/import/configuration/logging smoke checks. | A new live-device test. |
 | LAN API on physical Raspberry Pi ARM64, 2026-10-23 | Isolated local wheel: saved-key capture/RTSP, cloud bootstrap/save/load, then independent LAN reconnect. Four samples decoded at 960x576 / 20 fps without errors; RTP checks found no sequence gaps and contexts closed. | Visual scene quality, long-run soak, maximum key lifetime, reboot/rotation persistence, camera-WAN isolation, LAN JPEG rendering on this device, or other hardware. |
 | Tantos saved-key recheck on physical Pi, 2026-10-25 | The original saved key still worked after 55 h 13 m without renewal. A 10-second LAN TCP capture yielded 141 H.264 frames at 960x576 / 20 fps; FFmpeg decoded them without errors. The process guard allowed only camera TCP and blocked cloud/HTTP and external DNS. | An indefinite key lifetime, reboot/rotation persistence, camera-WAN isolation, or Vimar key lifetime. |
+| Tantos key replacement, 2026-10-29 | A fresh key restored LAN video/audio while the original key still failed; encoded authCode was unchanged. Independent saved-key RTSP reconnect succeeded without client cloud requests. | A fixed TTL, reason for the key change, reboot persistence, or camera-WAN isolation. |
+| Tantos shared-preview talk on physical Pi, 2026-10-29 | PR #19 `679ef71`: file-backed speech source and reply recorder; owner confirmed intelligibility both ways on panel 2. No incoming talk-queue drops; video continued after talk stop, then workers/sockets closed. | A physical PC microphone/headphones backend, overlapping-speech quality, echo cancellation, long-run soak, or Vimar talk. |
 | Vimar K40955 community report, 2026-10-25 | The owner confirmed `lan_rtsp` video in [issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080), after troubleshooting cloud bootstrap. | Independent maintainer testing, strict cloud TLS validation, JPEG/MP4, door control, call history, two-way audio, or other firmware. |
 
 The earlier entrance-bot checks cover dependency integration, not media.
@@ -156,9 +187,9 @@ key/encoded-auth pair as the 2 h 32 m cache. The later 55-hour recheck reused
 the original saved file read-only, without fetching a key or loading cloud
 settings. These observations are lower bounds, not an expiry guarantee.
 Cloud TLS verification was temporarily disabled with explicit authorization
-only for the earlier cloud probe because the vendor chain failed; strict-TLS
+for the isolated bootstrap probes because the vendor chain failed; strict-TLS
 cloud success is not claimed. No production service, device setting or door
-state was changed.
+state was changed by those probes.
 
 ## Reporting A Device
 

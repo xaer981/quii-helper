@@ -99,8 +99,14 @@ working. Panel/quality selection uses `channel` and `stream` instead.
 
 ## Stream-Key Bootstrap And Local Reuse
 
-**Fetch once, then reuse locally.** These are separate steps; loading a file
-or connecting in LAN mode never fetches or renews a key automatically.
+**Fetch explicitly, then reuse locally while the pair remains valid.** These
+are separate steps; loading a file or connecting in LAN mode never fetches or
+renews a key automatically.
+Saved keys can stop working; no fixed lifetime is known. If a previously
+working session receives no media, check reachability and the selected
+port/panel/profile before explicitly repeating bootstrap. See
+[saved-key observations](../COMPATIBILITY.md#saved-key-lifetime); a successful
+TCP setup alone does not confirm that the device accepts the saved key.
 
 If you already have `stream_credentials.json` for this camera, skip the cloud
 setup and go directly to [later LAN-only runs](#later-runs-load-and-view-locally).
@@ -242,10 +248,10 @@ Do not use a file belonging to another device.
 Saved-key LAN RTSP has maintainer validation on Tantos and a community success
 report on Vimar K40955. Other features are not established by that report;
 see [Compatibility](../COMPATIBILITY.md) for per-model scope and prerequisites.
-The Tantos key still worked after more than 55 hours, but maximum key lifetime,
+The Tantos investigation also confirmed that an old key can stop working and
+an explicitly fetched replacement can restore media. Maximum key lifetime,
 reboot persistence and operation with the camera's own Internet access blocked
-remain unknown. If a key stops working, bootstrap again only as an explicit
-application action.
+remain unknown; see [saved-key observations](../COMPATIBILITY.md#saved-key-lifetime).
 
 ## Required Assets
 
@@ -511,6 +517,7 @@ these checks do not certify every PyPI build on ARM64.
 | `CERTIFICATE_VERIFY_FAILED` | Follow [TLS guidance](#cloud-region-and-auth-url); do not disable verification silently. |
 | Missing `CAMERA_DEVICE_HOST` / `AUTH_CODE` | Supply local settings or the loaded key/auth pair. LAN TCP requires an IP, not a hostname; CGI has separate HTTP settings. |
 | LAN crypto/SHA/media profile rejected | Only the verified AES-256/SHA256 profile without separate media encryption is supported; do not guess a different key or fall back silently. |
+| Previously working LAN preview/talk times out without media | Check reachability, port and panel/profile. A successful setup does not validate the saved key; it may no longer be accepted. Explicitly bootstrap a fresh pair if needed, then load it into a new LAN Camera. No automatic cloud fallback. |
 | Device `error=-1` with empty content | Often an unsupported/rejected firmware command. Inspect the raw response or profile status; do not assume every device implements every query. |
 | Missing JPEG/MP4 | Check FFmpeg in the application's environment and inspect the capture error/summary and retained H.264. |
 | VLC cannot connect | Wait for media readiness; check the bind host, server LAN IP, firewall, and producer error from `session.wait()`. |
