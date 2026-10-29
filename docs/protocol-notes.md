@@ -9,6 +9,7 @@ findings below refer to the inspected app builds, not every vendor release.
 ## Contents
 
 - [Connection flow](#connection-flow), [LAN TCP](#lan-tcp-session), [media](#media-capture), and [RTSP](#rtsp-streaming).
+- [Experimental LAN stream-switch diagnostic](#experimental-lan-stream-switch-diagnostic).
 - [Runtime limits](#runtime-limits-and-lifecycle).
 - [Receive-only audio](#receive-only-audio).
 - [Cloud history](#cloud-incoming-call-history) and [local device APIs](#local-device-apis).
@@ -72,6 +73,303 @@ without errors. Stream 1 resolutions differed by panel; streams 2 and 3 both
 returned 640x480. This does not prove independent third-profile support or
 simultaneous panel sessions. Earlier probes with the fixed channel-1/stream-1
 header did not validate alternate selector values.
+
+#### Experimental LAN Stream-Switch Diagnostic
+
+Initial play and switching an already playing stream are separate operations.
+The internal `LanTcpSession.request_stream_switch(stream, timeout=5)` sends
+type `0x09` explicitly; normal `Camera` capture/RTSP never calls it. The same
+owner must continue `recv_message()` to deliver media, process the reply and
+enforce the deadline. Only one switch may be pending. A successful authenticated
+reply updates `active_stream`, not configuration. Rejection, expiry or send
+failure closes the session without retries or cloud fallback. Closing on expiry
+avoids confusing a late reply with another request: the wire has no request id.
+The diagnostic explicitly passes `timeout=None`: only the ACK deadline is
+disabled, sending remains bounded by `connect_timeout`, and the receive window
+still ends after `--seconds`. An unanswered switch remains pending, forbids
+another switch, and never updates `active_stream`. Normal callers retain the
+five-second default. Real rejection, invalid SHA, EOF or I/O failure still closes
+the session. Normal Camera startup/capture/RTSP is unchanged.
+
+Rechecked in the exact vEye Pro 1.9.4.0.2 native library via GhidraMCP:
+
+| Address | Behavior |
+| --- | --- |
+| `00510f08`, `SendSwitchStream` | Type 9, Unix seconds at 1, trailer length at 9, zero-based selector at byte 11; no body. SHA256 covers the 32-byte header; header and digest are AES-encrypted independently. |
+| `00512be4`, `OnRecvSwitch` | Reply byte 11 is status (0 means success), not the requested stream index. |
+| `0050d908`, `OnPolling`; `0050dfbc`, `OnRecv` | Receive-idle timeout with incoming data refreshing it; no separate five-second switch-ACK deadline in this path. |
+
+Rechecked on 2026-10-28 against both open libraries: vHome uses
+`SendSwitchStream` at `0047c348` and `OnRecvSwitch` at `0047dee8`, with the
+same command layout and status-byte meaning. Its `OnPolling` at `00478d48`
+likewise checks receive inactivity rather than a separate switch-ACK deadline.
+The opt-in observation policy does not change wire bytes or reply validation.
+A Vimar timeout alone does not prove that the command is unsupported.
+
+From an installed checkout/source distribution, with an existing saved pair
+and `ffprobe` on PATH, run:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --seconds 20
+```
+
+Replace the example IP with your camera's LAN IP. The default key file is
+`data/stream_credentials.json`; override it with `--credentials PATH`.
+No `.env`, APK assets or cloud settings are loaded. Three sessions run
+sequentially on the same channel/key:
+
+| Session | Observation windows |
+| --- | --- |
+| 1 | `initial_stream_1` |
+| 2 | `initial_stream_2`, then `switch_2_to_1` |
+| 3 | `initial_stream_3`, then `switch_3_to_1` |
+
+Every window defaults to 20 seconds (`--seconds` accepts 6-30). Allow roughly
+100 seconds plus setup/analysis, or use `--seconds 10` for a shorter run.
+Each selector starts independently. There is at most one switch per connection;
+no restore/retry is sent, so a missing or late ACK cannot be assigned to a later
+request. Missing ACKs do not abort observation. A connection error ends only
+that session and is retained while the remaining selectors are tested. After
+all sessions, any such error produces an unsuccessful exit and report.
+vEye Pro labels selectors 1/2/3 as high/medium/low for video intercoms, but
+main/sub/third for other cameras. These are selectors, not guaranteed resolutions
+or FPS values. The former diagnostic's `initial_low` was selector 2, not 3.
+The script sends preview/quality commands but no persistent configuration,
+talk/backchannel or door commands. Stop other viewers and test without ringing
+or answering a call first; those states can independently change device behavior.
+
+Without extra flags it saves no files. Each JSON row reports `initial_stream`,
+`requested_stream`, frame counts, E3 codec/rate/channel metadata, switch status,
+CPacket sizes and `last_keyframe_h264`. The latter uses the latest bounded H.264
+keyframe actually received in that window, including before an ACK.
+`switch_status` is `not_requested`, `acknowledged` or `unconfirmed`;
+`switch_reply_statuses` retains authenticated replies. Missing ACKs must not be
+treated as accepted switches. A successful initial play response accepts play,
+not an echoed selector, so the former `acknowledged_stream` field is removed.
+`no_h264_keyframe` or
+`ffprobe_failed` means resolution was not established; CPacket is not a fallback.
+An ACK proves command acceptance, not that quality actually changed. All media
+and samples describe the observed window, not a proven target profile; they
+may include in-flight frames from the previous profile even with an ACK.
+Redact paths/identifiers and review the output before sharing it.
+
+`video_timing` measures completed video-frame arrivals with a monotonic clock,
+independently of saving samples or the FPS advertised in CPacket/H.264:
+
+- `frames`, `first_arrival_seconds`, `last_arrival_seconds` and
+  `arrival_span_seconds` describe the measured interval relative to window start.
+- `arrival_fps` is `(frames - 1) / arrival_span_seconds`, excluding startup wait.
+  It is `null` for fewer than two frames or a zero arrival span, including a
+  single batched delivery. Frames in the same received payload share one time.
+- `window_fps` is `frames / elapsed_seconds`, including startup wait and stalls.
+
+These are host-receive rates, not a claim about sensor exposure rate. TCP bursts,
+buffering or pauses can distort them; compare both rates and arrival intervals.
+
+To compare color in the **same sessions**, add `--save-frames`:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --seconds 20 --save-frames
+```
+
+This additionally requires `ffmpeg` on PATH. It creates a fresh private
+`data/lan-diagnostic-.../` folder and retains a phase-named H.264 file and selected
+JPEGs for every observed window, plus `report.json`. Each raw
+capture is capped at 64 MiB (up to five files/320 MiB per run, plus JPEGs);
+existing files are never overwritten. Unix run
+folders are owner-only; Windows uses the parent directory's ACL. Files are
+private camera media: **do not attach the folder, H.264/JPEGs, credentials or
+`.env` to a public issue**. A failed/interrupted run can retain partial captures;
+the report marks `completed: false`. It retains the failed phase and available
+counters, requested selector and pending-switch state, even when the receive
+error closed the session. `failure` retains the first error; `failures` lists
+all session errors with operation stage, phase, exception type and known safe
+reason/status. Unknown exception text,
+raw traceback, credentials and arbitrary FFmpeg stderr are not copied into the
+report. Without `--save-frames`, failure metadata is still printed as JSON.
+Completion means the probe finished, not that every switch was acknowledged
+or a firmware defect was fixed. Check each phase's `switch_status` separately.
+
+JPEG samples target the first retained keyframe and approximately 0.5, 1, 5
+and 15 seconds later, using receiver-relative arrival times and decoded frame
+indexes, not exact physical capture timestamps. Only available samples are
+saved; missing times are listed in `missing_sample_seconds`. Inter-frame data
+before the first received keyframe of that window is not retained. FFmpeg/FFprobe
+analysis runs only after each camera session closes, avoiding receive stalls.
+`saved_frames.status` must be `ok` before interpreting its samples;
+`ffmpeg_failed`/`no_h264_samples` means color was not established by this run.
+Frame extraction uses `-fps_mode passthrough`. Only an explicit unsupported
+`fps_mode` option error retries with legacy `-vsync 0` for older FFmpeg;
+decoder errors are not retried, and `-xerror` remains enabled.
+
+#### Experimental LAN Handshake Comparison
+
+A Vimar K40955 report on 2026-10-28 received video at about 20 FPS and 352x288
+with each selector, but no audio or switch replies. That does not establish that
+the firmware supports neither audio nor other profiles. Before repeating selector
+tests, compare the initial connection requests with the original SDK.
+
+This opt-in mode keeps **one channel, selector, key and auth code** for five
+independent connections. It sends no stream-switch, talk or door commands:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --compare-handshakes --oem YOUR_CAMERA_OEM --stream 1 --seconds 10 --save-frames
+```
+
+Replace the IP and `YOUR_CAMERA_OEM` with your camera address and the
+`CAMERA_OEM` value extracted from the **original application**, not the device
+brand/model. This diagnostic does not read `.env`; the OEM must be explicit.
+Commas in an app's OEM list are removed, matching `QvCore.initParams` before
+native `SetCustomID`.
+The saved credentials file and FFprobe/FFmpeg requirements are the same as above.
+Omit `--save-frames` to print JSON without saving any media or report files.
+
+| Phase | Handshake and body |
+| --- | --- |
+| `handshake_setup_path` | Existing setup/type-1 play with credentials and URL path; unchanged baseline. |
+| `handshake_setup_oem` | Same setup/play, replacing only the path body field with OEM/custom ID. |
+| `handshake_fast_oem` | Same OEM body, but native type-`0xAA` FastPlay without setup or client ID. |
+| `handshake_setup_oem_client` | Same OEM request plus a newly generated diagnostic client UUID. |
+| `handshake_fast_oem_client` | Same OEM and UUID, but native type-`0xAA` FastPlay without setup. |
+
+The same temporary 32-hex-character UUID is used in the last two phases, matching
+vEye Pro's `DataUtils.generateUUID` fallback. It is not copied from
+Android, sent to cloud, persisted, or included in the report. Each connection
+has one bounded receive window (default 20 seconds; 6-30 allowed), so this mode
+takes roughly five windows plus setup/analysis. `--stream` is 1 by default and
+accepts 1/2/3 **only in this mode**. No retries or automatic fallback occur.
+An unsupported/rejected FastPlay connection is reported as a failure; other
+independent phases are still attempted. `completed` is not a compatibility
+verdict. Compare actual video FPS, H.264 dimensions, E3 counts and color samples.
+The report names the handshake and whether a client ID was present, never the
+UUID, auth code or key. The existing private-artifact precautions still apply;
+this mode retains at most five 64 MiB H.264 files plus JPEGs. Testing FastPlay
+both with and without a client ID avoids mistaking identity rejection for a
+handshake incompatibility.
+
+Native parity rechecked via GhidraMCP on 2026-10-28:
+
+| Native | Functions | Confirmed behavior |
+| --- | --- | --- |
+| vHome 2.2 | `OnSendPlay` `0047d898`; `SendFastPlay` `0047cf34`; `SetCustomID` `00476dd0` | Body is `username&&password\0custom_id\0`; custom ID is not the URL path. |
+| vEye Pro 1.9.4.0.2 | `OnSendPlay` `0051250c`; `SendFastPlay` `00511af4`; `SetCustomID` `00514ce0`; `SetClientID` `00514d10` | Same fields, plus an optional nonempty `client_id\0`. |
+| Both | The above play/FastPlay functions | Unix seconds, channel at bytes 13-14, zero-based selector at 16. Regular play encrypts header and body separately; FastPlay leaves its header plain and AES-256 encrypts body/SHA. |
+| vEye Pro | `OnStart` `0050d3d0`; Java `QvPlayerCore.startPlay` | App selects FastPlay using `newcn=1` and capability `TYPE_PREVIEW_NEW_SHAKE=84`; the diagnostic explicitly probes it, without claiming the device advertises it. |
+
+Normal `Camera` capture/RTSP still uses the existing setup/path-body profile.
+The internal `LanTcpSession` accepts explicit diagnostic `handshake` and
+`client_id` arguments, but these are not stable Camera options or `.env` settings.
+All profiles retain authenticated reply checks, receive limits, cancellation and
+cleanup. FastPlay replies use the same encrypted AES-256/SHA256 receive path.
+Appearance of audio or a different picture on Vimar remains **unverified** until
+the comparison runs on that device; wire parity alone does not prove a fix.
+
+#### Transparent Commands And Read-Only Startup Queries
+
+Every diagnostic window now summarizes authenticated `0xFE` messages under
+`transparent_commands`, keyed by the hexadecimal **nested command** (for example,
+`02` means `FPS_GET`, not top-level QUII type `2`). Each entry stores a count and
+only its latest safe description, so repeated OSD updates do not accumulate
+payloads. The allowlisted fields are version byte, channel counts, FPS mode and
+OSD timestamp. Unknown commands and attachment/OSD text retain only command
+ID/name, declared length and decode status: no body, header dump or strings.
+SHA/padding bytes are never interpreted as the declared body. Short or unknown
+replies do not stop media observation.
+
+The default remains **passive**: receiving an `0xFE` does not trigger a reply or
+any new request. To opt into vEye Pro's read-only startup queries, add
+`--query-device-info` to either diagnostic mode:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --seconds 10 --query-device-info
+```
+
+The normal selector comparison still performs its documented stream switches.
+For a comparison without stream switches, use the existing handshake mode:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --compare-handshakes --oem YOUR_CAMERA_OEM --stream 1 --seconds 10 --query-device-info
+```
+
+After authenticated play acceptance, send `VERSION_GET (5)` with body `00`.
+On an `0xFE/5` reply, send `CHANNELS_GET (6)` with body `00`; on an `0xFE/6`
+reply, send `FPS_GET (2)` with body `00`. This runs once per connection, not
+again after a stream switch. Like the original Java callback, an error/short
+reply to 5 or 6 still advances the read-only chain; its `decode_status` remains
+`device_error`/`malformed`, not success. Unrelated or duplicate replies do not
+advance the outstanding step. There are no retries, FPS_SET, talk, door, cloud
+or automatic fallback commands. Ordinary `Camera` behavior is unchanged.
+
+`readonly_device_info` records sent/observed command IDs and `waiting_for`.
+Without the flag it is `null`. With the flag its status is `waiting_for_play`,
+`waiting_for_reply` or `responses_observed`. A missing reply remains outstanding
+while the same bounded media window continues. `responses_observed` means all
+three command IDs were seen, **not** that all replies were valid or uniquely
+correlated: the wire format has no request ID. Inspect `decode_status` for each
+reply. A socket/send/authentication failure still closes that connection and is
+reported normally.
+
+Native parity checked via GhidraMCP against the exact vEye Pro 1.9.4.0.2 library
+on 2026-10-29: `OnSendData` `005139b8` places the nested command at header byte
+13, raw length at bytes 11-12 and body after byte 32, hashes header plus raw
+body, then encrypts header and padded body/SHA separately. JNI `transparentEx`
+`0043a144` supplies no inline header parameters. `OnRecvTransprent` `005143d0`
+forwards the response without a generic ACK. Java `QvPlayerCore.onPlayComplete`
+and `onDeviceCallBack`, plus `DeviceOrderHelper`, establish the `5 -> 6 -> 2`
+order and single-zero-byte query bodies.
+
+In the video-intercom UI, FPS modes `0/1/2` mean High/Low/Picture and FPS_SET is
+gated by capability 17. These are **not** the one-based stream selectors
+`1/2/3`. This diagnostic only reads the mode; it never sends FPS_SET (`3`).
+Neither this metadata nor an accepted query proves that Vimar supports higher
+resolution or enables audio. Those results still require device evidence.
+
+#### Stream-Switch Evidence And Snapshot Warmup
+
+Compare the `initial_stream_1`, `initial_stream_2`, `initial_stream_3`,
+`switch_2_to_1` and `switch_3_to_1` images locally. Report whether
+each starts and remains grayscale or becomes colored, and provide only the
+reviewed text/JSON diagnostics. SATAVG/SATMAX are descriptive saturation
+measurements, not an automatic color-quality or fix verdict: neutral scenes
+and colored overlays can be misleading. An ordinary `Camera.snapshot()` after
+this script is not a substitute, because it opens a fresh session without the
+switch. No original Android app or alternate cloud profile is exercised.
+
+A native-equivalent private probe on Tantos/Pi (2026-10-27) confirmed the
+sequence 640x480 -> 1888x1080 -> 640x480, with E3 in every phase and zero
+CFrame errors. CPacket sizes stayed high after the last switch although H.264
+SPS returned to 640x480. This is why encoded dimensions are reported separately.
+An additional A/B/A check compared published 0.3.0 initial-high, candidate
+switched-high, then 0.3.0 initial-high again on Tantos/Pi. All three supplied
+1888x1080, non-neutral scene color and E3; all recorded H.264 decoded without
+errors. The reported Vimar defect was **not reproduced**, so the switch is not
+a confirmed fix. The original Android binary was not executed; Vimar behavior
+remains unverified.
+
+The Vimar owner's 2026-10-28 report completed initial-high and initial-low
+observations, but not the switched-high phase. Initial-high H.264 was 352x288;
+there were no E3 audio frames in the completed phases and no CFrame errors.
+The owner reported a grayscale first JPEG and colored later samples. Their
+vEye Pro JPEG exports were also 352x288; this does not establish the app's
+encoded video resolution. No stream-key lifetime can be inferred from one
+failed connection.
+
+Snapshot warmup is host-side capture/selection policy, not another camera
+command. The vEye Pro Java snapshot path reaches `QvJniFunc.snapShot`
+(`0043a404`) with an already-open player handle; it does not start a new preview
+for the click. Optional helper warmup therefore retains the initial keyframe
+and subsequent references before selecting a later JPEG. Offline tests use a
+synthetic grayscale IDR followed by colored P-frames. This is not physical
+Vimar acceptance; default snapshot timing and normal RTSP remain unchanged.
+
+The same verification exposed a pre-existing concurrent-close race: TCP
+`close()` could clear the receive buffer after `recv_exact()` finished reading
+but before it copied the result. An identity/length guard now rejects that
+read instead of passing an empty header to decoding. vHome native `OnRecv`
+(`004793fc`) likewise does not decrypt a new header with fewer than 32 bytes.
+This is a host-side cancellation correction, not a change to TCP framing.
+
+#### Supported LAN Profile And Limits
 
 LAN sends the verified path-form play with `live_inner=False` and
 `live_newcn=False`. Non-default values of these flags or `live_play_payload`

@@ -509,6 +509,7 @@ class Camera:
         stop_when_decodable: bool | None = None,
         render_snapshot: bool = True,
         render_video: bool = True,
+        warmup_seconds: float | None = None,
     ) -> CameraCaptureResult:
         """Capture media from the camera and return a structured result.
 
@@ -530,6 +531,9 @@ class Camera:
                 enough H.264 context is available.
             render_snapshot: Whether to render a JPEG snapshot.
             render_video: Whether to render MP4 with available supported audio.
+            warmup_seconds: Optional snapshot warmup after the first decodable
+                video frame, included in the capture window. Zero keeps the
+                first-frame snapshot. None inherits preview settings.
 
         Returns:
             `CameraCaptureResult` with generated paths, write flags,
@@ -552,6 +556,7 @@ class Camera:
             stop_when_decodable=stop_when_decodable,
             render_snapshot=render_snapshot,
             render_video=render_video,
+            warmup_seconds=warmup_seconds,
         )
         summary = self._capture_summary(
             settings=request.settings,
@@ -3383,6 +3388,7 @@ class Camera:
         *,
         timeout_seconds: float = 5.0,
         output_path: str | Path | None = None,
+        warmup_seconds: float = 0.0,
     ) -> Path:
         """Capture one JPEG snapshot.
 
@@ -3392,6 +3398,9 @@ class Camera:
             timeout_seconds: Maximum time to wait for a decodable frame.
             output_path: Optional `.jpg` output path. When omitted, a
                 timestamped file is created under `data_dir`.
+            warmup_seconds: Wait for a new video frame this long after the first
+                decodable frame. Included in timeout_seconds; defaults to zero
+                for the original first-frame behavior. Does not guarantee color.
 
         Returns:
             Path to the written JPEG file.
@@ -3406,6 +3415,7 @@ class Camera:
             stop_when_decodable=True,
             render_snapshot=True,
             render_video=False,
+            warmup_seconds=warmup_seconds,
         )
         return result.require_snapshot()
 

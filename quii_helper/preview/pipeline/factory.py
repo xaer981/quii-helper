@@ -101,6 +101,9 @@ class PreviewPipelineFactory:
             output_base=output_base,
             render_snapshot=self.render_snapshot,
             render_video=self.render_video,
+            last_snapshot_frame=bool(
+                self.preview_settings.snapshot_warmup_seconds
+            ),
         )
 
 

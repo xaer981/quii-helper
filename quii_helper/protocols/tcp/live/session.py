@@ -22,6 +22,13 @@ from quii_helper.protocols.tcp.codec.message_codec import (
     decode_tcp_header,
     decode_tcp_payload,
 )
+from quii_helper.protocols.tcp.live.packet_builder import (
+    build_stream_switch_packet,
+    validate_live_identity,
+)
+from quii_helper.protocols.tcp.live.transparent import (
+    build_readonly_device_query,
+)
 from quii_helper.protocols.tcp.transport.client import (
     QuiiClient,
     TcpTransportFactory,
@@ -98,6 +105,10 @@ class LanTcpSession:
     supported initially. Other profiles fail closed rather than guessing keys.
     The caller supplies AUTH_CODE (raw or encoded) and the saved 32-byte key.
     No credentials are loaded, renewed or persisted by this class.
+    Send and receive operations have one owner thread; only close() may run
+    concurrently. Stream switches are explicit and never sent during open().
+    The handshake/client_id options are internal diagnostics only; Camera
+    retains setup_path and never selects or falls back to another handshake.
     """
 
     def __init__(
@@ -105,9 +116,26 @@ class LanTcpSession:
         config: AutonomousConfig,
         *,
         transport_factory: TcpTransportFactory = TcpSocketTransport,
+        handshake: str = "setup_path",
+        client_id: str = "",
     ) -> None:
         validate_lan_config(config)
+        if handshake not in ("setup_path", "setup_oem", "fast_oem"):
+            raise ConfigurationError("unsupported LAN diagnostic handshake")
+        custom_id = None
+        if handshake != "setup_path":
+            if not isinstance(config.oem, str):
+                raise ConfigurationError("diagnostic OEM must be a string")
+            # QvCore.initParams removes commas before native SetCustomID.
+            custom_id = config.oem.replace(",", "")
+        try:
+            validate_live_identity(custom_id, client_id)
+        except ValueError as exc:
+            raise ConfigurationError(str(exc)) from None
         self.config = config
+        self._handshake = handshake
+        self._custom_id = custom_id
+        self._client_id = client_id
         self._key = config.stream_key.encode("utf-8")
         self._client = QuiiClient(
             config.device_host,
@@ -121,6 +149,9 @@ class LanTcpSession:
         self._pending_header: DecodedTcpHeader | None = None
         self._opened = False
         self.play_accepted = False
+        self.active_stream: int | None = None
+        self._pending_stream: int | None = None
+        self._switch_deadline: float | None = None
         self._last_keepalive = 0.0
         self._closed = Event()
 
@@ -135,17 +166,29 @@ class LanTcpSession:
         try:
             self._client.connect(timeout=self.config.connect_timeout)
             self._check_cancelled()
-            self._client.send_setup()
-            setup = self._client.recv_setup()
-            self._check_cancelled()
-            raw = cast(bytes, setup["raw"])
-            if raw[0] != 0xA9 or setup["status"] != 0:
-                raise QuiiConnectionError("LAN TCP setup was rejected")
-            if setup["crypto_mode"] != 2 or raw[11] != 1:
-                raise QuiiConnectionError(
-                    "unsupported LAN TCP crypto/SHA profile; AES-256/SHA256 required"
+            if self._handshake == "fast_oem":
+                self._client.crypto_mode = 2
+            else:
+                self._client.send_setup()
+                setup = self._client.recv_setup()
+                self._check_cancelled()
+                raw = cast(bytes, setup["raw"])
+                if raw[0] != 0xA9 or setup["status"] != 0:
+                    raise QuiiConnectionError("LAN TCP setup was rejected")
+                if setup["crypto_mode"] != 2 or raw[11] != 1:
+                    raise QuiiConnectionError(
+                        "unsupported LAN TCP crypto/SHA profile; AES-256/SHA256 required"
+                    )
+            if self._handshake == "setup_path":
+                self._client.send_live_open()
+            else:
+                packet = self._client.live_open_builder.build_live_open_packet(
+                    crypto_mode=2,
+                    custom_id=self._custom_id,
+                    client_id=self._client_id,
+                    fast_play=self._handshake == "fast_oem",
                 )
-            self._client.send_live_open()
+                self._client.transport.send_all(packet)
             self._opened = True
             self._last_keepalive = time.monotonic()
             self._check_cancelled()
@@ -157,6 +200,85 @@ class LanTcpSession:
             ) and not isinstance(exc, QuiiConnectionError):
                 raise QuiiConnectionError(
                     "LAN TCP startup failed; no cloud fallback attempted"
+                ) from exc
+            raise
+
+    @property
+    def stream_switch_pending(self) -> bool:
+        """Whether an explicit switch still awaits its authenticated reply."""
+        return self._pending_stream is not None
+
+    def request_device_query(self, command: int) -> None:
+        """Send one internal diagnostic query (5/6/2) on an accepted play.
+
+        This does not wait for a reply, retry or send a generic transparent ACK.
+        The caller owns query ordering and bounded observation via recv_message.
+        Camera never calls this automatically; write commands are rejected.
+        """
+        packet = build_readonly_device_query(command, key=self._key)
+        if not self._opened or not self.play_accepted:
+            raise QuiiConnectionError("LAN TCP play is not active")
+        try:
+            self._client.transport.set_timeout(self.config.connect_timeout)
+            self._client.transport.send_all(packet)
+            self._check_cancelled()
+        except BaseException as exc:
+            self.close()
+            if isinstance(exc, (OSError, RuntimeError)) and not isinstance(
+                exc, QuiiConnectionError
+            ):
+                raise QuiiConnectionError(
+                    "LAN TCP device query send failed; no retry attempted"
+                ) from exc
+            raise
+
+    def request_stream_switch(
+        self, stream: int, *, timeout: float | None = 5.0
+    ) -> None:
+        """Send an internal, opt-in switch without consuming any media.
+
+        Args:
+            stream: One-based selector; requesting the current one is allowed.
+            timeout: Positive finite deadline covering send and acknowledgement.
+                None disables only the ACK deadline for bounded diagnostics;
+                sending still uses connect_timeout.
+
+        Continue calling recv_message() on the same thread to process the reply
+        and enforce the deadline. Success updates active_stream, not config.
+        Acknowledgement alone does not prove the encoded resolution changed.
+        Rejection, expiry or send failure closes the session; no retry/fallback
+        is attempted. A second request cannot overlap an outstanding one.
+        With no ACK deadline, the caller must bound observation and close the
+        session; a missing reply never implies success or permits another switch.
+        """
+        packet = build_stream_switch_packet(stream, key=self._key)
+        if timeout is not None and (
+            not math.isfinite(timeout) or timeout <= 0
+        ):
+            raise ValueError("timeout must be finite and positive")
+        if not self._opened or not self.play_accepted:
+            raise QuiiConnectionError("LAN TCP play is not active")
+        self._check_switch_timeout()
+        if self.stream_switch_pending:
+            raise QuiiConnectionError("a LAN TCP stream switch is pending")
+        self._pending_stream = stream
+        self._switch_deadline = (
+            time.monotonic() + timeout if timeout is not None else None
+        )
+        try:
+            self._client.transport.set_timeout(
+                self.config.connect_timeout if timeout is None else timeout
+            )
+            self._client.transport.send_all(packet)
+            self._check_cancelled()
+            self._check_switch_timeout()
+        except BaseException as exc:
+            self.close()
+            if isinstance(exc, (OSError, RuntimeError)) and not isinstance(
+                exc, QuiiConnectionError
+            ):
+                raise QuiiConnectionError(
+                    "LAN TCP stream switch send failed; no retry attempted"
                 ) from exc
             raise
 
@@ -172,8 +294,14 @@ class LanTcpSession:
             raise QuiiConnectionError("LAN TCP session is not open")
         deadline = time.monotonic() + timeout
         try:
+            self._check_switch_timeout()
+            if self._switch_deadline is not None:
+                deadline = min(deadline, self._switch_deadline)
             self._maybe_send_keepalive()
-            self._client.transport.set_timeout(timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("LAN TCP message read timed out")
+            self._client.transport.set_timeout(remaining)
             header = self._pending_header
             if header is None:
                 header = decode_tcp_header(
@@ -191,6 +319,7 @@ class LanTcpSession:
                 header, raw, crypto_mode=2, key=self._key
             )
             self._pending_header = None
+            self._check_switch_timeout()
             if not header.is_media:
                 self._check_command(header, payload)
             return {
@@ -200,6 +329,7 @@ class LanTcpSession:
                 "plausible": True,
             }
         except TimeoutError:
+            self._check_switch_timeout()
             raise
         except (OSError, ValueError, RuntimeError) as exc:
             self.close()
@@ -255,6 +385,26 @@ class LanTcpSession:
                     f"LAN TCP play rejected with status {header.header.raw[11]}"
                 )
             self.play_accepted = header.header.raw[12] == 1
+            if self.play_accepted and self.active_stream is None:
+                self.active_stream = self.config.stream
+        if header.header.packet_type == 9 and self.stream_switch_pending:
+            status = header.header.raw[11]
+            if status != 0:
+                raise QuiiConnectionError(
+                    f"LAN TCP stream switch rejected with status {status}"
+                )
+            self.active_stream = self._pending_stream
+            self._pending_stream = None
+            self._switch_deadline = None
+
+    def _check_switch_timeout(self) -> None:
+        if (
+            self._switch_deadline is not None
+            and time.monotonic() >= self._switch_deadline
+        ):
+            # There is no switch request id: close rather than misread a late ACK.
+            self.close()
+            raise QuiiConnectionError("LAN TCP stream switch timed out")
 
     def _maybe_send_keepalive(self) -> None:
         interval = self.config.live_keepalive_interval
@@ -282,6 +432,9 @@ class LanTcpSession:
         self._closed.set()
         self._opened = False
         self.play_accepted = False
+        self.active_stream = None
+        self._pending_stream = None
+        self._switch_deadline = None
         self._pending_header = None
         self._client.close()
 

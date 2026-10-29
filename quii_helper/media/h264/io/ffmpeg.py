@@ -122,6 +122,7 @@ def write_h264_snapshot_from_best_source(
     *,
     mp4_ok: bool,
     ffmpeg_skipped_reason: str,
+    frame_index: int = 0,
 ) -> tuple[bool, str]:
     if ffmpeg_skipped_reason:
         return False, ffmpeg_skipped_reason
@@ -133,6 +134,7 @@ def write_h264_snapshot_from_best_source(
                 mp4_path,
                 mp4_ok=mp4_ok,
             ),
+            frame_index=frame_index,
         )
     )
     return ok and path_written(snapshot_path, require_non_empty=True), error

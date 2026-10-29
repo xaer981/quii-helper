@@ -2,6 +2,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, cast
 
+from quii_helper.media.frames.selection import SnapshotWarmup
 from quii_helper.models.capture import CaptureSummary
 from quii_helper.preview.outputs.writer.output_writer import (
     PreviewOutputWriter,
@@ -19,6 +20,10 @@ from quii_helper.preview.processing.packets.processor import (
     PreviewPacketProcessor,
 )
 from quii_helper.preview.summaries.capture_summary import build_capture_summary
+from quii_helper.preview.summaries.media_summary import (
+    media_collection_summary,
+)
+from quii_helper.support.errors import CameraCaptureError
 
 LIVE_PACKET_TIMEOUT_SECONDS = 5.0
 FRAGMENT_PARTIAL_DRAIN_SECONDS = 1.0
@@ -57,14 +62,45 @@ class PreviewCapturePipeline:
                 self.packet_stream.close()
 
     def _consume_live_packets(self) -> None:
+        warmup = SnapshotWarmup(
+            self.preview_settings.snapshot_warmup_seconds,
+            deadline=(
+                time.monotonic() + self.preview_settings.capture_seconds
+                if self.preview_settings.snapshot_warmup_seconds
+                else None
+            ),
+        )
         for packet in self.packet_stream.live_packets(
             duration=self.preview_settings.capture_seconds,
             timeout=LIVE_PACKET_TIMEOUT_SECONDS,
             keepalive_credentials=self.credentials,
         ):
             should_stop = self.processor.process_packet(packet, phase="live")
+            if self.preview_settings.snapshot_warmup_seconds:
+                summary = media_collection_summary(
+                    self.processor.media_messages
+                )
+                counts = summary.get("counts", {})
+                should_stop = warmup.observe(
+                    counts.get("idr_slice", 0)
+                    + counts.get("non_idr_slice", 0),
+                    decodable=bool(summary.get("decodable_h264_context")),
+                    now=time.monotonic(),
+                )
+                if (
+                    not should_stop
+                    and len(self.processor.media_messages)
+                    >= self.preview_settings.max_media_messages
+                ):
+                    raise CameraCaptureError(
+                        "snapshot warmup did not finish before the media message limit"
+                    )
             if self.preview_settings.stop_when_decodable and should_stop:
                 break
+        if self.preview_settings.snapshot_warmup_seconds and not warmup.ready:
+            raise CameraCaptureError(
+                "snapshot warmup did not finish within the capture timeout"
+            )
 
     def _flush_fragment_partials(self) -> None:
         for packet in self.packet_stream.flush_fragment_partials(

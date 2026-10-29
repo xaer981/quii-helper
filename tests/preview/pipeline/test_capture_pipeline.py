@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -100,6 +101,85 @@ class _FakeTunnel:
 
 
 class PreviewCapturePipelineTests:
+    def test_cloud_warmup_does_not_bypass_media_limit(self, monkeypatch):
+        from quii_helper import CameraCaptureError
+        from quii_helper.preview.pipeline import capture_pipeline as module
+
+        pipeline, writer, processor, packets = self._pipeline()
+        pipeline.preview_settings = replace(
+            pipeline.preview_settings,
+            snapshot_warmup_seconds=1,
+            max_media_messages=1,
+        )
+        processor.media_messages = [{}]
+        monkeypatch.setattr(
+            module,
+            "media_collection_summary",
+            lambda _: {
+                "counts": {"idr_slice": 1},
+                "decodable_h264_context": True,
+            },
+        )
+        with pytest.raises(CameraCaptureError, match="media message limit"):
+            pipeline.capture()
+        assert packets.closed and not writer.calls
+
+    def test_cloud_warmup_requires_a_new_video_frame(self, monkeypatch):
+        from quii_helper.preview.pipeline import capture_pipeline as module
+
+        pipeline, writer, processor, packets = self._pipeline()
+        pipeline.preview_settings = replace(
+            pipeline.preview_settings,
+            stop_when_decodable=True,
+            snapshot_warmup_seconds=1,
+        )
+        packets.live = [
+            {"time": 0.1, "count": 1},
+            {"time": 1.2, "count": 1},
+            {"time": 1.3, "count": 2},
+        ]
+        clock, count = [0.0], [0]
+        monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+
+        def process(packet, **kwargs):
+            clock[0], count[0] = packet["time"], packet["count"]
+            return True
+
+        monkeypatch.setattr(processor, "process_packet", process)
+        monkeypatch.setattr(
+            module,
+            "media_collection_summary",
+            lambda _: {
+                "counts": {"idr_slice": count[0]},
+                "decodable_h264_context": True,
+            },
+        )
+        pipeline._consume_live_packets()
+        assert clock[0] == 1.3 and count[0] == 2
+
+    def test_cloud_warmup_timeout_closes_without_writing_early_image(
+        self, monkeypatch
+    ):
+        from quii_helper import CameraCaptureError
+        from quii_helper.preview.pipeline import capture_pipeline as module
+
+        pipeline, writer, processor, packets = self._pipeline()
+        pipeline.preview_settings = replace(
+            pipeline.preview_settings,
+            snapshot_warmup_seconds=1,
+        )
+        monkeypatch.setattr(
+            module,
+            "media_collection_summary",
+            lambda _: {
+                "counts": {"idr_slice": 1},
+                "decodable_h264_context": True,
+            },
+        )
+        with pytest.raises(CameraCaptureError, match="warmup did not finish"):
+            pipeline.capture()
+        assert packets.closed and not writer.calls
+
     def _pipeline(self, *, raise_on_live: bool = False) -> tuple[
         PreviewCapturePipeline,
         _FakeOutputWriter,

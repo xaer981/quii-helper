@@ -96,13 +96,30 @@ def h264_snapshot_command(
     snapshot_path: Path,
     *,
     input_args: Sequence[str],
+    frame_index: int = 0,
 ) -> list[str]:
+    if (
+        isinstance(frame_index, bool)
+        or not isinstance(frame_index, int)
+        or frame_index < 0
+    ):
+        raise ValueError("frame_index must be a nonnegative integer")
     return [
         "ffmpeg",
         "-y",
         "-loglevel",
         "error",
         *input_args,
+        *(
+            [
+                "-abort_on",
+                "empty_output",
+                "-vf",
+                f"select=eq(n\\,{frame_index})",
+            ]
+            if frame_index
+            else []
+        ),
         "-frames:v",
         "1",
         str(snapshot_path),

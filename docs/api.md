@@ -178,7 +178,7 @@ does not retain diagnostic JSONL files; failed rendering can retain raw H.264.
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
-| `snapshot(timeout_seconds=5.0, output_path=None)` | `Path` | Save one JPEG; stop when enough decodable media is available. |
+| `snapshot(timeout_seconds=5.0, output_path=None, warmup_seconds=0.0)` | `Path` | Save one JPEG, optionally waiting for a later frame. |
 | `save_video(duration_seconds, output_path=None)` | `Path` | Collect video for the requested window and render MP4. |
 | `record(duration_seconds, output_path=None)` | `Path` | Alias for `save_video()`. |
 | `capture(...)` | `CameraCaptureResult` | Select artifacts and inspect the structured summary. |
@@ -203,6 +203,25 @@ and FFmpeg rendering can make the call take longer than the requested window.
 call including connection and rendering. `save_video()` disables early stopping;
 the requested duration is a collection target, not a guarantee of frame count,
 delivery quality, or an exact wall-clock return time.
+
+If a camera starts with grayscale or otherwise unsettled frames, opt into
+snapshot warmup (available in the source candidate, not in 0.3.0):
+
+```python
+image_path = camera.snapshot(timeout_seconds=5, warmup_seconds=1.0)
+```
+
+Warmup starts at the **first decodable video frame** and waits for a new video
+frame at least that many seconds later, in the same LAN or cloud preview.
+The timeout still starts with the collection loop: warmup is included, not
+added to it. Zero preserves the original first-frame behavior. The value must
+be finite, nonnegative, and strictly less than the timeout. If no eligible
+frame arrives in time, `CameraCaptureError` is raised rather than returning an
+earlier image. Idle time, audio packets and a burst of frames at one instant
+do not finish warmup. H.264 references are retained and decoded from the start;
+the JPEG is selected from the end of the collected video, not from a new
+connection. This does not force color or establish a higher-resolution profile.
+Cloud capture's media-message limit also remains in force during warmup.
 
 LAN MP4 uses the first accepted video frame's FPS (or FFmpeg's H.264 timing
 when it is zero); sparse frames are **not stretched** to the collection window.
@@ -247,6 +266,7 @@ do not retain an audio recording. Live cloud/Vimar MP4 audio remains unverified.
 | `render_snapshot=True` | Request JPEG rendering. |
 | `render_video=True` | Request MP4 rendering. |
 | `save_diagnostic_artifacts=None` | Inherit diagnostic saving, disabled by default. |
+| `warmup_seconds=None` | Inherit `preview_settings.snapshot_warmup_seconds` (zero by default). Nonzero requires `render_snapshot=True`; the JPEG uses the last collected video frame. |
 
 To request both files across a full collection window, disable early stopping:
 
@@ -846,6 +866,9 @@ from its root after installation/configuration:
 | `python -m examples.cloud_key_rtsp` | Explicit cloud login/key fetch, save/reload `data/stream_credentials.json`, then serve LAN-only RTSP. Each run contacts cloud first. |
 | `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
 | `python -m examples.listen_audio` | Experimental: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
+| `python -m examples.diagnose_lan_stream --host CAMERA_IP` | Experimental saved-key comparison of streams 1/2/3, switches to 1, receive-time FPS, H.264 dimensions and E3 counts. Missing switch ACKs remain unconfirmed while bounded observation continues. Requires FFprobe; optional `--save-frames` also needs FFmpeg and saves private H.264/JPEG/report files under `data/`. No cloud, talkback or door command. See [instructions](protocol-notes.md#experimental-lan-stream-switch-diagnostic). |
+| `python -m examples.diagnose_lan_stream --host CAMERA_IP --compare-handshakes --oem YOUR_CAMERA_OEM` | Experimental five-connection comparison of the existing path-body profile and native OEM setup/FastPlay with/without client identity, on one selector. No quality switches, cloud or talk/door commands. Does not change Camera defaults or claim Vimar audio/quality support. See [instructions](protocol-notes.md#experimental-lan-handshake-comparison). |
+| Add `--query-device-info` to either LAN diagnostic mode | Opt-in read-only `0xFE` startup queries: version (5), channels (6), FPS mode (2), once per connection after play acceptance. Passive nested-command metadata is always included; no FPS_SET or automatic ACK. Missing replies do not stall media. See [limits and report fields](protocol-notes.md#transparent-commands-and-read-only-startup-queries). |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until

@@ -196,6 +196,10 @@ print(camera.snapshot())
 print(camera.save_video(duration_seconds=15))
 ```
 
+If the first snapshot is an unsettled startup frame, the source candidate also
+supports `camera.snapshot(timeout_seconds=5, warmup_seconds=1.0)`; the published
+0.3.0 does not yet have this option. See [snapshot timing](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#timing).
+
 Both methods return a `pathlib.Path`. Default output goes to `./data/` with
 timestamped names. Connection setup and file rendering add time to the media
 collection window. See the [API reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#capture-methods)

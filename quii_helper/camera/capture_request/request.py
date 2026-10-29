@@ -1,4 +1,5 @@
-﻿from dataclasses import dataclass, replace
+﻿import math
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -24,8 +25,9 @@ def resolve_capture_settings(
     duration_seconds: float | None,
     save_diagnostic_artifacts: bool | None,
     stop_when_decodable: bool | None,
+    warmup_seconds: float | None = None,
 ) -> PreviewCaptureSettings:
-    normalized_duration_seconds(
+    duration = normalized_duration_seconds(
         preview_settings.capture_seconds
         if duration_seconds is None
         else duration_seconds
@@ -35,6 +37,22 @@ def resolve_capture_settings(
         save_diagnostic_artifacts=save_diagnostic_artifacts,
         stop_when_decodable=stop_when_decodable,
     )
+    warmup = (
+        preview_settings.snapshot_warmup_seconds
+        if warmup_seconds is None
+        else warmup_seconds
+    )
+    if (
+        isinstance(warmup, bool)
+        or not isinstance(warmup, (int, float))
+        or not math.isfinite(warmup)
+        or not 0 <= warmup < duration
+    ):
+        raise ValueError(
+            "warmup_seconds must be finite, nonnegative and less than the capture timeout"
+        )
+    if warmup_seconds is not None:
+        values["snapshot_warmup_seconds"] = float(warmup)
     return (
         replace(preview_settings, **cast(Any, values))
         if values
@@ -51,14 +69,19 @@ def resolve_capture_request(
     stop_when_decodable: bool | None,
     render_snapshot: bool,
     render_video: bool,
+    warmup_seconds: float | None = None,
 ) -> CameraCaptureRequest:
+    settings = resolve_capture_settings(
+        preview_settings,
+        duration_seconds=duration_seconds,
+        save_diagnostic_artifacts=save_diagnostic_artifacts,
+        stop_when_decodable=stop_when_decodable,
+        warmup_seconds=warmup_seconds,
+    )
+    if settings.snapshot_warmup_seconds and not render_snapshot:
+        raise ValueError("warmup_seconds requires render_snapshot=True")
     return CameraCaptureRequest(
-        settings=resolve_capture_settings(
-            preview_settings,
-            duration_seconds=duration_seconds,
-            save_diagnostic_artifacts=save_diagnostic_artifacts,
-            stop_when_decodable=stop_when_decodable,
-        ),
+        settings=settings,
         output_base=output_base_from_path(output_path),
         render_snapshot=render_snapshot,
         render_video=render_video,

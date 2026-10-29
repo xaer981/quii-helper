@@ -48,7 +48,9 @@ def setup_reply(status=0, crypto=2, sha=1, kind=0xA9):
     return bytes(header)
 
 
-def command(kind=1, *, status=0, active=1, body=b"", corrupt_sha=False):
+def command(
+    kind=1, *, status=0, active=1, body=b"", corrupt_sha=False, subcommand=0
+):
     header = bytearray(32)
     header[0] = kind
     body = body if kind == 0xFE else b""
@@ -56,6 +58,7 @@ def command(kind=1, *, status=0, active=1, body=b"", corrupt_sha=False):
     struct.pack_into("<H", header, 9, size)
     if kind == 0xFE:
         struct.pack_into("<H", header, 11, len(body))
+        header[13] = subcommand
     else:
         header[11], header[12] = status, active
     digest = hashlib.sha256(header + body).digest()
@@ -125,7 +128,7 @@ class ScriptedSocket:
         self.closed = True
 
 
-def session_and_socket(**overrides):
+def session_and_socket(*, handshake="setup_path", client_id="", **overrides):
     sock = ScriptedSocket()
     transport = TcpSocketTransport("127.0.0.1", 34567)
 
@@ -134,9 +137,150 @@ def session_and_socket(**overrides):
 
     transport.connect = connect
     session = LanTcpSession(
-        config(**overrides), transport_factory=lambda host, port: transport
+        config(**overrides),
+        transport_factory=lambda host, port: transport,
+        handshake=handshake,
+        client_id=client_id,
     )
     return session, sock
+
+
+@pytest.mark.parametrize(
+    "handshake,client_id",
+    [
+        ("setup_path", ""),
+        ("setup_oem", ""),
+        ("fast_oem", ""),
+        ("setup_oem", "synthetic-client"),
+        ("fast_oem", "synthetic-client"),
+    ],
+)
+def test_opt_in_handshake_preserves_selectors_and_receives_media(
+    handshake, client_id
+):
+    session, sock = session_and_socket(
+        handshake=handshake,
+        client_id=client_id,
+        oem="G0000",
+        channel=2,
+        stream=3,
+    )
+    fast = handshake == "fast_oem"
+    if fast:
+        sock.chunks.clear()
+    sock.chunks.extend([command(kind=0xAA if fast else 1), media()])
+    with session:
+        assert len(sock.sent) == (1 if fast else 2)
+        if not fast:
+            assert sock.sent[0] == bytes([0xA9]) + bytes(31)
+        packet = sock.sent[-1]
+        header = (
+            packet[:32]
+            if fast
+            else aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True)
+        )
+        assert header[0] == (0xAA if fast else 1)
+        assert header[13:18] == b"\x02\x00\x01\x02\x00"
+        body = aes_cbc_crypt(packet[32:], KEY, crypto_mode=2, decrypt=True)
+        identity = (
+            session._client.path if handshake == "setup_path" else "G0000"
+        )
+        expected = (
+            "adminapp2&&"
+            + encode_device_password("synthetic-auth")
+            + "\x00"
+            + identity
+            + "\x00"
+        ).encode()
+        if client_id:
+            expected += client_id.encode() + b"\x00"
+        assert body[: len(expected)] == expected
+        session.recv_message()
+        assert session.play_accepted and session.active_stream == 3
+        assert session.recv_message()["payload"] == b"native-layout-media"
+    assert sock.closed
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"handshake": "automatic"},
+        {"handshake": "setup_oem"},
+        {"handshake": "fast_oem", "oem": ""},
+        {"handshake": "setup_oem", "oem": None},
+        {"handshake": "setup_oem", "oem": ",,,"},
+        {"handshake": "setup_oem", "oem": "bad\x00id"},
+        {"handshake": "setup_oem", "oem": "x" * 257},
+        {"handshake": "setup_path", "client_id": "unexpected"},
+        {"handshake": "fast_oem", "oem": "G0000", "client_id": "bad\x00id"},
+    ],
+)
+def test_invalid_diagnostic_handshake_fails_before_transport(options):
+    options = dict(options)
+    settings = config(oem=options.pop("oem", ""))
+    factory = Mock(side_effect=AssertionError("network must not start"))
+    with pytest.raises(ConfigurationError):
+        LanTcpSession(settings, transport_factory=factory, **options)
+    factory.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [command(kind=0xAA, status=4), command(kind=0xAA, corrupt_sha=True), b""],
+)
+def test_fastplay_error_closes_without_setup_or_fallback(reply):
+    session, sock = session_and_socket(handshake="fast_oem", oem="G0000")
+    sock.chunks.clear()
+    sock.chunks.append(reply)
+    session.open()
+    with pytest.raises(QuiiConnectionError):
+        session.recv_message()
+    assert sock.closed and len(sock.sent) == 1
+    assert sock.sent[0][0] == 0xAA
+    assert not session.play_accepted
+
+
+def test_oem_is_normalized_like_qvcore_before_native_setcustomid():
+    session, sock = session_and_socket(
+        handshake="setup_oem", oem="G0000,G0001"
+    )
+    with session:
+        packet = sock.sent[1]
+        body = aes_cbc_crypt(packet[32:], KEY, crypto_mode=2, decrypt=True)
+        size = struct.unpack_from(
+            "<H",
+            aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True),
+            11,
+        )[0]
+        assert body[:size].endswith(b"\x00G0000G0001\x00")
+
+
+@pytest.mark.parametrize("handshake", ["setup_oem", "fast_oem"])
+def test_diagnostic_send_failure_closes_session(handshake):
+    session, sock = session_and_socket(handshake=handshake, oem="G0000")
+    sock.sendall = Mock(side_effect=OSError("synthetic send failure"))
+    with pytest.raises(QuiiConnectionError, match="startup failed"):
+        session.open()
+    assert sock.closed and not session.play_accepted
+
+
+def test_close_after_receive_before_buffer_copy_never_returns_short_header():
+    transport = TcpSocketTransport("127.0.0.1", 1)
+    sock = ScriptedSocket()
+    sock.chunks.clear()
+    sock.chunks.append(b"x" * 32)
+    transport.sock = sock
+    calls = []
+
+    def restore_timeout(timeout):
+        calls.append(timeout)
+        if len(calls) == 2:
+            transport.close()
+
+    sock.settimeout = restore_timeout
+    with pytest.raises(RuntimeError, match="socket is closed"):
+        transport.recv_exact(32)
+    assert sock.closed and transport.sock is None
 
 
 @pytest.mark.parametrize("channel", [1, 2])
@@ -318,6 +462,63 @@ def test_header_and_body_timeouts_preserve_every_byte():
         decoded = session.recv_message()
         assert decoded["header"].packet_type == 0xFE
         assert decoded["payload"].startswith(b"transparent-content")
+
+
+def test_readonly_query_requires_play_and_never_starts_automatically():
+    session, sock = session_and_socket()
+    with pytest.raises(QuiiConnectionError, match="not active"):
+        session.request_device_query(5)
+    sock.chunks.extend([command(), command(0xFE, subcommand=8, body=b"time")])
+    with session:
+        with pytest.raises(QuiiConnectionError, match="not active"):
+            session.request_device_query(5)
+        session.recv_message()
+        session.recv_message()
+        assert len(sock.sent) == 2
+        for query in (5, 6, 2):
+            session.request_device_query(query)
+            header = aes_cbc_crypt(
+                sock.sent[-1][:32], KEY, crypto_mode=2, decrypt=True
+            )
+            assert header[0] == 0xFE and header[13] == query
+        assert len(sock.sent) == 5
+    with pytest.raises(QuiiConnectionError, match="not active"):
+        session.request_device_query(5)
+
+
+@pytest.mark.parametrize("query", [True, False, 3, 4, 1, 15, "5", 5.0])
+def test_disallowed_query_never_opens_or_writes_socket(query):
+    session, sock = session_and_socket()
+    with pytest.raises(ValueError, match="read-only"):
+        session.request_device_query(query)
+    assert not sock.sent
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("private"), TimeoutError("private")]
+)
+def test_readonly_query_send_failure_closes_without_retry(error):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        sock.sendall = Mock(side_effect=error)
+        with pytest.raises(
+            QuiiConnectionError, match="device query send failed"
+        ):
+            session.request_device_query(5)
+        sock.sendall.assert_called_once()
+        assert sock.closed and not session.play_accepted
+
+
+def test_transparent_body_must_authenticate_before_diagnostics_receive_it():
+    session, sock = session_and_socket()
+    sock.chunks.append(
+        command(0xFE, subcommand=5, body=b"\x00\x01", corrupt_sha=True)
+    )
+    with session, pytest.raises(QuiiConnectionError, match="SHA256"):
+        session.recv_message()
+    assert sock.closed and len(sock.sent) == 2
 
 
 def test_coalesced_command_and_media_keep_packet_boundaries():
@@ -559,3 +760,215 @@ def test_message_deadline_includes_header_and_body(monkeypatch):
     assert session.recv_message(timeout=1.0)["payload"] == b"body"
     assert sock.timeout == pytest.approx(0.3)
     session.close()
+
+
+def test_stream_switch_preserves_media_and_changes_state_only_after_ack():
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        assert session.active_stream == 1
+        session.request_stream_switch(2)
+        assert len(sock.sent) == 3
+        assert session.stream_switch_pending and session.active_stream == 1
+        sock.chunks.append(
+            media(b"before-ack") + command(9, active=0) + media(b"after-ack")
+        )
+        assert session.recv_message()["payload"] == b"before-ack"
+        assert session.stream_switch_pending
+        assert session.recv_message()["header"].packet_type == 9
+        assert not session.stream_switch_pending
+        assert session.active_stream == 2 and session.config.stream == 1
+        assert session.recv_message()["payload"] == b"after-ack"
+        session.request_stream_switch(1)
+        sock.chunks.append(command(9, active=0))
+        session.recv_message()
+        assert session.active_stream == 1
+    assert session.active_stream is None and not session.stream_switch_pending
+
+
+def test_switch_to_current_selector_is_not_optimized_away():
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        session.request_stream_switch(1)
+        assert session.stream_switch_pending and len(sock.sent) == 3
+        with pytest.raises(QuiiConnectionError, match="pending"):
+            session.request_stream_switch(2)
+        assert not sock.closed and len(sock.sent) == 3
+
+
+@pytest.mark.parametrize("status", [0, 3])
+def test_unsolicited_switch_reply_preserves_existing_receive_behavior(status):
+    session, sock = session_and_socket()
+    sock.chunks.append(command() + command(9, status=status, active=0))
+    with session:
+        session.recv_message()
+        session.recv_message()
+        assert not sock.closed and session.active_stream == 1
+        assert not session.stream_switch_pending and len(sock.sent) == 2
+
+
+@pytest.mark.parametrize(
+    "reply,error",
+    [
+        (command(9, status=2), "status 2"),
+        (command(9, corrupt_sha=True), "SHA256"),
+    ],
+)
+@pytest.mark.parametrize("timeout", [5, None])
+def test_switch_rejection_or_corrupted_ack_fails_closed(reply, error, timeout):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2, timeout=timeout)
+        sock.chunks.append(reply)
+        with pytest.raises(QuiiConnectionError, match=error):
+            session.recv_message()
+        assert sock.closed and not session.stream_switch_pending
+
+
+def test_switch_ack_survives_partial_read_timeout():
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2)
+        reply = command(9, active=0)
+        sock.chunks.extend([reply[:40], TimeoutError(), reply[40:]])
+        with pytest.raises(TimeoutError):
+            session.recv_message()
+        assert session.stream_switch_pending and not sock.closed
+        session.recv_message()
+        assert session.active_stream == 2 and not session.stream_switch_pending
+
+
+def test_switch_deadline_limits_read_and_closes_without_retry(monkeypatch):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    clock = [100.0]
+    monkeypatch.setattr(
+        "quii_helper.protocols.tcp.live.session.time.monotonic",
+        lambda: clock[0],
+    )
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2, timeout=2)
+
+        def blocked_recv(size):
+            clock[0] += sock.timeout
+            raise TimeoutError()
+
+        sock.recv = blocked_recv
+        with pytest.raises(QuiiConnectionError, match="switch timed out"):
+            session.recv_message(timeout=30)
+        assert sock.timeout == pytest.approx(2)
+        assert sock.closed and not session.stream_switch_pending
+        with pytest.raises(QuiiConnectionError):
+            session.request_stream_switch(2)
+        assert len(sock.sent) == 3
+
+
+def test_media_does_not_extend_switch_deadline(monkeypatch):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    clock = [100.0]
+    monkeypatch.setattr(
+        "quii_helper.protocols.tcp.live.session.time.monotonic",
+        lambda: clock[0],
+    )
+    with session:
+        session.recv_message()
+        session.request_stream_switch(2, timeout=2)
+        clock[0] = 101
+        sock.chunks.append(media(b"still-streaming"))
+        assert session.recv_message()["payload"] == b"still-streaming"
+        clock[0] = 102
+        sock.chunks.append(command(9))
+        with pytest.raises(QuiiConnectionError, match="switch timed out"):
+            session.recv_message()
+        assert sock.closed
+
+
+@pytest.mark.parametrize("late_ack", [False, True])
+def test_diagnostic_switch_keeps_media_without_ack_and_forbids_overlap(
+    monkeypatch, late_ack
+):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    clock = [100.0]
+    monkeypatch.setattr(
+        "quii_helper.protocols.tcp.live.session.time.monotonic",
+        lambda: clock[0],
+    )
+    with session:
+        session.recv_message()
+        session.request_stream_switch(3, timeout=None)
+        assert sock.timeout == session.config.connect_timeout
+        for second in (101, 106, 120):
+            clock[0] = second
+            sock.chunks.append(media(b"still-streaming"))
+            assert session.recv_message()["payload"] == b"still-streaming"
+            assert session.stream_switch_pending and session.active_stream == 1
+        with pytest.raises(QuiiConnectionError, match="pending"):
+            session.request_stream_switch(2, timeout=None)
+        assert not sock.closed
+        if late_ack:
+            sock.chunks.append(command(9, active=0))
+            session.recv_message()
+            assert session.active_stream == 3
+            assert not session.stream_switch_pending
+        else:
+            sock.chunks.append(TimeoutError())
+            with pytest.raises(TimeoutError):
+                session.recv_message(timeout=0.25)
+            assert session.stream_switch_pending and not sock.closed
+        sent_types = [
+            aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True)[0]
+            for packet in sock.sent[2:]
+        ]
+        assert sent_types.count(9) == 1
+    assert sock.closed and not session.stream_switch_pending
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
+def test_invalid_switch_timeout_does_not_send_or_close(timeout):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+        with pytest.raises(ValueError, match="timeout"):
+            session.request_stream_switch(2, timeout=timeout)
+        assert len(sock.sent) == 2 and not sock.closed
+        assert not session.stream_switch_pending
+
+
+def test_switch_requires_play_acceptance():
+    session, sock = session_and_socket()
+    with pytest.raises(QuiiConnectionError, match="not active"):
+        session.request_stream_switch(2)
+    with session:
+        with pytest.raises(QuiiConnectionError, match="not active"):
+            session.request_stream_switch(2)
+        assert len(sock.sent) == 2 and not session.stream_switch_pending
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_switch_send_failure_or_cancellation_releases_socket(cancelled):
+    session, sock = session_and_socket()
+    sock.chunks.append(command())
+    with session:
+        session.recv_message()
+
+        def send(packet):
+            if cancelled:
+                session.close()
+            else:
+                raise OSError("synthetic send failure")
+
+        session._client.transport.send_all = send
+        with pytest.raises(QuiiConnectionError):
+            session.request_stream_switch(2)
+        assert sock.closed and not session.stream_switch_pending

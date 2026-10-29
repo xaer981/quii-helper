@@ -1,6 +1,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from quii_helper.media.h264.io.ffmpeg_state import (
     FALSE_POSITIVE_SPS_SKIP_REASON,
     MISSING_H264_CONTEXT_SKIP_REASON,
@@ -16,6 +18,24 @@ from quii_helper.media.h264.io.ffmpeg_state import (
 
 
 class H264FfmpegStateTests:
+    def test_later_snapshot_decodes_from_start_and_selects_one_frame(self):
+        command = h264_snapshot_command(
+            Path("image.jpg"),
+            input_args=["-f", "h264", "-i", "video.h264"],
+            frame_index=20,
+        )
+        assert command[command.index("-vf") + 1] == "select=eq(n\\,20)"
+        assert command[command.index("-abort_on") + 1] == "empty_output"
+        assert "-ss" not in command
+        assert command[command.index("-frames:v") + 1] == "1"
+
+    @pytest.mark.parametrize("index", [-1, True, 1.5])
+    def test_invalid_snapshot_frame_index(self, index):
+        with pytest.raises(ValueError, match="frame_index"):
+            h264_snapshot_command(
+                Path("image.jpg"), input_args=[], frame_index=index
+            )
+
     def test_audio_mux_preserves_video_and_bounds_padded_audio(self) -> None:
         command = h264_mp4_command(
             Path("stream.h264"),
