@@ -257,11 +257,7 @@ def parse_record_message_info(
             _parse_record_file(_as_dict(item))
             for item in _record_message_items(response.content)
         ],
-        result=_to_int(
-            response.content.get("result")
-            or response.content.get("status")
-            or response.content.get("ret")
-        ),
+        result=_record_result(response.content),
         raw=response,
     )
 
@@ -277,11 +273,7 @@ def parse_record_alarm_info(
             _parse_record_file(_as_dict(item))
             for item in _record_message_items(response.content)
         ],
-        result=_to_int(
-            response.content.get("result")
-            or response.content.get("status")
-            or response.content.get("ret")
-        ),
+        result=_record_result(response.content),
         raw=response,
     )
 
@@ -1097,26 +1089,45 @@ def _parse_record_file(value: dict[str, Any]) -> DeviceRecordFileInfo:
         channel_id=_first_str(value, "channel", "channels", "ch", "chno"),
         start_time=_first_str(value, "starttime", "start_time", "start"),
         end_time=_first_str(value, "endtime", "end_time", "end"),
-        stream=_first_str(value, "stream", "streamtype", "stream_type"),
+        stream=_first_str(value, "stream", "streamtype", "stream_type")
+        or {"1": "main", "2": "sub"}.get(_to_str(value.get("ids")), ""),
         file_size=_to_int(
             _first_present(value, "filesize", "fileSize", "size")
         ),
         url=_to_str(value.get("url")),
         raw=value,
+        picture_index=_to_str(value.get("idx")),
+        frame_rate=_to_int(value.get("idf")),
     )
 
 
+def _record_result(content: dict[str, Any]) -> int | None:
+    for scope in (content, _as_dict(content.get("record"))):
+        for name in ("result", "status", "ret", "page"):
+            if scope.get(name) not in (None, ""):
+                return _to_int(scope[name])
+    return None
+
+
 def _record_message_items(content: dict[str, Any]) -> list[Any]:
-    candidates = [
-        content.get("record"),
-        _lookup(content, "recordlist", "record"),
-        _lookup(content, "records", "record"),
-        _lookup(content, "filelist", "file"),
-        _lookup(content, "files", "file"),
-        _lookup(content, "datalist", "data"),
-    ]
+    record = content.get("record")
+    if isinstance(record, dict) and ("datalist" in record or "page" in record):
+        candidates = [_lookup(record, "datalist", "data")]
+    else:
+        candidates = [
+            record,
+            _lookup(content, "recordlist", "record"),
+            _lookup(content, "records", "record"),
+            _lookup(content, "filelist", "file"),
+            _lookup(content, "files", "file"),
+            _lookup(content, "datalist", "data"),
+        ]
     for candidate in candidates:
-        items = _named_items(candidate, "record", "file", "data")
+        items = [
+            item
+            for item in _named_items(candidate, "record", "file", "data")
+            if isinstance(item, dict) and item
+        ]
         if items:
             return items
     return []

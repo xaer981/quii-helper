@@ -292,6 +292,7 @@ class PublicApiTests:
             "list_record_files",
             "get_record_message_info",
             "get_record_session_info",
+            "download_record",
             "get_wifi_list",
             "get_screen_flip_info",
             "get_video_switch_info",

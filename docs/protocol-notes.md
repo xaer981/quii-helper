@@ -664,6 +664,109 @@ and parent shutdown released the workers and both camera sockets. No cloud
 request, door command or service change occurred during that LAN talk run.
 It verifies this device/profile and lifecycle, not Vimar or every PC backend.
 
+## Archive Download (Experimental)
+
+`Camera.download_record()` is a separate LAN file-mode transfer, not live
+snapshot capture. The inspected Java picture path is
+`PlaybackModel.getPictureFile()` -> `QvFileCore` -> JNI `fileDownloadCreate()`.
+The local `filew://...format=jpg` URL selects a writer, not a device endpoint.
+
+Parity was checked through GhidraMCP with explicit program selection:
+
+| Function | `liblive_player.so` (vHome analysis) | `liblive_player_veye_pro_1_9_4_0_2.so` |
+| --- | --- | --- |
+| `CQUIIStreamFile::ParseURL` | `005196c4` | `0052ac44` |
+| `FillFileInfo` | `00519468` | `0052a9e8` |
+| `SendOpen` | `00518bcc` | `0052a14c` |
+| `SeekTime` | `0051a738` | `0052bce8` |
+| `OnRecvEnd` | `0051ae8c` | `0052c43c` |
+| `IQVJPGFileW::Write` | `0052da64` | `00537c30` |
+| `CQVMP4FileW::Write` | `0051f0cc` | `00530ae4` |
+| `CQVMP4FileW::WriteSample` | `00520870` | `005321d8` |
+
+The vHome analysis database references an older Desktop executable path;
+its hash identity with the current APK extraction was not established.
+The relevant layouts agree with the exact extracted vEye library and Java.
+
+The filename branch parses twenty decimal fields. Open `02` carries a
+32-byte header with channel at `+13`, packed filename start time at `+15`,
+filename fields 14/16/18/17/15 at `+19/+20/+24/+25/+26`, bit 5 of field 19
+at `+27`. ParseURL overwrites the initial rec/pic selector with filename field
+18, independently of the CGI `filetype`. FillFileInfo stores its low byte at
+`+24`, but tests the full field for zero when choosing the tail at `+28`.
+Zero selects the packed filename end time; nonzero selects `idx`. The video
+URL supplies no `idx`, so that tail stays zero for video with a nonzero field
+18, as observed in Tantos archive filenames. Pictures use their separate
+`picture_index`. Field 20 is parsed but not sent. Field 16 retains all 32 bits;
+the other flag stores keep their low byte.
+The original filename and `entry.url` are not sent as the Open body.
+That body is `adminapp2&&<encoded auth>\0\0` (empty custom id), followed by
+SHA256(header + body), zero padding, and separately initialized header/body
+AES-CBC, matching the existing AES-256/SHA256 LAN profile.
+
+File Setup is `A9` with byte 9 equal to 1. In the ordinary download path,
+`ITDKDownload::OnCheckFile` (`0078420c`) calls the reader's initial Seek.
+JNI obtains this time from Java `getStartTime()`, independently of the URI.
+Accordingly the Python downloader uses CGI `entry.start_time` when present,
+or explicitly falls back to filename start time, without timezone conversion.
+After Open succeeds it sends Seek `05` and normal session playback mode
+`15` (1/1). These commands do not change persistent device settings.
+
+The JPEG writer copies CPacket data after its 20-byte header directly to the
+output. The implementation collects E4 / codec 3 payloads across TCP and
+CPacket boundaries, retaining a single bounded JPEG. It requires an
+authenticated EOF command `08`, complete CPackets and JPEG SOI/EOI markers;
+it does not decode the image or treat a disconnect as EOF. CGI `filesize`
+is preserved in its existing units and is not an exact transfer-length check.
+
+`CQVMP4FileW::WriteSample()` uses consecutive `CPacket::FrameGetTimeStamp()`
+differences, not an archive-search duration. The Python H.264 collector keeps
+these device-local millisecond timestamps and waits for the first IDR, as the
+native writer waits for a keyframe. Both native writers allow a zero interval;
+the collector retains equal timestamps and all frames. It still rejects
+backwards times or gaps over 30 seconds instead of the native writer's clamp
+to zero. It also rejects codec/parameter-set/resolution changes and unsupported audio rather than
+silently rewriting timing or dropping an unknown track.
+Native `FrameIsVideo()` / `FrameIsAudio()` exclude E7/E8 metadata in both
+libraries; these packets are consumed without becoming samples. Their bytes
+still count toward the budget. NAL-count and frame-count limits prevent many
+tiny packets from expanding into unbounded Python metadata.
+
+One private Matroska intermediate carries length-prefixed H.264 access units
+and their normalized timestamps. Its structure and AVC initialization follow
+the [Matroska elements](https://www.matroska.org/technical/elements.html) and
+[AVC mapping](https://www.matroska.org/technical/codec_specs.html).
+FFmpeg stream-copies video to MP4 and encodes supported G.711 audio as AAC.
+The last sample duration uses reported FPS, falling back to positive observed
+intervals (zero intervals do not imply zero duration). Without either source,
+export fails explicitly. The MP4 muxer may move equal timestamps apart by a
+single container tick; other frame times remain unchanged. No `-r` or
+duration-based video retiming, `-fs` truncation, new Python dependency or
+per-frame file is used.
+Temporary files are removed on success and failure; export shares the network
+deadline and only the complete, size-checked MP4 is returned.
+
+The Tantos read-only probe on 2026-10-29 observed empty picture lists and
+nonempty video `record/datalist/data`, with `record/page=0`. These nested
+list/status fields are parsed explicitly; the wrapper is not a file. Native
+Java's pull parser reads the same tags.
+
+Offline synthetic vectors and scripted sockets cover both transfer kinds;
+FFmpeg/ffprobe regressions decode baseline/high-profile H.264 I/P frames and
+verify variable/equal timestamps, frame counts and audio. Two public-API
+Tantos/Pi downloads on 2026-10-29 returned about 30-second H.264 960x576 MP4s
+with 749 decoded video frames and AAC 8000 Hz mono audio. Full FFmpeg decoding
+with `-xerror` succeeded without errors. The null-output check used
+`-fps_mode passthrough -enc_time_base:v 1/1000000` to avoid DTS rounding errors
+in the validation output. These were isolated LAN-only tests using the saved
+key, with no cloud requests, door commands or service changes.
+The owner also reviewed a downloaded MP4 locally and confirmed correct image
+and sound. Exact lip-sync and long-run playback quality were not measured.
+Archived JPEG transfer, Allo Plus/Intelbras firmware, and simultaneous
+archive/live resource availability remain unverified. H.265, AAC input,
+interactive/time-range playback, HTTP download and automatic cloud fallback
+are not supported by this implementation.
+
 ## Native Crypto Asset Validation
 
 Inspection explicitly targeted the open AArch64 `libqv-p2p-v2.so`, independently

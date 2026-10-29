@@ -55,6 +55,16 @@ The optional `audio` extra is needed only for explicit PC audio. Vimar talk and 
 PC duplex quality remain unverified. No RTSP backchannel or echo cancellation
 is provided; use headphones.
 
+The unreleased source also adds experimental archived JPEG/MP4 downloads with
+[`Camera.download_record(entry)`](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries).
+This LAN-only API returns bytes using a saved key/auth pair, without preview
+or cloud access. Video supports H.264 with optional G.711 audio and requires
+FFmpeg; private temporary files are cleaned automatically. Archived H.264 +
+G.711 video downloads were verified on Tantos/Pi, including owner-reviewed
+image and sound; archived JPEG downloads remain unverified. See
+[archive compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md#tantos-archive-downloads)
+for the validation scope. Do not assume availability in the current PyPI release.
+
 ## Compatibility 🔍
 
 - **Tantos Marilyn Wi-Fi s** with **vHome 2.2**: snapshots, MP4 capture, RTSP,

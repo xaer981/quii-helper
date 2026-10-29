@@ -108,6 +108,24 @@ saved-key TCP session with cloud/HTTP and door calls blocked; no service or
 device settings changed. Temporary audio was removed after muxing. Subjective
 sound quality, exact lip-sync and cloud/Vimar MP4 audio remain unverified.
 
+### Tantos Archive Downloads
+
+On 2026-10-29, two isolated source-checkout `Camera.download_record()` calls
+on Raspberry Pi returned archived H.264 960x576 video with AAC 8000 Hz mono
+audio: 749 decoded video frames and about 30 seconds per MP4. FFprobe verified
+the tracks, and full FFmpeg decoding with `-xerror` completed without errors.
+The owner then reviewed a downloaded MP4 locally and confirmed that both the
+image and sound were correct. This confirms playback quality for that sample,
+not a measured lip-sync or long-run guarantee.
+The MP4 export kept equal native timestamps to within a container tick, without
+stretching video to a requested duration. Both calls used the saved key/auth
+pair over LAN, without cloud requests, door commands or service changes.
+
+The device returned empty archived-picture lists for both channel queries, so
+JPEG downloading remains unverified. These archive tests do not establish
+other firmware support, exact A/V sync, or concurrent
+archive/live availability. This API is not yet in the current PyPI release.
+
 ### Saved-Key Lifetime
 
 The Tantos pair obtained on 2026-10-23 still worked on 2026-10-27, but stopped

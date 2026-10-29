@@ -240,6 +240,7 @@ from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
     PreviewCaptureSettings,
 )
+from quii_helper.protocols.tcp.archive.download import download_record_bytes
 from quii_helper.protocols.tcp.live.session import validate_lan_config
 from quii_helper.support.errors import (
     ConfigurationError,
@@ -2817,6 +2818,62 @@ class Camera:
             stream=stream,
             alarm_type=alarm_type,
             alarm_id=alarm_id,
+        )
+
+    def download_record(
+        self,
+        entry: CameraDeviceRecordFileInfo,
+        *,
+        timeout: float = 30.0,
+        max_bytes: int = 16 * 1024 * 1024,
+    ) -> bytes:
+        """Download an archived picture (JPEG) or video (MP4) over LAN TCP.
+
+        Requires `connection_mode="lan"`, an explicit device IP/native port,
+        and an already saved stream key/auth pair. Does not open a preview,
+        contact the cloud or refresh credentials. `entry.url`
+        is ignored; the target comes only from this camera's configuration.
+        Protocol validation runs before transport is opened.
+
+        The native filename selects the file and channel. Initial Seek uses
+        `entry.start_time` when supplied, otherwise the filename start time;
+        both are device-local calendar values without timezone conversion.
+        Experimental; H.264 + G.711 video downloads verified on Tantos/Pi.
+        Archived JPEG downloads and other firmware remain unverified.
+
+        Args:
+            entry: A `CameraDeviceRecordFileInfo` from an archive query with
+                `file_type="picture"` or `"video"` and a native `file_name`.
+                Pictures also require `picture_index` (`idx`). Optional `start_time` accepts
+                `YYYY-MM-DD[tT ]HH:MM:SS[zZ]?`, not a timezone offset.
+                Video supports H.264 and optional G.711 audio, and requires
+                FFmpeg on PATH. This is not a live snapshot/recording method.
+            timeout: Positive finite total deadline in seconds, including
+                connection setup, transfer, and MP4 export. Defaults to 30.0.
+            max_bytes: Positive maximum received payload and returned JPEG/MP4
+                size in bytes. Defaults to 16 MiB; increase for larger clips.
+
+        Returns:
+            Original JPEG payload bytes (framing/SOI/EOI checks), or a remuxed
+            MP4 preserving native video timestamps. G.711 audio becomes AAC.
+            No permanent output files are saved. Video creates private temporary
+            files under `data_dir`, removed on success and failure.
+
+        Raises:
+            ConfigurationError: If metadata, configuration, or limits are
+                unsupported or invalid.
+            QuiiConnectionError: If transport fails or the device rejects
+                the request.
+            MediaRenderError: If FFmpeg is absent or MP4 export fails.
+            CameraCaptureError: If media data is missing, truncated, oversized,
+                or invalid, or the total deadline expires.
+        """
+        return download_record_bytes(
+            self.config,
+            entry,
+            timeout=timeout,
+            max_bytes=max_bytes,
+            temporary_directory=self.data_dir,
         )
 
     def get_wifi_list(

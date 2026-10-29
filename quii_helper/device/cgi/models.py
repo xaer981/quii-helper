@@ -199,6 +199,10 @@ class DeviceRecordFileInfo:
     parser, not a SimpleXML response class. Stable, commonly observed fields
     are exposed directly and the full parsed record dictionary is preserved in
     `raw`.
+
+    `picture_index` preserves the native `idx` selector (not `record_id`).
+    `frame_rate` comes from `idf`; `file_size` preserves the CGI value, which
+    the inspected apps interpret as KiB, not an exact JPEG byte length.
     """
 
     record_id: str = ""
@@ -212,6 +216,8 @@ class DeviceRecordFileInfo:
     file_size: int | None = None
     url: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
+    picture_index: str = ""
+    frame_rate: int | None = None
 
 
 @dataclass(frozen=True)
