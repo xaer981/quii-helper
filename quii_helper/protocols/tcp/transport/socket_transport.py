@@ -18,16 +18,15 @@ class TcpSocketTransport:
 
     def close(self) -> None:
         sock, self.sock = self.sock, None
+        # Detach the buffer without mutating an in-flight reader's bytes.
+        self._receive_buffer = bytearray()
         if sock is None:
             return
         try:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            sock.close()
-        finally:
-            self._receive_buffer.clear()
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        sock.close()
 
     def set_timeout(self, timeout: float) -> None:
         if self.sock is None:
@@ -45,30 +44,33 @@ class TcpSocketTransport:
             raise RuntimeError("socket is not connected")
         if size < 0:
             raise ValueError("receive size must not be negative")
+        buffer = self._receive_buffer
         timeout = sock.gettimeout()
         deadline = None if timeout is None else time.monotonic() + timeout
         # Keep partial bytes across timeouts, rather than desynchronizing TCP.
         try:
-            while len(self._receive_buffer) < size:
+            while len(buffer) < size:
                 if deadline is not None:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise TimeoutError("TCP read deadline exceeded")
                     sock.settimeout(remaining)
-                chunk = sock.recv(size - len(self._receive_buffer))
+                chunk = sock.recv(size - len(buffer))
                 if self.sock is not sock:
                     raise RuntimeError("socket is closed")
                 if not chunk:
                     raise RuntimeError(
                         f"socket closed while reading {size} bytes"
                     )
-                self._receive_buffer.extend(chunk)
+                buffer.extend(chunk)
         finally:
             if self.sock is sock:
                 try:
                     sock.settimeout(timeout)
                 except OSError:
                     pass
-        result = bytes(self._receive_buffer[:size])
-        del self._receive_buffer[:size]
+        result = bytes(buffer[:size])
+        if self.sock is not sock:
+            raise RuntimeError("socket is closed")
+        del buffer[:size]
         return result
