@@ -74,6 +74,8 @@ key acquisition and cloud/P2P preview require `connection_mode="cloud"`.
 | Operation | Inputs and prerequisites |
 | --- | --- |
 | LAN snapshot, MP4, RTSP (default) | Reachable `CAMERA_DEVICE_HOST`, TCP port `CAMERA_STREAM_PORT` (default `34567`), saved key/auth pair from JSON or `STREAM_KEY` / `AUTH_CODE`, and channel/stream. JPEG/MP4 also needs FFmpeg. |
+| Experimental LAN `talk()` (unreleased) | Same local IP/port/key/auth pair and preview panel/stream. Opens preview first, waits for audio, then opens generic talk 65535. Both require supported G.711; no assets, cloud or FFmpeg. Outgoing PCM must be 8000 Hz mono signed PCM16 LE. This is an active operation. |
+| Computer conversation (unreleased) | LAN preview settings plus the optional `audio` extra, a microphone, headphones and OS audio permissions. Use `session.start_talk()` / `stop_talk()` on the handle from `serve_rtsp()` to share preview and keep video running after talk stops. No cloud or FFmpeg. See [computer conversation](api.md#computer-conversation-experimental). |
 | Explicit cloud stream-key bootstrap | Cloud account, device id, app/region settings and auth URL. Shared validation also requires the service URL, but no discovery, P2P assets, FFmpeg or device connection is used. |
 | Cloud/P2P snapshot, MP4, RTSP | Explicit cloud mode, cloud/app settings, device id, native assets, and a working preview connection. JPEG/MP4 also needs FFmpeg. |
 | `get_device_info()` | Explicit cloud mode, cloud account/device and app settings. It does not start a media session or discover the LAN host. |
@@ -97,8 +99,14 @@ working. Panel/quality selection uses `channel` and `stream` instead.
 
 ## Stream-Key Bootstrap And Local Reuse
 
-**Fetch once, then reuse locally.** These are separate steps; loading a file
-or connecting in LAN mode never fetches or renews a key automatically.
+**Fetch explicitly, then reuse locally while the pair remains valid.** These
+are separate steps; loading a file or connecting in LAN mode never fetches or
+renews a key automatically.
+Saved keys can stop working; no fixed lifetime is known. If a previously
+working session receives no media, check reachability and the selected
+port/panel/profile before explicitly repeating bootstrap. See
+[saved-key observations](../COMPATIBILITY.md#saved-key-lifetime); a successful
+TCP setup alone does not confirm that the device accepts the saved key.
 
 If you already have `stream_credentials.json` for this camera, skip the cloud
 setup and go directly to [later LAN-only runs](#later-runs-load-and-view-locally).
@@ -240,10 +248,10 @@ Do not use a file belonging to another device.
 Saved-key LAN RTSP has maintainer validation on Tantos and a community success
 report on Vimar K40955. Other features are not established by that report;
 see [Compatibility](../COMPATIBILITY.md) for per-model scope and prerequisites.
-The Tantos key still worked after more than 55 hours, but maximum key lifetime,
+The Tantos investigation also confirmed that an old key can stop working and
+an explicitly fetched replacement can restore media. Maximum key lifetime,
 reboot persistence and operation with the camera's own Internet access blocked
-remain unknown. If a key stops working, bootstrap again only as an explicit
-application action.
+remain unknown; see [saved-key observations](../COMPATIBILITY.md#saved-key-lifetime).
 
 ## Required Assets
 
@@ -509,10 +517,12 @@ these checks do not certify every PyPI build on ARM64.
 | `CERTIFICATE_VERIFY_FAILED` | Follow [TLS guidance](#cloud-region-and-auth-url); do not disable verification silently. |
 | Missing `CAMERA_DEVICE_HOST` / `AUTH_CODE` | Supply local settings or the loaded key/auth pair. LAN TCP requires an IP, not a hostname; CGI has separate HTTP settings. |
 | LAN crypto/SHA/media profile rejected | Only the verified AES-256/SHA256 profile without separate media encryption is supported; do not guess a different key or fall back silently. |
+| Previously working LAN preview/talk times out without media | Check reachability, port and panel/profile. A successful setup does not validate the saved key; it may no longer be accepted. Explicitly bootstrap a fresh pair if needed, then load it into a new LAN Camera. No automatic cloud fallback. |
 | Device `error=-1` with empty content | Often an unsupported/rejected firmware command. Inspect the raw response or profile status; do not assume every device implements every query. |
 | Missing JPEG/MP4 | Check FFmpeg in the application's environment and inspect the capture error/summary and retained H.264. |
 | VLC cannot connect | Wait for media readiness; check the bind host, server LAN IP, firewall, and producer error from `session.wait()`. |
 | No console progress in library code | Logging is disabled by default. Enable it explicitly as described in [Logging](api.md#logging). |
+| `AudioDeviceError` / no computer sound | Install the optional `audio` extra, check OS microphone permission and default devices; use `python -m examples.converse --list-devices`. Use headphones to avoid feedback. No audio device is required for normal capture/RTSP. |
 | Empty or repeated call history | History is not a live subscription. Read a fresh page and compare record ids; do not infer a new ring from old rows. |
 
 Collect `LOG_LEVEL=debug` diagnostics only when needed. Redact credentials,

@@ -23,3 +23,7 @@ class CameraCaptureError(RuntimeError, QuiiHelperError):
 
 class MediaRenderError(CameraCaptureError):
     """Raised when captured media cannot be rendered to the requested output."""
+
+
+class AudioDeviceError(RuntimeError, QuiiHelperError):
+    """Raised when local microphone/speaker initialization or streaming fails."""

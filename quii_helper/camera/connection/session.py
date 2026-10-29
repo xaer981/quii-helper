@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http.cookiejar import CookieJar
 from threading import Event
 from typing import Any, overload
@@ -13,6 +13,7 @@ from quii_helper.protocols.p2p.models import (
 )
 from quii_helper.protocols.rbudp.tunnel.session import DirectKcpQuiiTunnel
 from quii_helper.protocols.tcp.live.session import LanTcpSession
+from quii_helper.protocols.tcp.talk.session import LanTalkSession
 from quii_helper.support.errors import ConfigurationError
 
 
@@ -104,9 +105,20 @@ class CameraConnector:
             self.config, cookie_jar=self.cookie_jar
         )
 
-    def create_lan_session(self) -> LanTcpSession:
-        """Construct an unopened session so streaming can cancel startup I/O."""
-        return LanTcpSession(self.config)
+    def create_lan_session(
+        self, *, channel: int | None = None
+    ) -> LanTcpSession:
+        """Construct an unopened preview, optionally selecting another panel."""
+        config = (
+            self.config
+            if channel is None
+            else replace(self.config, channel=channel)
+        )
+        return LanTcpSession(config)
+
+    def create_lan_talk_session(self) -> LanTalkSession:
+        """Construct generic talk; the separate preview selects the panel."""
+        return LanTalkSession(self.config)
 
     @overload
     def open_preview(

@@ -13,6 +13,7 @@ from quii_helper.camera import (
     CameraCallEventPage,
     CameraCaptureError,
     CameraCaptureResult,
+    CameraConversationSession,
     CameraDeviceAlarmChannel,
     CameraDeviceAlarmChannelInfo,
     CameraDeviceAlarmDetailChannelInfo,
@@ -121,6 +122,7 @@ from quii_helper.camera import (
     CameraDoorOpenResult,
     CameraIotCommandSupportInfo,
     CameraStreamCredentials,
+    CameraTalkSession,
 )
 from quii_helper.config import (
     AutonomousConfig,
@@ -131,6 +133,7 @@ from quii_helper.network import LanDeviceCandidate
 from quii_helper.preview.pipeline.config import PreviewCaptureSettings
 from quii_helper.support.errors import (
     AssetMissingError,
+    AudioDeviceError,
     ConfigurationError,
     MediaRenderError,
     QuiiConnectionError,
@@ -139,10 +142,13 @@ from quii_helper.support.errors import (
 
 __all__ = [
     "AssetMissingError",
+    "AudioDeviceError",
     "AutonomousConfig",
     "Camera",
     "CameraAudioFrame",
     "CameraAudioStream",
+    "CameraConversationSession",
+    "CameraTalkSession",
     "CameraCallEvent",
     "CameraCallEventPage",
     "CameraCaptureError",

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from quii_helper.camera.streaming.conversation import CameraConversationSession
+from quii_helper.camera.streaming.talk import CameraTalkSession
 from quii_helper.models.packets import DecodedQuiiMessage
 from quii_helper.preview.outputs.manager.artifacts import (
     PreviewArtifactManager,
@@ -19,6 +21,7 @@ from quii_helper.preview.processing.packets.processor import (
 from quii_helper.protocols.tcp.live.session import LanTcpSession
 from quii_helper.streaming.h264 import H264LiveAssembler
 from quii_helper.streaming.rtsp import RtspH264Server
+from quii_helper.support.errors import ConfigurationError, QuiiConnectionError
 
 STREAM_PACKET_BATCH_SECONDS = 1.0
 STREAM_PACKET_TIMEOUT_SECONDS = 1.0
@@ -77,6 +80,12 @@ class CameraRtspStream:
         default_factory=threading.RLock, init=False, repr=False
     )
     _closing: bool = field(default=False, init=False)
+    _talk: CameraConversationSession | None = field(
+        default=None, init=False, repr=False
+    )
+    _talk_error: BaseException | None = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         self.server = RtspH264Server(
@@ -89,6 +98,7 @@ class CameraRtspStream:
             sink=self.server.publish,
             audio_sink=self.server.publish_audio if self.audio else None,
             frame_sink=self.server.publish_frame if self.audio else None,
+            audio_frame_observer=self._observe_audio_frame,
         )
 
     @property
@@ -102,7 +112,94 @@ class CameraRtspStream:
         return {
             "rtsp_clients": self.server.client_count,
             "h264": self.assembler.stats,
+            "talk_active": self.talk_active,
         }
+
+    @property
+    def talk_active(self) -> bool:
+        """Whether explicitly started computer audio is active on this preview."""
+        with self._lifecycle_lock:
+            return self._talk is not None and self._talk.active
+
+    @property
+    def talk_error(self) -> BaseException | None:
+        """Last isolated talk failure; preview errors are reported by wait()."""
+        with self._lifecycle_lock:
+            return self._talk_error
+
+    def start_talk(
+        self,
+        *,
+        input_device: str | None = None,
+        output_device: str | None = None,
+    ) -> CameraConversationSession:
+        """Start PC microphone/playback using this LAN preview's audio frames.
+
+        No second preview is opened. Only generic talk 65535 is added; the
+        existing producer/parser remains the sole reader of video and sound.
+        This call waits for talk/device readiness, then returns an active
+        handle. Names select exact local devices; None uses OS defaults.
+        Requires the optional audio extra. It is an explicit active operation,
+        not an RTSP backchannel. Use headphones; echo cancellation is absent.
+
+        Duplicate/parallel starts are rejected. stop_talk(), handle.close(),
+        failure or parent close stop local audio and the talk socket. Talk
+        failures do not close preview; inspect talk_error or handle.wait().
+        Cloud mode and calls from the producer callback are not supported.
+        """
+        with self._lifecycle_lock:
+            if self.connection_mode != "lan":
+                raise ConfigurationError("start_talk requires a LAN preview")
+            if (
+                not self._started
+                or self._closing
+                or self._stop_event.is_set()
+                or self._thread is None
+                or not self._thread.is_alive()
+            ):
+                raise QuiiConnectionError(
+                    "start_talk requires an active preview session"
+                )
+            if threading.current_thread() is self._thread:
+                raise RuntimeError(
+                    "start_talk cannot block the preview producer callback"
+                )
+            if self._talk is not None:
+                raise RuntimeError(
+                    "Talk is already active, starting or stopping"
+                )
+            talk = CameraTalkSession(
+                self.connector.create_lan_talk_session(), full_duplex=True
+            )
+            handle = CameraConversationSession(
+                talk,
+                input_device=input_device,
+                output_device=output_device,
+                on_close=self._talk_finished,
+            )
+            self._talk_error = None
+            self._talk = handle
+        return handle._start()
+
+    def stop_talk(self) -> None:
+        """Stop only local audio and talk; idempotent, preview/RTSP stays active."""
+        with self._lifecycle_lock:
+            handle = self._talk
+        if handle is not None:
+            handle.close()
+
+    def _talk_finished(self, handle: CameraConversationSession) -> None:
+        with self._lifecycle_lock:
+            if self._talk is handle:
+                self._talk_error = handle.error
+                self._talk = None
+
+    def _observe_audio_frame(self, frame: dict[str, Any]) -> None:
+        """Fan out completed frames, never read or reassemble preview a second time."""
+        with self._lifecycle_lock:
+            handle = self._talk
+        if handle is not None:
+            handle._talk._feed_preview_frame(frame)
 
     def start(self) -> "CameraRtspStream":
         """Start the RTSP server and background camera producer.
@@ -120,6 +217,8 @@ class CameraRtspStream:
                 raise RuntimeError("RTSP producer is still stopping")
             if self._started:
                 return self
+            if self._talk is not None:
+                raise RuntimeError("Talk is still stopping")
             self.status("Starting RTSP server")
             self._error = None
             self.server.start()
@@ -128,6 +227,7 @@ class CameraRtspStream:
                 wait_for_keyframe=self.connection_mode == "lan",
                 audio_sink=self.server.publish_audio if self.audio else None,
                 frame_sink=self.server.publish_frame if self.audio else None,
+                audio_frame_observer=self._observe_audio_frame,
             )
             self._ready_announced = False
             self._stop_event.clear()
@@ -191,10 +291,13 @@ class CameraRtspStream:
             packet_stream, thread = self._packet_stream, self._thread
         try:
             try:
-                if packet_stream is not None:
-                    packet_stream.close()
+                self.stop_talk()
             finally:
-                self.server.close()
+                try:
+                    if packet_stream is not None:
+                        packet_stream.close()
+                finally:
+                    self.server.close()
         finally:
             if thread is not None and thread is not threading.current_thread():
                 thread.join(timeout=PRODUCER_JOIN_TIMEOUT_SECONDS)
@@ -254,9 +357,15 @@ class CameraRtspStream:
             self._error = exc
             self.status(f"RTSP producer stopped: {exc}")
         finally:
-            self.server.close()
-            with self._lifecycle_lock:
-                self._packet_stream = None
+            try:
+                self.stop_talk()
+            except Exception as exc:
+                if self._error is None and not self._stop_event.is_set():
+                    self._error = exc
+            finally:
+                self.server.close()
+                with self._lifecycle_lock:
+                    self._packet_stream = None
 
     def _consume_session_packets(self, session: Any, credentials: Any) -> None:
         artifacts = PreviewArtifactManager(
