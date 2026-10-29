@@ -323,7 +323,7 @@ includes supported audio as described in [MP4 Audio](#mp4-audio).
 
 ## LAN Talk (Experimental)
 
-**Unreleased.** The selected-panel preview / generic talk `65535` profile has
+**Available since 0.4.0.** The selected-panel preview / generic talk `65535` profile has
 native/offline coverage. On 2026-10-29 the owner confirmed intelligible speech
 and a recorded reply on Tantos panel 2 through the shared-preview
 `session.start_talk()` API, using a file-backed audio adapter on a Pi. This
@@ -398,7 +398,7 @@ video or receive-only audio stream proves outgoing talk support.
 
 ## Computer Conversation (Experimental)
 
-**Unreleased source checkout.** Start preview normally with `serve_rtsp()`,
+**Available since 0.4.0.** Start preview normally with `serve_rtsp()`,
 then explicitly enable conversation through its returned session. Video and
 incoming sound share **one preview, one reader and one CFrame packer**; only
 generic talk `65535` is added for sending microphone audio. No WAV, FFmpeg,
@@ -409,7 +409,9 @@ the owner confirmed intelligibility in both directions. Physical PC audio
 devices, overlapping speech and Vimar talk remain unverified. See
 [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply).
 
-Install the optional dependency in your checkout's virtual environment:
+For your own application, install the optional dependency with
+`python -m pip install "quii-helper[audio]"`. To run the bundled interactive
+example, use a [checkout](setup.md#using-a-checkout) and install the extra there:
 
 ```shell
 python -m pip install -e ".[audio]"
@@ -917,7 +919,7 @@ These are queries, not firmware-update commands.
 
 The archive queries are local CGI methods with the same common arguments and
 credentials as [local inspection](#local-device-read-only-methods). They list
-archive metadata. The unreleased source additionally exposes a separate,
+archive metadata. Since 0.4.0, the package additionally exposes a separate,
 experimental LAN TCP method to download an archived picture or video as bytes.
 Archived H.264 + G.711 video downloads were verified on Tantos/Pi; the owner
 also confirmed correct image and sound in a downloaded MP4. Archived JPEG
@@ -1128,8 +1130,8 @@ from its root after installation/configuration:
 | `python -m examples.cloud_key_rtsp` | Explicit cloud login/key fetch, save/reload `data/stream_credentials.json`, then serve LAN-only RTSP. Each run contacts cloud first. |
 | `python -m examples.lan_rtsp` | Load `data/stream_credentials.json` and serve LAN-only RTSP; never fetch or renew a key, even if cloud settings are present. |
 | `python -m examples.listen_audio` | Experimental: inspect ten encoded LAN audio frames using the saved credentials; metadata only, no playback or talkback. |
-| `python -m examples.talk` | Unreleased active talk: start preview of `CAMERA_CHANNEL`, then send user-provided `data/talk.wav` through generic talk 65535. Not read-only; no microphone or door command. |
-| `python -m examples.converse` | Unreleased shared-preview RTSP plus explicit PC conversation. Enter starts/stops talk; video continues afterwards. Requires saved LAN credentials and the `audio` extra; `--list-devices` only enumerates names. |
+| `python -m examples.talk` | Experimental active talk: start preview of `CAMERA_CHANNEL`, then send user-provided `data/talk.wav` through generic talk 65535. Not read-only; no microphone or door command. |
+| `python -m examples.converse` | Experimental shared-preview RTSP plus explicit PC conversation. Enter starts/stops talk; video continues afterwards. Requires saved LAN credentials and the `audio` extra; `--list-devices` only enumerates names. |
 | `python -m examples.open_door` | Print capability 24 and send a **real opening command** in auto mode. |
 
 The installed entry point `python -m quii_helper.main` also serves RTSP until

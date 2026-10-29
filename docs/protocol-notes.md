@@ -187,7 +187,7 @@ Vimar audio and legacy non-CPacket audio formats remain unverified.
 
 ## LAN Talk
 
-The unreleased `Camera.talk()` owns two connections: `LanTcpSession` preview
+The experimental `Camera.talk()` owns two connections: `LanTcpSession` preview
 of the selected panel for incoming audio, then a separate `LanTalkSession`
 with selector 65535 for outgoing audio. Neither uses RBUDP. GhidraMCP
 comparison on 2026-10-27 covered both original

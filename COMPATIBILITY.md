@@ -11,7 +11,7 @@ app name. Maintainer tests and community reports are distinguished below.
 
 | Device | App | Confirmed features and evidence |
 | --- | --- | --- |
-| Tantos Marilyn Wi-Fi s | vHome 2.2 | JPEG snapshot, MP4 capture, RTSP, physical door opening in `auto` mode, and incoming-call history. Unreleased shared-preview LAN talk: intelligible speech in both directions on panel 2, confirmed by the owner on 2026-10-29; file-backed audio adapter, not a physical PC microphone. |
+| Tantos Marilyn Wi-Fi s | vHome 2.2 | JPEG snapshot, MP4 capture, RTSP, physical door opening in `auto` mode, and incoming-call history. Experimental shared-preview LAN talk: intelligible speech in both directions on panel 2, confirmed by the owner on 2026-10-29; file-backed audio adapter, not a physical PC microphone. Archived-video image and sound were also confirmed; archived JPEG remains unverified. |
 | Vimar K40955, firmware `V401R001B002` | vEye Pro 1.9.4.0.2 | Saved-key LAN RTSP through `lan_rtsp`, [reported by luigi-pi on 2026-10-25](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080). Not independently tested by the maintainer. |
 
 Physical Pi checks with Tantos on 2026-10-23 also verified direct LAN capture,
@@ -40,7 +40,7 @@ The report confirms LAN video with a saved cloud key/auth pair, not every
 Camera API. JPEG/MP4 capture, door control, cloud call history, two-way audio,
 reboot persistence, and playback with the intercom's WAN blocked remain
 unverified on this model. Local-only call detection is not implemented.
-The unreleased `Camera.talk()` has offline tests and native comparison for
+The experimental `Camera.talk()` has offline tests and native comparison for
 both apps; Vimar talk remains untested.
 
 Local `get.device.streamkey` has not succeeded in the reported Vimar tests or
@@ -53,7 +53,7 @@ treat a CA file or disabled verification as proof of server identity.
 ### Tantos LAN Talk: Speech And Reply
 
 On 2026-10-29, the owner confirmed intelligible speech in both directions on
-panel 2 using the unreleased `session.start_talk()` / `stop_talk()` API from
+panel 2 using the `session.start_talk()` / `stop_talk()` API, released in 0.4.0, from
 PR #19, commit `679ef71`. The physical Raspberry Pi ran the existing RTSP
 preview; a clocked file-backed PCM adapter replaced the computer audio device.
 It transmitted about 13 seconds of recorded speech, then recorded the owner's
@@ -69,7 +69,7 @@ recordings stayed private. The owner also reviewed the saved reply and
 confirmed it was clear. An earlier 2026-10-27 probe had confirmed audible tones
 with the same panel-preview/generic-talk connection profile.
 
-The unreleased `Camera.converse()` PC bridge is covered by fake-device,
+The experimental `Camera.converse()` PC bridge is covered by fake-device,
 G.711-vector and miniaudio NULL-backend tests, not physical PC microphone or
 speaker testing. Its optional `audio` extra is independent of normal server,
 capture and RTSP dependencies. miniaudio 1.71 publishes Windows/macOS/Linux
@@ -124,7 +124,7 @@ pair over LAN, without cloud requests, door commands or service changes.
 The device returned empty archived-picture lists for both channel queries, so
 JPEG downloading remains unverified. These archive tests do not establish
 other firmware support, exact A/V sync, or concurrent
-archive/live availability. This API is not yet in the current PyPI release.
+archive/live availability. This experimental API is available since 0.4.0.
 
 ### Saved-Key Lifetime
 
