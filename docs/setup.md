@@ -37,6 +37,16 @@ instead. Check platform restrictions in [Compatibility](../COMPATIBILITY.md).
 Use `python -m pip install --upgrade quii-helper` to upgrade an existing
 installation; no `--pre` is needed for final releases.
 
+For explicit computer microphone/headphones conversation, install the optional
+audio dependency (available since 0.4.0):
+
+```shell
+python -m pip install "quii-helper[audio]"
+```
+
+Normal snapshot, recording, RTSP and caller-supplied PCM talk do not need this
+extra. See [computer conversation](api.md#computer-conversation-experimental).
+
 The wheel installs `quii_helper`, not `examples/`, `docs/`, or `.env.example`.
 Create `.env` in your application directory using the
 [first-run cloud block](#first-run-fetch-and-save) or, if you already have a
@@ -74,8 +84,9 @@ key acquisition and cloud/P2P preview require `connection_mode="cloud"`.
 | Operation | Inputs and prerequisites |
 | --- | --- |
 | LAN snapshot, MP4, RTSP (default) | Reachable `CAMERA_DEVICE_HOST`, TCP port `CAMERA_STREAM_PORT` (default `34567`), saved key/auth pair from JSON or `STREAM_KEY` / `AUTH_CODE`, and channel/stream. JPEG/MP4 also needs FFmpeg. |
-| Experimental LAN `talk()` (unreleased) | Same local IP/port/key/auth pair and preview panel/stream. Opens preview first, waits for audio, then opens generic talk 65535. Both require supported G.711; no assets, cloud or FFmpeg. Outgoing PCM must be 8000 Hz mono signed PCM16 LE. This is an active operation. |
-| Computer conversation (unreleased) | LAN preview settings plus the optional `audio` extra, a microphone, headphones and OS audio permissions. Use `session.start_talk()` / `stop_talk()` on the handle from `serve_rtsp()` to share preview and keep video running after talk stops. No cloud or FFmpeg. See [computer conversation](api.md#computer-conversation-experimental). |
+| Experimental LAN `talk()` (since 0.4.0) | Same local IP/port/key/auth pair and preview panel/stream. Opens preview first, waits for audio, then opens generic talk 65535. Both require supported G.711; no assets, cloud or FFmpeg. Outgoing PCM must be 8000 Hz mono signed PCM16 LE. This is an active operation. |
+| Computer conversation (since 0.4.0) | LAN preview settings plus the optional `audio` extra, a microphone, headphones and OS audio permissions. Use `session.start_talk()` / `stop_talk()` on the handle from `serve_rtsp()` to share preview and keep video running after talk stops. No cloud or FFmpeg. See [computer conversation](api.md#computer-conversation-experimental). |
+| Experimental archive downloads (since 0.4.0) | Same LAN IP/port/key/auth pair plus an entry from local archive queries. JPEG needs no FFmpeg; H.264 MP4 export requires FFmpeg and a writable private `data_dir`. No live preview or cloud access. |
 | Explicit cloud stream-key bootstrap | Cloud account, device id, app/region settings and auth URL. Shared validation also requires the service URL, but no discovery, P2P assets, FFmpeg or device connection is used. |
 | Cloud/P2P snapshot, MP4, RTSP | Explicit cloud mode, cloud/app settings, device id, native assets, and a working preview connection. JPEG/MP4 also needs FFmpeg. |
 | `get_device_info()` | Explicit cloud mode, cloud account/device and app settings. It does not start a media session or discover the LAN host. |

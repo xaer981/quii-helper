@@ -26,6 +26,8 @@ information, and explicitly open a connected door.
 | Snapshots | Capture a JPEG with `Camera.snapshot()`. |
 | Recording | Save an MP4 clip with `Camera.save_video()`. |
 | RTSP | Forward the live H.264 preview to a player such as VLC. |
+| LAN talk (experimental) | Explicitly send sound or start/stop computer conversation while video continues. |
+| Archive downloads (experimental) | Download original archived JPEGs or H.264 MP4 with supported audio. |
 | Stream-key bootstrap | Explicitly fetch/save a cloud key/auth pair, then reuse it for LAN-only playback. |
 | Device inspection | Read supported cloud and local device information. |
 | LAN discovery | Find devices exposing Qualvision-compatible services. |
@@ -43,7 +45,7 @@ tested with Tantos on a Raspberry Pi. RTSP remains video-only by default.
 MP4 recording also includes available G.711 sound as AAC; without supported
 audio it remains video-only.
 
-The unreleased source also includes [experimental LAN talk](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#lan-talk-experimental)
+Version 0.4.0 includes [experimental LAN talk](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#lan-talk-experimental)
 via `Camera.talk()`: send application-supplied PCM and receive encoded audio
 using panel preview plus generic talk `65535`. Shared-preview speech transmission
 and reception were confirmed on Tantos panel 2 using a Raspberry Pi and a
@@ -55,7 +57,7 @@ The optional `audio` extra is needed only for explicit PC audio. Vimar talk and 
 PC duplex quality remain unverified. No RTSP backchannel or echo cancellation
 is provided; use headphones.
 
-The unreleased source also adds experimental archived JPEG/MP4 downloads with
+Version 0.4.0 also adds experimental archived JPEG/MP4 downloads with
 [`Camera.download_record(entry)`](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries).
 This LAN-only API returns bytes using a saved key/auth pair, without preview
 or cloud access. Video supports H.264 with optional G.711 audio and requires
@@ -63,13 +65,13 @@ FFmpeg; private temporary files are cleaned automatically. Archived H.264 +
 G.711 video downloads were verified on Tantos/Pi, including owner-reviewed
 image and sound; archived JPEG downloads remain unverified. See
 [archive compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md#tantos-archive-downloads)
-for the validation scope. Do not assume availability in the current PyPI release.
+for the validation scope.
 
 ## Compatibility 🔍
 
 - **Tantos Marilyn Wi-Fi s** with **vHome 2.2**: snapshots, MP4 capture, RTSP,
   door opening in `auto` mode, and incoming-call history on the tested backend.
-  Unreleased shared-preview speech/reply was also confirmed on panel 2.
+  Shared-preview speech/reply and archived-video image/sound were also confirmed.
 - **Vimar K40955**, firmware **V401R001B002**, with **vEye Pro 1.9.4.0.2**:
   saved-key LAN RTSP, [confirmed by a user](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080)
   on 2026-10-25. Other features on this model remain unverified.
@@ -274,7 +276,8 @@ includes `examples.cloud_key_rtsp` (fetch/save, then RTSP) and
 | Set up an account, assets, and `.env` | [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md) |
 | Find methods, parameters, results, and errors | [Camera API Reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md) |
 | Read call history | [Incoming Call History](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental) |
-| View video and explicitly start/stop conversation | [Computer Conversation](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental) (unreleased source checkout) |
+| View video and explicitly start/stop conversation | [Computer Conversation](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental) (optional `audio` extra) |
+| Download archived pictures or video | [Archive Queries And Downloads](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries) |
 | Open a door explicitly | [Door Control](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#door-control) |
 | Resolve a setup failure | [Troubleshooting](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#troubleshooting) |
 | Check platforms or report a device | [Compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md) |

@@ -5,7 +5,7 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.4.0 - 2026-10-29
 
 ### Added
 
@@ -66,8 +66,9 @@ being stabilized.
   image/sound playback on 2026-10-29. Archived JPEG downloads and Intelbras /
   Allo Plus compatibility remain unverified; this does not close issue #20.
 - Record the Tantos shared-preview conversation acceptance test and separate
-  it from physical PC audio-device and Vimar coverage. Preserve experimental,
-  unreleased status until a new package release.
+  it from physical PC audio-device and Vimar coverage. Talk and archive
+  downloads remain experimental in this release.
+- Add an optional Boosty support link and GitHub funding configuration.
 - Document observed saved-key replacement: a key worked for about four days
   but failed by day six, while a freshly fetched key restored LAN media.
   No fixed TTL or automatic cloud renewal is implied.
