@@ -270,11 +270,26 @@ Every diagnostic window now summarizes authenticated `0xFE` messages under
 `transparent_commands`, keyed by the hexadecimal **nested command** (for example,
 `02` means `FPS_GET`, not top-level QUII type `2`). Each entry stores a count and
 only its latest safe description, so repeated OSD updates do not accumulate
-payloads. The allowlisted fields are version byte, channel counts, FPS mode and
-OSD timestamp. Unknown commands and attachment/OSD text retain only command
-ID/name, declared length and decode status: no body, header dump or strings.
+payloads. The allowlisted fields are version byte, channel counts and
+availability flags, advertised stream support, FPS mode and OSD timestamp.
+Unknown commands and attachment/OSD text retain only command ID/name, declared
+length and decode status: no body, header dump or strings.
 SHA/padding bytes are never interpreted as the declared body. Short or unknown
 replies do not stop media observation.
+
+`CHANNELS_GET` also reports `channel_flags`, a list of one-based `channel`,
+`enabled` and `talk_enabled` fields for the declared channels. The bitmaps follow
+`QvDeviceChannelsInfo.init()` and `DataUtil.getBooleanArray()` in both vHome and
+vEye Pro: least-significant bit first, four-bit groups, with CCTV channel numbers
+offset by the camera count. One lock byte per channel separates the availability
+and talk bitmaps; lock values are not exposed. Only complete bitmaps inside the
+declared body are decoded. Missing data is `null`, not the Java getters'
+optimistic `true` fallback. Negative signed counts remain `invalid_value`
+without flags.
+`direct_switch_supported` reads bit 0 of the first capabilities byte only when
+the complete four-byte capabilities block follows both bitmaps and all lock
+bytes. Otherwise it is `null`, not an inferred `false`. These are device-reported
+flags, not proof of functioning audio or preview.
 
 The default remains **passive**: receiving an `0xFE` does not trigger a reply or
 any new request. To opt into vEye Pro's read-only startup queries, add
@@ -300,14 +315,41 @@ reply to 5 or 6 still advances the read-only chain; its `decode_status` remains
 advance the outstanding step. There are no retries, FPS_SET, talk, door, cloud
 or automatic fallback commands. Ordinary `Camera` behavior is unchanged.
 
+To additionally query the selected channel's advertised stream support, use:
+
+```shell
+python -m examples.diagnose_lan_stream --host 192.168.1.100 --channel 1 --seconds 10 --query-device-info --query-channel-ability
+```
+
+`--query-channel-ability` sends `GET_CHANNEL_ABILITY (14)` once after the
+`5 -> 6 -> 2` replies, or directly after play acceptance if used alone. It also
+works with `--compare-handshakes`. Its body is the selected channel's single
+byte, as in `DeviceOrderHelper.SendChannelAbilityGetData`; only channels 1-255
+are supported by this diagnostic request. Larger values are rejected before
+loading credentials or opening a socket, not silently truncated. The successful
+reply reports the one-byte `channel` and `stream_support.main/sub/third` from
+bits 0/1/2 of body byte 2 (`QvChannelAbility`). Check that the reported channel
+matches the requested channel. High-channel extensions are not decoded.
+These flags advertise selectors, not resolutions, working switches or audio.
+No reply means unconfirmed support; media observation continues without retries.
+
 `readonly_device_info` records sent/observed command IDs and `waiting_for`.
-Without the flag it is `null`. With the flag its status is `waiting_for_play`,
-`waiting_for_reply` or `responses_observed`. A missing reply remains outstanding
+Without either query flag it is `null`. With a flag its status is
+`waiting_for_play`, `waiting_for_reply` or `responses_observed`. A missing reply remains outstanding
 while the same bounded media window continues. `responses_observed` means all
-three command IDs were seen, **not** that all replies were valid or uniquely
+requested command IDs were seen, **not** that all replies were valid or uniquely
 correlated: the wire format has no request ID. Inspect `decode_status` for each
 reply. A socket/send/authentication failure still closes that connection and is
 reported normally.
+
+Every observation window also includes `media_packets`, keyed by QUII type
+`a0`-`a3`. Each entry contains packet count, total `wire_payload_bytes` (excluding
+the 32-byte header), total `decoded_payload_bytes`, minimum/maximum encrypted
+prefix length and media offset, and the separate-media-encryption flag. These
+bounded aggregates are collected after session validation/decryption but before
+CFrame assembly, including packets that produce no complete frame. No packet
+body, raw header or key is retained. Packet type alone does not identify audio.
+Unsupported encryption still fails closed; rejected packets are not counted.
 
 Native parity checked via GhidraMCP against the exact vEye Pro 1.9.4.0.2 library
 on 2026-10-29: `OnSendData` `005139b8` places the nested command at header byte
@@ -317,6 +359,18 @@ body, then encrypts header and padded body/SHA separately. JNI `transparentEx`
 forwards the response without a generic ACK. Java `QvPlayerCore.onPlayComplete`
 and `onDeviceCallBack`, plus `DeviceOrderHelper`, establish the `5 -> 6 -> 2`
 order and single-zero-byte query bodies.
+
+Channel bitmap parsing was checked against both Java parsers on 2026-10-30.
+GhidraMCP confirmed that vHome's `OnRecvTransprent` (`0047f79c`), like vEye Pro's
+`005143d0`, forwards the response without decoding the channel layout or sending
+another command. This diagnostic change does not alter the wire protocol.
+
+The optional query 14 was checked against both Java implementations on
+2026-10-30. GhidraMCP confirmed its existing FE envelope in `OnSendData`
+(vHome `0047ed44`, vEye Pro `005139b8`). `PackFrame` (vHome `0047b1ec`, vEye Pro
+`0050fdac`) reads the encrypted-prefix length at header offset 9, media offset
+at 16 and separate-media-encryption flag at 15. Only their numeric metadata is
+observed here; this does not extend the supported crypto profile.
 
 In the video-intercom UI, FPS modes `0/1/2` mean High/Low/Picture and FPS_SET is
 gated by capability 17. These are **not** the one-based stream selectors

@@ -494,6 +494,36 @@ def test_disallowed_query_never_opens_or_writes_socket(query):
     assert not sock.sent
 
 
+def test_channel_ability_query_uses_selected_channel_and_waits_for_play():
+    session, sock = session_and_socket(channel=2)
+    with pytest.raises(QuiiConnectionError, match="not active"):
+        session.request_device_query(14)
+    assert not sock.sent
+    sock.chunks.append(command())
+    with session:
+        assert len(sock.sent) == 2
+        session.recv_message()
+        session.request_device_query(14)
+        assert len(sock.sent) == 3
+        header = aes_cbc_crypt(
+            sock.sent[-1][:32], KEY, crypto_mode=2, decrypt=True
+        )
+        body = aes_cbc_crypt(
+            sock.sent[-1][32:], KEY, crypto_mode=2, decrypt=True
+        )
+        assert header[0] == 0xFE and header[13] == 14
+        assert body == b"\x02" + hashlib.sha256(
+            header + b"\x02"
+        ).digest() + bytes(15)
+
+
+def test_channel_ability_never_truncates_large_configured_channel():
+    session, sock = session_and_socket(channel=256)
+    with pytest.raises(ValueError, match="channel"):
+        session.request_device_query(14)
+    assert not sock.sent
+
+
 @pytest.mark.parametrize(
     "error", [OSError("private"), TimeoutError("private")]
 )

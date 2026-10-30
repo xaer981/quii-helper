@@ -5,6 +5,7 @@ Requires ffprobe on PATH. Add --save-frames (and FFmpeg) to retain private
 H.264/JPEG samples under data/. No .env/assets, cloud, talk or door commands
 are used. The lower-level session API is internal, not a stable Camera method.
 FE metadata is passive; --query-device-info opts into read-only queries 5/6/2.
+Add --query-channel-ability for read-only query 14 on the selected channel.
 """
 
 import argparse
@@ -45,8 +46,9 @@ MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 
 @dataclass
 class _ReadonlyDeviceInfoProbe:
-    """One opt-in native 5 -> 6 -> 2 sequence per connection; no timers/retries."""
+    """One opt-in read-only sequence per connection; no timers/retries."""
 
+    commands: tuple[int, ...] = READONLY_DEVICE_QUERIES
     sent: list[int] = field(default_factory=list)
     observed: list[int] = field(default_factory=list)
 
@@ -59,14 +61,16 @@ class _ReadonlyDeviceInfoProbe:
         contents cannot be decoded. Unrelated/duplicate replies do not advance.
         The wire has no request ID, so observation is not a correlated ACK.
         """
-        if not session.play_accepted or len(self.observed) == 3:
+        if not session.play_accepted or len(self.observed) == len(
+            self.commands
+        ):
             return
         if len(self.sent) > len(self.observed):
             if reply_command != self.sent[-1]:
                 return
             self.observed.append(self.sent[-1])
-        if len(self.sent) < 3:
-            command = READONLY_DEVICE_QUERIES[len(self.sent)]
+        if len(self.sent) < len(self.commands):
+            command = self.commands[len(self.sent)]
             session.request_device_query(command)
             self.sent.append(command)
 
@@ -78,7 +82,7 @@ class _ReadonlyDeviceInfoProbe:
         return {
             "status": (
                 "responses_observed"
-                if len(self.observed) == 3
+                if len(self.observed) == len(self.commands)
                 else "waiting_for_reply" if waiting else "waiting_for_play"
             ),
             "sent_commands": list(self.sent),
@@ -309,6 +313,7 @@ def _observe_phase(
     audio: Counter[str] = Counter()
     replies: list[int] = []
     transparent: dict[str, dict[str, Any]] = {}
+    media_packets: dict[str, dict[str, Any]] = {}
     keyframe = b""
     samples: list[dict[str, Any]] = []
     retained = 0
@@ -352,6 +357,37 @@ def _observe_phase(
                     if readonly_info is not None:
                         readonly_info.advance(session, reply_command)
                     continue
+                offset = header.flag16 | (header.flag17 << 8)
+                packet_stats = media_packets.setdefault(
+                    f"{header.packet_type:02x}",
+                    {
+                        "count": 0,
+                        "wire_payload_bytes": 0,
+                        "decoded_payload_bytes": 0,
+                        "encrypted_prefix_min": header.payload_size,
+                        "encrypted_prefix_max": header.payload_size,
+                        "media_offset_min": offset,
+                        "media_offset_max": offset,
+                        "media_encryption_flag": header.flag15,
+                    },
+                )
+                packet_stats["count"] += 1
+                packet_stats["wire_payload_bytes"] += int.from_bytes(
+                    header.raw[11:15], "little"
+                )
+                packet_stats["decoded_payload_bytes"] += len(
+                    message["payload"]
+                )
+                for field_name, value in (
+                    ("encrypted_prefix", header.payload_size),
+                    ("media_offset", offset),
+                ):
+                    packet_stats[field_name + "_min"] = min(
+                        packet_stats[field_name + "_min"], value
+                    )
+                    packet_stats[field_name + "_max"] = max(
+                        packet_stats[field_name + "_max"], value
+                    )
                 for frame in packer.feed(message["payload"]):
                     tag = frame["frame_tag"]
                     counts[f"frame_{tag:02x}"] += 1
@@ -447,6 +483,7 @@ def _observe_phase(
                     ),
                 },
                 "counts": dict(counts),
+                "media_packets": media_packets,
                 "transparent_commands": transparent,
                 "readonly_device_info": (
                     readonly_info.summary() if readonly_info else None
@@ -489,6 +526,11 @@ def main(argv: list[str] | None = None) -> None:
         help="After play, query version/channels/FPS (FE 5/6/2) once; never FPS_SET",
     )
     parser.add_argument(
+        "--query-channel-ability",
+        action="store_true",
+        help="Query advertised main/sub/third support (FE 14), channels 1-255",
+    )
+    parser.add_argument(
         "--compare-handshakes",
         action="store_true",
         help="Compare path and OEM setup/FastPlay with/without a client ID; no switches",
@@ -520,6 +562,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Save private H.264/JPEG/report files under data/; requires FFmpeg",
     )
     args = parser.parse_args(argv)
+    if args.query_channel_ability and not 1 <= args.channel <= 255:
+        parser.error(
+            "--query-channel-ability requires --channel between 1 and 255"
+        )
     if args.compare_handshakes:
         if args.oem is None:
             parser.error("--compare-handshakes requires --oem CAMERA_OEM")
@@ -556,6 +602,11 @@ def main(argv: list[str] | None = None) -> None:
             flush=True,
         )
     captures: list[tuple[dict[str, Any], bytes]] = []
+    queries: tuple[int, ...] = (
+        READONLY_DEVICE_QUERIES if args.query_device_info else ()
+    )
+    if args.query_channel_ability:
+        queries += (14,)
     completed = False
     failures: list[dict[str, Any]] = []
     first_error: QuiiConnectionError | None = None
@@ -623,8 +674,8 @@ def main(argv: list[str] | None = None) -> None:
                     config, handshake=handshake, client_id=client_id
                 ) as session:
                     readonly_info = (
-                        _ReadonlyDeviceInfoProbe()
-                        if args.query_device_info
+                        _ReadonlyDeviceInfoProbe(commands=queries)
+                        if queries
                         else None
                     )
                     for name, target in phases:

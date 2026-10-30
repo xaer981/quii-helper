@@ -209,13 +209,17 @@ class LanTcpSession:
         return self._pending_stream is not None
 
     def request_device_query(self, command: int) -> None:
-        """Send one internal diagnostic query (5/6/2) on an accepted play.
+        """Send one internal diagnostic query (5/6/2/14) on an accepted play.
 
         This does not wait for a reply, retry or send a generic transparent ACK.
         The caller owns query ordering and bounded observation via recv_message.
         Camera never calls this automatically; write commands are rejected.
         """
-        packet = build_readonly_device_query(command, key=self._key)
+        packet = build_readonly_device_query(
+            command,
+            key=self._key,
+            channel=self.config.channel if command == 14 else None,
+        )
         if not self._opened or not self.play_accepted:
             raise QuiiConnectionError("LAN TCP play is not active")
         try:

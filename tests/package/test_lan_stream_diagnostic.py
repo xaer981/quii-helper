@@ -3,15 +3,28 @@
 import importlib
 import json
 import shutil
+import struct
 import subprocess
 from unittest.mock import MagicMock, Mock
 
 import pytest
 
 from quii_helper import CameraStreamCredentials
+from quii_helper.protocols.tcp.codec.message_codec import decode_tcp_header
 from quii_helper.support.errors import QuiiConnectionError
 
 example = importlib.import_module("examples.diagnose_lan_stream")
+
+
+def media_message(payload):
+    raw = bytearray(32)
+    raw[0] = 0xA0
+    struct.pack_into("<I", raw, 11, len(payload))
+    return {
+        "is_media": True,
+        "payload": payload,
+        "header": decode_tcp_header(bytes(raw), crypto_mode=0, key=b"").header,
+    }
 
 
 @pytest.mark.parametrize("failed_phase", [None, "handshake_setup_oem"])
@@ -268,9 +281,9 @@ def test_phase_preserves_media_audio_and_defers_h264_analysis(monkeypatch):
     ]
     messages = iter(
         [
-            {"is_media": True, "payload": b"video", "header": Mock()},
+            media_message(b"video"),
             {"is_media": False, "header": Mock(packet_type=9, raw=bytes(32))},
-            {"is_media": True, "payload": b"audio", "header": Mock()},
+            media_message(b"audio"),
         ]
     )
 
@@ -319,7 +332,7 @@ def test_arrival_fps_uses_receive_times_not_headers_or_capture(
             clock[0] += timeout
             raise TimeoutError()
         clock[0] = remaining.pop(0)
-        return {"is_media": True, "payload": b"video", "header": Mock()}
+        return media_message(b"video")
 
     session.recv_message.side_effect = receive
     packer = Mock(stats={})
@@ -367,7 +380,7 @@ def test_phase_saves_media_without_ack_and_recognizes_late_reply(
                 "is_media": False,
                 "header": Mock(packet_type=9, raw=bytes(32)),
             }
-        return {"is_media": True, "payload": b"video", "header": Mock()}
+        return media_message(b"video")
 
     session.recv_message.side_effect = receive
     packer = Mock(stats={})
@@ -468,7 +481,7 @@ def test_failed_phase_keeps_statistics_and_last_known_switch_state(
         {"frame_tag": 0xE3, "codec": 4, "sample_rate": 8000, "channels": 1}
     ]
     reads = [
-        {"is_media": True, "payload": b"audio", "header": Mock()},
+        media_message(b"audio"),
         QuiiConnectionError("LAN TCP stream switch timed out"),
     ]
 
@@ -560,7 +573,7 @@ def test_phase_observes_pre_ack_but_does_not_probe_oversize_keyframes(
 
     def receive(**kwargs):
         clock[0] += 1
-        return {"is_media": True, "payload": b"video", "header": Mock()}
+        return media_message(b"video")
 
     session.recv_message.side_effect = receive
     packer = Mock(stats={})
@@ -772,7 +785,7 @@ def test_capture_starts_at_keyframe_and_maps_bursty_arrivals(
                 "bitstream": b"xxI" if tag == 0xE1 else b"xxP",
             }
         ]
-        return {"is_media": True, "payload": b"video", "header": Mock()}
+        return media_message(b"video")
 
     session.recv_message.side_effect = receive
     path = tmp_path / "capture.h264"
@@ -814,7 +827,7 @@ def test_capture_limit_stops_before_overflow(monkeypatch, tmp_path):
 
     def receive(**kwargs):
         clock[0] += 1
-        return {"is_media": True, "payload": b"video", "header": Mock()}
+        return media_message(b"video")
 
     session.recv_message.side_effect = receive
     path = tmp_path / "bounded.h264"

@@ -41,6 +41,36 @@ def test_readonly_query_matches_native_transparentex_layout(command):
     )
 
 
+@pytest.mark.parametrize("channel", [1, 2, 127, 255])
+def test_channel_ability_query_matches_native_one_byte_channel(channel):
+    packet = build_readonly_device_query(
+        14, key=KEY, channel=channel, timestamp_seconds=1_700_000_000
+    )
+    header = aes_cbc_crypt(packet[:32], KEY, crypto_mode=2, decrypt=True)
+    expected = bytearray(32)
+    expected[0], expected[13] = 0xFE, 14
+    struct.pack_into("<QHH", expected, 1, 1_700_000_000, 48, 1)
+    assert header == bytes(expected)
+    body = bytes([channel])
+    assert aes_cbc_crypt(packet[32:], KEY, crypto_mode=2, decrypt=True) == (
+        body + hashlib.sha256(header + body).digest() + bytes(15)
+    )
+
+
+@pytest.mark.parametrize(
+    "channel", [None, True, False, 0, -1, 256, 65535, 1.0, "1"]
+)
+def test_channel_ability_query_rejects_missing_or_truncated_channel(channel):
+    with pytest.raises(ValueError, match="channel"):
+        build_readonly_device_query(14, key=KEY, channel=channel)
+
+
+@pytest.mark.parametrize("command", [5, 6, 2])
+def test_zero_body_queries_do_not_accept_channel_payloads(command):
+    with pytest.raises(ValueError, match="only query 14"):
+        build_readonly_device_query(command, key=KEY, channel=1)
+
+
 @pytest.mark.parametrize(
     "command",
     [True, False, -1, 0, 1, 3, 4, 8, 9, 15, 255, 256, 2.0, "5", None],
@@ -71,6 +101,15 @@ def test_builder_cannot_send_fps_set_unlock_or_arbitrary_commands(command):
         ),
         (2, b"\x00\x01", {"fps_mode": 1, "fps_mode_name": "low", "result": 0}),
         (
+            14,
+            b"\x00\x02\x85",
+            {
+                "result": 0,
+                "channel": 2,
+                "stream_support": {"main": True, "sub": False, "third": True},
+            },
+        ),
+        (
             2,
             b"\x00\x02",
             {"fps_mode": 2, "fps_mode_name": "picture", "result": 0},
@@ -89,7 +128,9 @@ def test_known_reply_fields_ignore_trailing_sha_padding_and_private_data(
     assert "private" not in json.dumps(result)
 
 
-@pytest.mark.parametrize("command,minimum", [(5, 2), (6, 4), (2, 2), (8, 4)])
+@pytest.mark.parametrize(
+    "command,minimum", [(5, 2), (6, 4), (2, 2), (8, 4), (14, 3)]
+)
 def test_short_declared_body_never_reads_sha_bytes_as_reply(command, minimum):
     for size in range(minimum):
         result = describe_transparent_reply(
@@ -99,12 +140,14 @@ def test_short_declared_body_never_reads_sha_bytes_as_reply(command, minimum):
         assert "result" not in result and "fps_mode" not in result
 
 
-@pytest.mark.parametrize("command", [5, 2])
+@pytest.mark.parametrize("command", [5, 2, 14])
 def test_error_reply_is_not_decoded_as_success(command):
-    result = describe_transparent_reply(reply_header(command, 2), b"\xff\x01")
+    body = b"\xff\x01\x07" if command == 14 else b"\xff\x01"
+    result = describe_transparent_reply(reply_header(command, len(body)), body)
     assert result["decode_status"] == "device_error"
     assert result["result"] == -1
     assert "version_byte" not in result and "fps_mode" not in result
+    assert "stream_support" not in result
 
 
 def test_invalid_fps_and_signed_channel_counts_do_not_invent_valid_profiles():
@@ -118,7 +161,139 @@ def test_invalid_fps_and_signed_channel_counts_do_not_invent_valid_profiles():
     assert result["decode_status"] == "invalid_value"
 
 
-@pytest.mark.parametrize("command", [1, 3, 4, 7, 9, 14, 16, 18, 0x77, 0xFF])
+def test_channel_flags_match_java_camera_and_cctv_mapping():
+    # Four channels: availability, four lock bytes, then talk availability.
+    body = b"\x00\x04\x02\x02\x21\xff\xff\xff\xff\x12"
+    result = describe_transparent_reply(reply_header(6, len(body)), body)
+    assert result["decode_status"] == "ok"
+    assert result["channel_flags"] == [
+        {"channel": 1, "enabled": True, "talk_enabled": False},
+        {"channel": 2, "enabled": False, "talk_enabled": True},
+        {"channel": 3, "enabled": False, "talk_enabled": True},
+        {"channel": 4, "enabled": True, "talk_enabled": False},
+    ]
+    assert set(result) == {
+        "command",
+        "name",
+        "payload_length",
+        "decode_status",
+        "total_count",
+        "camera_count",
+        "cctv_count",
+        "channel_flags",
+        "direct_switch_supported",
+    }
+    assert result["direct_switch_supported"] is None
+
+
+def test_channel_flags_preserve_java_four_bit_stride_across_bitmap_bytes():
+    body = b"\x00\x0a\x06\x04" + b"\x50\x02" + bytes(10) + b"\xa0\x04"
+    result = describe_transparent_reply(reply_header(6, len(body)), body)
+    channels = result["channel_flags"]
+    assert [item["channel"] for item in channels] == list(range(1, 11))
+    assert [item["channel"] for item in channels if item["enabled"]] == [
+        6,
+        9,
+    ]
+    assert [item["channel"] for item in channels if item["talk_enabled"]] == [
+        7,
+        10,
+    ]
+
+
+@pytest.mark.parametrize("size", range(11))
+def test_channel_flags_never_read_missing_sections_from_sha_or_padding(size):
+    body = b"\x00\x04\x02\x02\x33\xff\xff\xff\xff\x00"
+    result = describe_transparent_reply(
+        reply_header(6, size), body[:size] + b"\xff" * 48
+    )
+    if size < 4:
+        assert result["decode_status"] == "malformed"
+        assert "channel_flags" not in result
+        return
+    assert result["decode_status"] == "ok"
+    assert result["channel_flags"] == [
+        {
+            "channel": channel,
+            "enabled": True if size >= 5 else None,
+            "talk_enabled": False if size >= 10 else None,
+        }
+        for channel in range(1, 5)
+    ]
+
+
+@pytest.mark.parametrize("size", [4, 5, 6, 16, 17, 18])
+def test_partial_multibyte_bitmaps_are_unknown_not_partially_decoded(size):
+    body = b"\x00\x0a\x06\x04" + b"\xff" * 14
+    result = describe_transparent_reply(
+        reply_header(6, size), body[:size] + b"\xff" * 48
+    )
+    assert len(result["channel_flags"]) == 10
+    assert all(
+        item["enabled"] is (True if size >= 6 else None)
+        and item["talk_enabled"] is (True if size >= 18 else None)
+        for item in result["channel_flags"]
+    )
+
+
+@pytest.mark.parametrize("counts", [(0, 0, 0), (127, 127, 0)])
+def test_absent_channel_flags_are_bounded_by_signed_total(counts):
+    body = bytes([0, *counts])
+    result = describe_transparent_reply(reply_header(6, len(body)), body)
+    assert result["decode_status"] == "ok"
+    assert len(result["channel_flags"]) == counts[0]
+    assert all(
+        item["enabled"] is None and item["talk_enabled"] is None
+        for item in result["channel_flags"]
+    )
+
+
+@pytest.mark.parametrize("offset", [1, 2, 3])
+def test_negative_java_counts_do_not_produce_channel_flags(offset):
+    body = bytearray(b"\x00\x04\x02\x02" + b"\xff" * 32)
+    body[offset] = 0xFF
+    result = describe_transparent_reply(reply_header(6, len(body)), body)
+    assert result["decode_status"] == "invalid_value"
+    assert "channel_flags" not in result
+    assert "direct_switch_supported" not in result
+
+
+@pytest.mark.parametrize("size", range(10, 15))
+@pytest.mark.parametrize("ability", [0, 1, 128, 129])
+def test_direct_channel_switch_requires_complete_capabilities_block(
+    size, ability
+):
+    body = b"\x00\x04\x02\x02" + bytes(6) + bytes([ability, 0, 0, 0])
+    result = describe_transparent_reply(
+        reply_header(6, size), body[:size] + b"\xff" * 48
+    )
+    assert result["direct_switch_supported"] is (
+        bool(ability & 1) if size >= 14 else None
+    )
+
+
+@pytest.mark.parametrize("mask", range(8))
+def test_channel_ability_bits_report_support_not_quality_or_audio(mask):
+    body = bytes([0, 1, mask])
+    result = describe_transparent_reply(reply_header(14, 3), body)
+    assert result["decode_status"] == "ok"
+    assert result["stream_support"] == {
+        "main": bool(mask & 1),
+        "sub": bool(mask & 2),
+        "third": bool(mask & 4),
+    }
+    assert set(result) == {
+        "command",
+        "name",
+        "payload_length",
+        "decode_status",
+        "result",
+        "channel",
+        "stream_support",
+    }
+
+
+@pytest.mark.parametrize("command", [1, 3, 4, 7, 9, 16, 18, 0x77, 0xFF])
 def test_unparsed_replies_expose_no_body_or_inline_header_values(command):
     secret = b"private-name-auth-key-location"
     result = describe_transparent_reply(
