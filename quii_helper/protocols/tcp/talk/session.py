@@ -5,6 +5,7 @@ import hmac
 import math
 import time
 from collections import deque
+from collections.abc import Callable
 from threading import Event
 
 from quii_helper.config import AutonomousConfig
@@ -42,6 +43,8 @@ class LanTalkSession:
     Supports AES-256/SHA256, G.711 A-law/mu-law at 8000 Hz mono, and both
     native outgoing packet layouts. Unsupported negotiation fails closed.
     There is no cloud fallback, automatic retry, microphone or file I/O.
+    An optional diagnostic observer sees validated messages, including early
+    media before ready, once per wire message rather than once per dequeue.
     """
 
     def __init__(
@@ -50,6 +53,7 @@ class LanTalkSession:
         *,
         channel: int | None = None,
         transport_factory: TcpTransportFactory = TcpSocketTransport,
+        message_observer: Callable[[DecodedQuiiMessage], None] | None = None,
     ) -> None:
         validate_lan_config(config)
         try:
@@ -63,6 +67,7 @@ class LanTalkSession:
             config.device_host, config.stream_port
         )
         self._closed = Event()
+        self._message_observer = message_observer
         self.ready = False
         self.codec: int | None = None
         self.full_packet = False
@@ -72,6 +77,24 @@ class LanTalkSession:
         self._pending_header: DecodedTcpHeader | None = None
         self._startup: deque[DecodedQuiiMessage] = deque()
         self._last_keepalive = 0.0
+        self._handshake: dict[str, int | None] = {
+            "setup_status": None,
+            "crypto_mode": None,
+            "sha_mode": None,
+            "open_status": None,
+            "codec_mask": None,
+            "c_status": None,
+            "d_status": None,
+        }
+
+    @property
+    def handshake_diagnostics(self) -> dict[str, int | None]:
+        """Copy status fields, retained after close; command replies passed SHA.
+
+        Setup is unencrypted. Missing C/D replies remain None, not success.
+        No authentication body, key or received media is exposed.
+        """
+        return dict(self._handshake)
 
     def open(self) -> "LanTalkSession":
         """Wait for setup, Open and native ready (0x0D), preserving early media."""
@@ -84,6 +107,10 @@ class LanTalkSession:
             self._check_closed()
             self._send(setup_packet(), deadline=deadline)
             raw = self._read_exact(32, deadline)
+            if raw[0] == 0xA9:
+                self._handshake.update(
+                    setup_status=raw[9], crypto_mode=raw[10], sha_mode=raw[11]
+                )
             if raw[0] != 0xA9 or raw[9] != 0:
                 raise QuiiConnectionError("LAN talk setup rejected")
             if raw[10:12] != b"\x02\x01":
@@ -226,12 +253,15 @@ class LanTalkSession:
         self._check_receive_deadline()
         if not header.is_media:
             self._command(header, payload)
-        return {
+        message: DecodedQuiiMessage = {
             "header": header.header,
             "payload": payload,
             "is_media": header.is_media,
             "plausible": True,
         }
+        if self._message_observer is not None:
+            self._message_observer(message)
+        return message
 
     def _validate_header(self, header: DecodedTcpHeader) -> None:
         if header.is_media:
@@ -258,6 +288,13 @@ class LanTalkSession:
         if not hmac.compare_digest(payload[:32], hashlib.sha256(raw).digest()):
             raise QuiiConnectionError("LAN talk command SHA256 check failed")
         kind = raw[0]
+        status_key = {
+            0x0B: "open_status",
+            0x0C: "c_status",
+            0x0D: "d_status",
+        }.get(kind)
+        if status_key is not None:
+            self._handshake[status_key] = raw[11]
         if kind and raw[11]:
             raise QuiiConnectionError(
                 f"LAN talk command 0x{kind:02x} rejected with status {raw[11]}"
@@ -266,6 +303,7 @@ class LanTalkSession:
             if self.codec is not None:
                 raise QuiiConnectionError("unexpected LAN talk Open reply")
             mask = int.from_bytes(raw[12:14], "little")
+            self._handshake["codec_mask"] = mask
             if not mask & 3:
                 raise QuiiConnectionError(
                     "LAN talk device advertises no supported G.711 codec"
