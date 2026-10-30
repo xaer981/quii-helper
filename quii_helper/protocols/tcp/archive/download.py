@@ -14,10 +14,12 @@ from quii_helper.media.archive.video import render_archive_mp4, require_ffmpeg
 from quii_helper.protocols.tcp.archive.packets import (
     keepalive_packet,
     open_packet,
+    open_packet_dynamic,
     playback_mode_packet,
     record_descriptor,
     seek_packet,
     setup_packet,
+    start_transfer_packet,
 )
 from quii_helper.protocols.tcp.codec.message_codec import (
     DecodedTcpHeader,
@@ -49,6 +51,7 @@ def download_record_bytes(
     max_bytes: int = 16 * 1024 * 1024,
     temporary_directory: Path = Path("data"),
     transport_factory: TcpTransportFactory = TcpSocketTransport,
+    protocol: str = "default",
 ) -> bytes:
     """Return JPEG or MP4 bytes via LAN file mode, with bounded time/memory.
 
@@ -75,19 +78,39 @@ def download_record_bytes(
         raise ConfigurationError(
             "archive max_bytes must be a positive integer"
         )
+    if protocol not in ("default", "pipelined"):
+        raise ConfigurationError(
+            "archive protocol must be 'default' or 'pipelined'"
+        )
     validate_lan_config(config)
     record = record_descriptor(entry)
     executable = require_ffmpeg() if entry.file_type == "video" else ""
     key = config.stream_key.encode("utf-8")
-    initial = open_packet(
-        record, encode_device_password(config.auth_code), key
-    )
+    pipelined = protocol == "pipelined"
+    if pipelined:
+        if not config.dynamic_password:
+            raise ConfigurationError(
+                "protocol='pipelined' requires config.dynamic_password"
+            )
+        initial = open_packet_dynamic(
+            record, config.dynamic_password, config.oem, key
+        )
+    else:
+        initial = open_packet(
+            record, encode_device_password(config.auth_code), key
+        )
     media = ArchiveMedia(entry.file_type, max_bytes, entry.frame_rate)
     transfer = _ArchiveDownload(config, key, timeout, transport_factory)
     try:
         transfer.connect()
         transfer.send(initial)
-        opened = False
+        if pipelined:
+            # This firmware is silent to a bare Open: send the whole sequence
+            # up front, then read (verified on Intelbras Allo wT7).
+            transfer.send(seek_packet(record, key))
+            transfer.send(playback_mode_packet(key))
+            transfer.send(start_transfer_packet(key))
+        opened = pipelined
         while True:
             if opened:
                 transfer.keepalive()
@@ -102,6 +125,15 @@ def download_record_bytes(
                         "archive media arrived before Open reply"
                     )
                 media.feed(payload)
+                if (
+                    pipelined
+                    and entry.file_type == "picture"
+                    and bytes(media.jpeg).rstrip(b"\x00").endswith(b"\xff\xd9")
+                ):
+                    # Pipelined firmware may not send a final command frame;
+                    # stop once the JPEG is complete (EOI received).
+                    media.finish()
+                    break
                 continue
             raw = header.header.raw
             kind = raw[0]
