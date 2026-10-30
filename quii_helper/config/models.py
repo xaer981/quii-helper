@@ -77,6 +77,9 @@ class AutonomousConfig:
         connection_mode: 'lan' (default) or explicit 'cloud'; no automatic fallback.
         stream_port: Native direct-IP TCP port, default 34567.
         stream_key: Saved 32-byte UTF-8 key for LAN TCP playback, hidden in repr.
+        dynamic_password: Cloud dynamic-password used as the file-channel auth
+            by the ``pipelined`` archive protocol variant (e.g. Intelbras Allo
+            wT7); hidden in repr.
         cloud_account: Cloud account/login.
         cloud_password: Cloud account password.
         device_host: Explicit camera IP for LAN TCP playback; local `/tdkcgi`
@@ -190,6 +193,7 @@ class AutonomousConfig:
     connection_mode: str = "lan"
     stream_port: int = 34567
     stream_key: str = field(default="", repr=False)
+    dynamic_password: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         """Anchor relative asset paths once, without reading any assets."""

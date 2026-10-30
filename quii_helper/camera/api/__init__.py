@@ -2826,6 +2826,7 @@ class Camera:
         *,
         timeout: float = 30.0,
         max_bytes: int = 16 * 1024 * 1024,
+        protocol: str = "default",
     ) -> bytes:
         """Download an archived picture (JPEG) or video (MP4) over LAN TCP.
 
@@ -2852,6 +2853,12 @@ class Camera:
                 connection setup, transfer, and MP4 export. Defaults to 30.0.
             max_bytes: Positive maximum received payload and returned JPEG/MP4
                 size in bytes. Defaults to 16 MiB; increase for larger clips.
+            protocol: Archive wire variant. ``"default"`` (unchanged) uses the
+                ``auth_code`` Open and waits for the Open reply before Seek.
+                ``"pipelined"`` uses the cloud ``dynamic-password`` file-channel
+                auth and sends Open/Seek/Playback/0x07 without waiting, for
+                firmware that is silent to a bare Open (e.g. Intelbras Allo
+                wT7); requires ``config.dynamic_password``.
 
         Returns:
             Original JPEG payload bytes (framing/SOI/EOI checks), or a remuxed
@@ -2874,6 +2881,7 @@ class Camera:
             timeout=timeout,
             max_bytes=max_bytes,
             temporary_directory=self.data_dir,
+            protocol=protocol,
         )
 
     def get_wifi_list(
