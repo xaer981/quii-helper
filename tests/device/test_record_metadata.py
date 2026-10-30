@@ -44,10 +44,111 @@ def test_native_picture_selectors_are_not_record_ids(
     assert record.raw == raw
 
 
+@pytest.mark.parametrize(
+    "parse", [parse_record_message_info, parse_record_alarm_info]
+)
+@pytest.mark.parametrize(
+    "index,rate,ids,channel",
+    [("0000000000", "0", "1", "1"), (0, 0, 2, 2)],
+)
+def test_nested_address_selectors_preserve_zero_and_original_metadata(
+    parse, index, rate, ids, channel
+):
+    address = {
+        "idx": index,
+        "idf": rate,
+        "ids": ids,
+        "idc": channel,
+        "idb": "406",
+        "idp": "0",
+        "idd": "0",
+    }
+    original_address = address.copy()
+    raw = {
+        "filetype": "picture",
+        "filename": "native-name",
+        "address": address,
+    }
+    response = DeviceCgiResponse("get.record.message", 0, {"record": raw}, "")
+    record = parse(response).records[0]
+    assert record.picture_index == str(index)
+    assert record.frame_rate == 0
+    assert record.stream == {"1": "main", "2": "sub"}[str(ids)]
+    assert record.channel_id == str(channel)
+    assert record.raw is raw
+    assert address == original_address and "idx" not in raw
+
+
+@pytest.mark.parametrize("blank", [None, ""])
+def test_blank_flat_selectors_fall_back_to_nested_address(blank):
+    raw = {
+        "idx": blank,
+        "idf": blank,
+        "ids": blank,
+        "idc": blank,
+        "address": {"idx": "17", "idf": "25", "ids": "2", "idc": "1"},
+    }
+    response = DeviceCgiResponse("get.record.message", 0, {"record": raw}, "")
+    record = parse_record_message_info(response).records[0]
+    assert record.picture_index == "17" and record.frame_rate == 25
+    assert record.stream == "sub" and record.channel_id == "1"
+
+
+def test_nonblank_flat_selectors_keep_precedence_including_numeric_zero():
+    raw = {
+        "idx": 0,
+        "idf": 0,
+        "ids": "2",
+        "idc": 0,
+        "address": {"idx": "17", "idf": "25", "ids": "1", "idc": "1"},
+    }
+    response = DeviceCgiResponse("get.record.message", 0, {"record": raw}, "")
+    record = parse_record_message_info(response).records[0]
+    assert record.picture_index == "0" and record.frame_rate == 0
+    assert record.stream == "sub" and record.channel_id == "0"
+
+
+def test_invalid_nonblank_flat_selectors_are_not_hidden_by_nested_values():
+    raw = {
+        "idx": "invalid",
+        "idf": "invalid",
+        "ids": "9",
+        "address": {"idx": "17", "idf": "25", "ids": "1"},
+    }
+    response = DeviceCgiResponse("get.record.message", 0, {"record": raw}, "")
+    record = parse_record_message_info(response).records[0]
+    assert record.picture_index == "invalid"
+    assert record.frame_rate is None and record.stream == ""
+
+
+@pytest.mark.parametrize("key", ["channel", "channels", "ch", "chno"])
+def test_explicit_channel_aliases_keep_precedence_over_address(key):
+    response = DeviceCgiResponse(
+        "get.record.message",
+        0,
+        {"record": {key: "7", "idc": "2", "address": {"idc": "1"}}},
+        "",
+    )
+    assert parse_record_message_info(response).records[0].channel_id == "7"
+
+
+@pytest.mark.parametrize("address", [None, "", "invalid", [], [{"idx": "7"}]])
+def test_non_mapping_address_does_not_invent_selectors(address):
+    response = DeviceCgiResponse(
+        "get.record.message", 0, {"record": {"address": address}}, ""
+    )
+    record = parse_record_message_info(response).records[0]
+    assert record.picture_index == "" and record.frame_rate is None
+    assert record.stream == "" and record.channel_id == ""
+
+
 @pytest.mark.parametrize("key", ["stream", "streamtype", "stream_type"])
 def test_explicit_stream_still_takes_precedence_over_ids(key):
     response = DeviceCgiResponse(
-        "get.record.message", 0, {"record": {key: "custom", "ids": "2"}}, ""
+        "get.record.message",
+        0,
+        {"record": {key: "custom", "ids": "2", "address": {"ids": "1"}}},
+        "",
     )
     assert parse_record_message_info(response).records[0].stream == "custom"
 

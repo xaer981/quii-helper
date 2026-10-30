@@ -704,6 +704,25 @@ That body is `adminapp2&&<encoded auth>\0\0` (empty custom id), followed by
 SHA256(header + body), zero padding, and separately initialized header/body
 AES-CBC, matching the existing AES-256/SHA256 LAN profile.
 
+The 2026-10-30 recheck of `ParseURL`, `FillFileInfo` and `SendOpen` in both
+libraries confirmed this filename-based Open layout. Their separate
+time-range Open `03` path is not implemented by `download_record()`.
+CGI archive selectors `idx`, `idf`, `ids` and `idc` may instead be nested in
+`address`; the parser uses them when the corresponding flat field is missing
+or empty. Nonempty flat fields retain priority, including numeric zero.
+Zero-padded `idx` is preserved, and unexposed address fields remain in `raw`.
+Offline XML-to-Open vectors cover this layout without a manual `idx` override.
+This fixes metadata parsing, not the reported silent Open on Intelbras Allo
+wT7: neither an Allo Plus binary comparison nor an Intelbras device test was
+performed for this fix. A live session succeeding does not prove file-mode parity.
+An isolated LAN-only Tantos/Pi check with this parser downloaded the ten most
+recent video entries from nested `address` metadata using a saved key. All ten
+MP4s contained H.264 1888x1080 video at about 25 FPS and AAC 8000 Hz mono audio,
+lasted about 62 seconds and passed complete FFmpeg decoding without errors.
+SHA256 matched after copying them to the local machine. Picture lists on both
+channels were empty, so archived JPEG transfer remains unverified. The check
+made no cloud requests, door commands or changes to working services.
+
 File Setup is `A9` with byte 9 equal to 1. In the ordinary download path,
 `ITDKDownload::OnCheckFile` (`0078420c`) calls the reader's initial Seek.
 JNI obtains this time from Java `getStartTime()`, independently of the URI.
