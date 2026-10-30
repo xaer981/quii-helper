@@ -1081,23 +1081,33 @@ def _parse_record_schedule_day(
 
 
 def _parse_record_file(value: dict[str, Any]) -> DeviceRecordFileInfo:
+    address = _as_dict(value.get("address"))
+    selectors = {
+        name: (
+            value[name]
+            if value.get(name) not in (None, "")
+            else address.get(name)
+        )
+        for name in ("idx", "idf", "ids", "idc")
+    }
     return DeviceRecordFileInfo(
         record_id=_to_str(value.get("id")),
         file_name=_first_str(value, "filename", "fileName", "name"),
         file_type=_first_str(value, "filetype", "file_type", "type"),
         occur_type=_first_str(value, "occurtype", "recordtype", "record_type"),
-        channel_id=_first_str(value, "channel", "channels", "ch", "chno"),
+        channel_id=_first_str(value, "channel", "channels", "ch", "chno")
+        or _to_str(selectors["idc"]),
         start_time=_first_str(value, "starttime", "start_time", "start"),
         end_time=_first_str(value, "endtime", "end_time", "end"),
         stream=_first_str(value, "stream", "streamtype", "stream_type")
-        or {"1": "main", "2": "sub"}.get(_to_str(value.get("ids")), ""),
+        or {"1": "main", "2": "sub"}.get(_to_str(selectors["ids"]), ""),
         file_size=_to_int(
             _first_present(value, "filesize", "fileSize", "size")
         ),
         url=_to_str(value.get("url")),
         raw=value,
-        picture_index=_to_str(value.get("idx")),
-        frame_rate=_to_int(value.get("idf")),
+        picture_index=_to_str(selectors["idx"]),
+        frame_rate=_to_int(selectors["idf"]),
     )
 
 

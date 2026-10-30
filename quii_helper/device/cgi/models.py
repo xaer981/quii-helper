@@ -203,6 +203,8 @@ class DeviceRecordFileInfo:
     `picture_index` preserves the native `idx` selector (not `record_id`).
     `frame_rate` comes from `idf`; `file_size` preserves the CGI value, which
     the inspected apps interpret as KiB, not an exact JPEG byte length.
+    Selectors may be flat or inside `address`; nonblank flat values win.
+    Unexposed address fields remain available in `raw`.
     """
 
     record_id: str = ""
