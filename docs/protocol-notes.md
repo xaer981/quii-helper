@@ -733,10 +733,25 @@ After Open succeeds it sends Seek `05` and normal session playback mode
 
 The JPEG writer copies CPacket data after its 20-byte header directly to the
 output. The implementation collects E4 / codec 3 payloads across TCP and
-CPacket boundaries, retaining a single bounded JPEG. It requires an
+CPacket boundaries, retaining a single bounded JPEG. The default path requires an
 authenticated EOF command `08`, complete CPackets and JPEG SOI/EOI markers;
 it does not decode the image or treat a disconnect as EOF. CGI `filesize`
 is preserved in its existing units and is not an exact transfer-length check.
+
+The separately selected `pipelined` archive variant follows the contributor's
+Intelbras Allo wT7 observation: an `adminapp` dynamic-password/OEM body and
+Open/Seek/Playback/`07` sent before reading replies. This is not the generic
+vHome/vEye Pro `SendOpen` body above; its authentication/pipelining behavior
+remains device-specific evidence, not verified Tantos behavior. The normal
+path and its authenticated EOF requirement are unchanged.
+
+Only pipelined JPEG downloads may finish without EOF `08`. Their incremental
+marker parser skips length-delimited APP/COM segments, handles entropy byte
+stuffing, restarts and multiple scans, and requires a structural EOI with no
+trailing data or partial CPacket. It is framing validation, not image decoding.
+Both native `IQVJPGFileW::Write()` implementations simply append CPacket bytes;
+neither treats an arbitrary `FF D9` suffix inside metadata as an end signal.
+No new outgoing packet or credential format is introduced by this JPEG check.
 
 `CQVMP4FileW::WriteSample()` uses consecutive `CPacket::FrameGetTimeStamp()`
 differences, not an archive-search duration. The Python H.264 collector keeps

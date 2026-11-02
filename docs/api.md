@@ -934,7 +934,7 @@ Interactive archive playback/seek is not exposed.
 | `get_record_message_info(session_id=...)` | `CameraDeviceRecordMessageInfo` | Read one page for the returned search-session id. |
 | `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Search and collect pages up to a safety cap. |
 | `get_record_alarm_info(timestamp=...)` | `CameraDeviceRecordAlarmInfo` | Read archive entries associated with an alarm timestamp. |
-| `download_record(entry, timeout=30.0, max_bytes=16777216)` | `bytes` | Download an archived JPEG or H.264 MP4 over LAN TCP, without live preview. |
+| `download_record(entry, timeout=30.0, max_bytes=16777216, protocol="default")` | `bytes` | Download an archived JPEG or H.264 MP4 over LAN TCP, without live preview. |
 
 Time/session arguments shown as `...` are **required strings**. The search
 methods and `get_record_alarm_info()` also accept `channel_id=1`,
@@ -971,11 +971,30 @@ Accepted `start_time` syntax is `YYYY-MM-DD[tT ]HH:MM:SS[zZ]?`: device-local
 calendar fields, with no timezone conversion even when a `z`/`Z` suffix is
 present. UTC offsets are not accepted.
 
-The native sequence is Setup `A9` (byte 9 = 1), Open `02`, Seek `05`, playback
+The default sequence is Setup `A9` (byte 9 = 1), Open `02`, Seek `05`, playback
 mode `15` (1/1), CPacket payloads, then authenticated EOF `08`.
 Only LAN-live AES-256/SHA256 is supported, without separately encrypted media.
 Integrity checks cover complete CPacket framing and JPEG SOI/EOI markers,
 **not full JPEG decoding**. The transport is closed on success and failure.
+
+`protocol="pipelined"` is an explicit alternative for firmware such as the
+Intelbras Allo wT7; it is not selected automatically. It requires the same LAN
+key/auth pair, plus the device's cloud `dynamic_password` and original-app
+`oem` in `AutonomousConfig`. The dynamic password is distinct from `auth_code`
+and the cloud account password. Pass it explicitly; `load_config()` does not
+read a new environment variable for it, and `CameraStreamCredentials.save()`
+does not persist it. Use `AutonomousConfig(..., dynamic_password=...)` or
+`load_config(dynamic_password=...)` with credentials obtained by your cloud
+integration, retaining the configured LAN key/auth pair and OEM. Then call
+`camera.download_record(entry, protocol="pipelined")`.
+
+This variant sends Open/Seek/Playback/`07` before reading replies and uses the
+`adminapp` dynamic-password/OEM authentication form. JPEG transfers may end at
+a structural EOI without EOF `08`; metadata segments, escaped bytes and restart
+markers are accounted for, not merely searched for `FF D9`. Complete CPackets
+are still required, trailing bytes are rejected, and disconnect alone is not
+success. Video still requires EOF `08`. The existing default protocol is the
+verified Tantos path; the Intelbras alternative is not a universal replacement.
 
 Video is remuxed to MP4 without re-encoding H.264. Native per-frame timestamps
 are retained, including variable frame intervals; the search interval or

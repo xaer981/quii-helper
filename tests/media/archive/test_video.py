@@ -287,14 +287,16 @@ def test_real_export_preserves_vfr_frame_count_timestamps_and_supported_audio(
     assert not list(scratch.iterdir())
 
 
+@pytest.mark.parametrize("protocol", ["default", "pipelined"])
 def test_real_file_download_then_export_closes_socket_before_remux(
-    tmp_path, units, monkeypatch
+    tmp_path, units, monkeypatch, protocol
 ):
     packets = b"".join(
         video_packet(data, ms=stamp)
         for data, stamp in zip(units, (0, 0, 250, 350))
     )
-    sock, _, factory = peer([command(2), media(packets), command(8)])
+    replies = [command(2)] if protocol == "default" else []
+    sock, _, factory = peer([*replies, media(packets), command(8)])
     render = download.render_archive_mp4
 
     def checked_render(*args, **kwargs):
@@ -303,15 +305,18 @@ def test_real_file_download_then_export_closes_socket_before_remux(
 
     monkeypatch.setattr(download, "render_archive_mp4", checked_render)
     result = download.download_record_bytes(
-        config(),
+        config(dynamic_password="synthetic-test", oem="TEST"),
         video_record(file_name=FILENAME),
         temporary_directory=tmp_path,
         timeout=15,
         transport_factory=factory,
+        protocol=protocol,
     )
     assert result[4:8] == b"ftyp" and sock.closed
     header, _ = plain(sock.sent[1])
     assert header[24] == 1 and header[28:] == b"\0" * 4
+    expected = [2, 5, 0x15] + ([7] if protocol == "pipelined" else [])
+    assert [plain(packet)[0][0] for packet in sock.sent[1:]] == expected
     assert not list(tmp_path.iterdir())
 
 

@@ -52,9 +52,23 @@ def test_download_record_delegates(
         timeout=timeout,
         max_bytes=max_bytes,
         temporary_directory=camera.data_dir,
+        protocol="default",
     )
     assert download.call_args.args[0] is camera.config
     assert download.call_args.args[1] is entry
+
+
+def test_download_record_forwards_protocol(camera) -> None:
+    entry = CameraDeviceRecordFileInfo(
+        file_type="picture", file_name="archive-file", picture_index="0007"
+    )
+    jpeg = b"\xff\xd8mock-jpeg\xff\xd9"
+    with patch.object(
+        camera_api, "download_record_bytes", autospec=True, return_value=jpeg
+    ) as download:
+        assert camera.download_record(entry, protocol="pipelined") is jpeg
+
+    assert download.call_args.kwargs["protocol"] == "pipelined"
 
 
 @pytest.mark.parametrize(
@@ -76,4 +90,5 @@ def test_download_record_preserves_protocol_errors(camera, error_type) -> None:
         timeout=30.0,
         max_bytes=16 * 1024 * 1024,
         temporary_directory=camera.data_dir,
+        protocol="default",
     )

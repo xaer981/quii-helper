@@ -43,7 +43,7 @@ class ArchiveVideoFrame:
 
 
 class ArchiveMedia:
-    """Keep complete frames only; EOF and caller-owned budgets are mandatory."""
+    """Keep complete frames within caller-owned transfer budgets."""
 
     def __init__(
         self, kind: str, max_bytes: int, frame_rate: int | None = None
@@ -68,6 +68,9 @@ class ArchiveMedia:
         self._body = bytearray()
         self._info: dict[str, Any] | None = None
         self._pending = 0
+        self._jpeg_offset = 0
+        self._jpeg_in_scan = False
+        self._jpeg_has_scan = False
 
     def feed(self, payload: bytes) -> None:
         """Assemble split/coalesced CPackets without searching inside payloads."""
@@ -184,8 +187,65 @@ class ArchiveMedia:
         self.frames.append(ArchiveVideoFrame(data, stamp, keyframe))
         self.audio.start_video(info)
 
+    def jpeg_complete(self) -> bool:
+        """Find a structural EOI incrementally, without decoding the image.
+
+        APP/COM payloads can contain FF D9; only markers outside their declared
+        lengths end a JPEG. Entropy data also permits stuffing and restarts.
+        """
+        data = self.jpeg
+        if not self._jpeg_offset:
+            if len(data) < 2:
+                return False
+            if data[:2] != b"\xff\xd8":
+                raise CameraCaptureError("archive JPEG is missing SOI")
+            self._jpeg_offset = 2
+        while self._jpeg_offset < len(data):
+            offset = self._jpeg_offset
+            if self._jpeg_in_scan:
+                offset = data.find(b"\xff", offset)
+                if offset < 0:
+                    self._jpeg_offset = len(data)
+                    return False
+            elif data[offset] != 0xFF:
+                raise CameraCaptureError("archive JPEG has an invalid marker")
+            while offset + 1 < len(data) and data[offset + 1] == 0xFF:
+                offset += 1
+            self._jpeg_offset = offset
+            if offset + 1 == len(data):
+                return False
+            marker = data[offset + 1]
+            if self._jpeg_in_scan and (marker == 0 or 0xD0 <= marker <= 0xD7):
+                self._jpeg_offset = offset + 2
+                continue
+            if marker == 0xD9:
+                if not self._jpeg_has_scan or offset + 2 != len(data):
+                    raise CameraCaptureError(
+                        "archive JPEG has no scan or has trailing data"
+                    )
+                return True
+            if marker == 0x01:
+                self._jpeg_offset = offset + 2
+                continue
+            if marker in {0, 0xD8} or 0xD0 <= marker <= 0xD7:
+                raise CameraCaptureError("archive JPEG has an invalid marker")
+            if offset + 4 > len(data):
+                return False
+            size = (data[offset + 2] << 8) | data[offset + 3]
+            if size < 2:
+                raise CameraCaptureError("archive JPEG has an invalid segment")
+            end = offset + 2 + size
+            if end > len(data):
+                return False
+            self._jpeg_in_scan = marker == 0xDA or (
+                self._jpeg_in_scan and marker == 0xDC
+            )
+            self._jpeg_has_scan |= marker == 0xDA
+            self._jpeg_offset = end
+        return False
+
     def finish(self) -> None:
-        """Validate completeness after authenticated file EOF, not disconnect."""
+        """Validate framing after the selected protocol's end condition."""
         if self._info is not None or self._header:
             raise CameraCaptureError(
                 "archive ended with an incomplete media CPacket"

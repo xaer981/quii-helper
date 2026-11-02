@@ -169,6 +169,34 @@ def open_packet(record: RecordDescriptor, password: str, key: bytes) -> bytes:
     return _seal(header, key, body)
 
 
+def open_packet_dynamic(
+    record: RecordDescriptor, dynamic_password: str, oem: str, key: bytes
+) -> bytes:
+    """Filename Open (0x02) for the ``pipelined`` protocol variant.
+
+    Some firmware (e.g. the Intelbras Allo wT7) authenticates the file channel
+    with the cloud ``dynamic-password`` instead of ``auth_code``, as the user
+    ``adminapp`` (not ``adminapp2``) with the OEM code appended:
+    ``adminapp&&<dynamic-password>.<OEM>.``. Framing/seal are identical to
+    :func:`open_packet`.
+    """
+    body = (
+        b"adminapp&&"
+        + dynamic_password.encode("utf-8")
+        + b"."
+        + oem.replace(",", "").encode("utf-8")
+        + b"."
+    )
+    if len(body) + 32 > 65520:
+        raise ConfigurationError(
+            "archive authentication body exceeds native range"
+        )
+    header = _header(2)
+    struct.pack_into("<H", header, 11, len(body))
+    header[13:32] = record.file_info
+    return _seal(header, key, body)
+
+
 def seek_packet(record: RecordDescriptor, key: bytes) -> bytes:
     """Start at the file's calendar time, matching the download reader's Seek."""
     header = _header(5)
@@ -186,3 +214,9 @@ def playback_mode_packet(key: bytes) -> bytes:
 def keepalive_packet(key: bytes) -> bytes:
     """Build a header-only native keepalive without live-play flags."""
     return _seal(_header(0), key)
+
+
+def start_transfer_packet(key: bytes) -> bytes:
+    """Header-only 0x07 the app sends after Open/Seek/Playback to start the
+    pipelined transfer on firmware that is silent to a bare Open."""
+    return _seal(_header(7), key)
