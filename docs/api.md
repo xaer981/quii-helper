@@ -396,6 +396,37 @@ generic talk is selected automatically. It does not run from the default main. T
 your own hardware only when talk activation is safe; do not assume a working
 video or receive-only audio stream proves outgoing talk support.
 
+### Receive-Only Talk Diagnostics
+
+If conversation startup times out waiting for preview audio, use this explicit
+diagnostic from a [checkout](setup.md#using-a-checkout):
+
+```shell
+python -m examples.diagnose_lan_talk
+```
+
+It uses `data/stream_credentials.json` and the LAN `.env` settings
+(`CAMERA_DEVICE_HOST`, `CAMERA_CHANNEL`, `CAMERA_STREAM`). Preview starts
+first, but talk connects **without waiting for any preview audio**. No cloud
+login, microphone, local playback, outgoing audio or door command is used.
+It still reserves an active talk connection: close other viewing/talk clients
+first and run only when interrupting a call is safe.
+
+The JSON report separates the two connections:
+
+| Field | Meaning |
+| --- | --- |
+| `handshake` | Setup crypto/SHA profile, Open status, advertised `codec_mask`, and SHA-validated `c_status` / `d_status`. `0` means success; `null` means no validated reply, **not** success. |
+| `codec` / `full_packet` | Negotiated outgoing G.711 codec (`4` A-law, `5` mu-law) and packet layout. An unsupported codec mask is reported before startup fails; no codec guessing or sending follows. |
+| `preview` / `talk` | Separate media packet types, E3 audio counts, codec/rate/channels, first-audio delay, video dimensions and CFrame assembly counters, including early talk media. No raw audio or video is included. |
+| `talk_startup_completed` | The native D-ready reply arrived. This alone does not prove incoming audio or audible outgoing talk. |
+| `status` / `errors` | Probe completion or a sanitized failure stage/type; partial statistics survive failure. `completed` with zero audio is a useful diagnostic result, not confirmed talk support. |
+
+Observation lasts ten seconds **after talk readiness**, in addition to
+connection startup deadlines. Ctrl+C closes both connections. Diagnostic
+memory/media budgets are bounded; see [protocol notes](protocol-notes.md#receive-only-talk-diagnostics).
+The production `talk()` / `start_talk()` readiness policy is unchanged.
+
 ## Computer Conversation (Experimental)
 
 **Available since 0.4.0.** Start preview normally with `serve_rtsp()`,

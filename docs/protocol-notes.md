@@ -266,6 +266,36 @@ physical PC microphone or headphones. Standalone API hardware coverage,
 overlapping-speech quality and Vimar talk are not established; echo cancellation
 is not implemented. See [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply).
 
+### Receive-Only Talk Diagnostics
+
+`protocols.tcp.probes.talk.diagnose_lan_talk()` uses the existing raw preview
+and talk transports, not the production coordinator's first-preview-audio
+gate. On 2026-10-30 GhidraMCP rechecks of vHome and exact vEye Pro confirmed
+`OnRecvOpen` (addresses above): status at byte 11, codec mask at 12-13, output
+layout at 14. `SendPlay` sends C1 then D1; `OnRecvPlay` makes D success the
+ready event, without checking for E3. A missing C reply is reported as absent
+even when D succeeds. Command statuses are retained only after SHA validation;
+setup itself is unencrypted. Codec selection and production wire packets
+are unchanged; codec 8 is still not supported for outgoing talk.
+
+One preview reader and the calling talk reader each own a separate CFrame
+packer. A diagnostic-only observer sees validated talk messages during Open
+as well as after ready, once per wire message; dequeuing early media does
+not count it twice. Startup failure preserves these counters but not payloads.
+No microphone/playback backend, A2 transmission, receive toggle, cloud login
+or automatic retry is invoked. Setup/Open/C1/D1 and ordinary keepalives are
+active control traffic and may reserve device resources.
+
+Each source has a 1 MiB message/partial-frame limit, 32 MiB total media budget
+and at most 16 codec-format and dimension buckets; these are diagnostic policy,
+not native protocol limits. Observation accepts 0 < seconds <= 60 after talk
+readiness, with separate connection deadlines and bounded reader shutdown.
+Failures close both transports and return only stages/exception types, not
+exception bodies or credentials. Offline tests cover early/missing audio,
+split CFrames, late/missing C, rejected/unverified D, unsupported codec masks,
+cancellation, memory limits and cleanup. No new Vimar hardware result is
+claimed, and this probe does not fix resolution or establish duplex support.
+
 ## RTSP Streaming
 
 The RTSP server is local-only infrastructure around the decoded camera frames.

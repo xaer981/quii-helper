@@ -42,7 +42,9 @@ def reply(kind, *, status=0, mask=1, full_packet=0, bad_sha=False):
     return encrypt(bytes(header)) + encrypt(digest)
 
 
-def session_and_socket(*, responses=None, channel=None, **overrides):
+def session_and_socket(
+    *, responses=None, channel=None, message_observer=None, **overrides
+):
     sock = ScriptedSocket()
     if responses is None:
         responses = [reply(0x0B), reply(0x0C), reply(0x0D)]
@@ -53,6 +55,7 @@ def session_and_socket(*, responses=None, channel=None, **overrides):
         config(**overrides),
         channel=channel,
         transport_factory=lambda host, port: transport,
+        message_observer=message_observer,
     )
     return session, sock
 
@@ -127,6 +130,64 @@ def test_send_or_receive_nack_is_not_ready(kind):
     assert sock.closed and not session.ready
 
 
+def test_handshake_diagnostics_survive_close_without_exposing_credentials():
+    session, sock = session_and_socket(
+        responses=[reply(0x0B, mask=3), reply(0x0C), reply(0x0D)]
+    )
+    with session:
+        expected = {
+            "setup_status": 0,
+            "crypto_mode": 2,
+            "sha_mode": 1,
+            "open_status": 0,
+            "codec_mask": 3,
+            "c_status": 0,
+            "d_status": 0,
+        }
+        assert session.handshake_diagnostics == expected
+        session.handshake_diagnostics["codec_mask"] = 99
+        assert session.handshake_diagnostics == expected
+    assert sock.closed and session.handshake_diagnostics == expected
+
+
+@pytest.mark.parametrize(
+    "kind,key", [(0x0B, "open_status"), (0x0C, "c_status"), (0x0D, "d_status")]
+)
+def test_diagnostics_keep_authenticated_rejections(kind, key):
+    responses = ([] if kind == 0x0B else [reply(0x0B)]) + [
+        reply(kind, status=8)
+    ]
+    session, _ = session_and_socket(responses=responses)
+    with pytest.raises(QuiiConnectionError, match="status 8"):
+        session.open()
+    assert session.handshake_diagnostics[key] == 8
+
+
+def test_diagnostics_do_not_report_unverified_ack_as_success():
+    session, _ = session_and_socket(
+        responses=[reply(0x0B), reply(0x0D, bad_sha=True)]
+    )
+    with pytest.raises(QuiiConnectionError, match="SHA256"):
+        session.open()
+    assert session.handshake_diagnostics["d_status"] is None
+
+
+def test_diagnostics_distinguish_missing_c_reply_from_ready_d_reply():
+    session, _ = session_and_socket(responses=[reply(0x0B), reply(0x0D)])
+    with session:
+        assert session.ready
+        assert session.handshake_diagnostics["c_status"] is None
+        assert session.handshake_diagnostics["d_status"] == 0
+
+
+def test_diagnostics_preserve_unsupported_codec_mask():
+    session, _ = session_and_socket(responses=[reply(0x0B, mask=16)])
+    with pytest.raises(QuiiConnectionError, match="G.711"):
+        session.open()
+    assert session.handshake_diagnostics["codec_mask"] == 16
+    assert session.codec is None
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -160,6 +221,50 @@ def test_early_media_is_bounded():
     )
     with pytest.raises(QuiiConnectionError, match="too much"):
         session.open()
+    assert sock.closed
+
+
+def test_observer_sees_early_media_once_even_when_dequeued_after_ready():
+    observed = []
+    session, _ = session_and_socket(
+        responses=[media(b"early"), reply(0x0B), reply(0x0D)],
+        message_observer=observed.append,
+    )
+    with session:
+        assert len(observed) == 3
+        assert session.recv_message()["payload"] == b"early"
+        assert len(observed) == 3
+
+
+def test_observer_sees_early_media_before_later_startup_rejection():
+    observed = []
+    session, sock = session_and_socket(
+        responses=[reply(0x0B), media(b"early"), reply(0x0D, status=8)],
+        message_observer=observed.append,
+    )
+    with pytest.raises(QuiiConnectionError, match="status 8"):
+        session.open()
+    assert sock.closed
+    assert [m["payload"] for m in observed if m["is_media"]] == [b"early"]
+
+
+def test_observer_does_not_see_unverified_commands():
+    observed = []
+    session, _ = session_and_socket(
+        responses=[reply(0x0B, bad_sha=True)],
+        message_observer=observed.append,
+    )
+    with pytest.raises(QuiiConnectionError, match="SHA256"):
+        session.open()
+    assert observed == []
+
+
+def test_observer_failure_closes_session():
+    observer = Mock(side_effect=ValueError("synthetic observer failure"))
+    session, sock = session_and_socket(message_observer=observer)
+    with pytest.raises(QuiiConnectionError, match="startup failed"):
+        session.open()
+    observer.assert_called_once()
     assert sock.closed
 
 
