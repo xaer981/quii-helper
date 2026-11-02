@@ -132,6 +132,13 @@ maintainer. It does not establish local key acquisition, other Camera APIs,
 strict cloud TLS, two-way audio or local call-event support. See
 [Compatibility](../COMPATIBILITY.md#validation-scope) for the exact scope.
 
+Intelbras Allo wT7 community reports additionally cover LAN live capture,
+snapshots/RTSP through a Home Assistant integration, and explicit pipelined
+archive JPEG downloads. These reports concern different model IDs and builds;
+the integration also patches audio headers and image geometry. See the
+[Intelbras evidence](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports)
+before attributing integration features to the unmodified public Camera API.
+
 ## Media Capture
 
 The camera sends H.264 NAL units wrapped inside QUII/RBUDP payloads.
@@ -712,16 +719,17 @@ CGI archive selectors `idx`, `idf`, `ids` and `idc` may instead be nested in
 or empty. Nonempty flat fields retain priority, including numeric zero.
 Zero-padded `idx` is preserved, and unexposed address fields remain in `raw`.
 Offline XML-to-Open vectors cover this layout without a manual `idx` override.
-This fixes metadata parsing, not the reported silent Open on Intelbras Allo
-wT7: neither an Allo Plus binary comparison nor an Intelbras device test was
-performed for this fix. A live session succeeding does not prove file-mode parity.
+This parser fix alone does not fix the reported silent Open on Intelbras Allo
+wT7; that requires the separately selected pipelined path below. No maintainer
+Allo Plus binary comparison or Intelbras hardware test is implied. A live
+session succeeding does not prove file-mode parity.
 An isolated LAN-only Tantos/Pi check with this parser downloaded the ten most
 recent video entries from nested `address` metadata using a saved key. All ten
 MP4s contained H.264 1888x1080 video at about 25 FPS and AAC 8000 Hz mono audio,
 lasted about 62 seconds and passed complete FFmpeg decoding without errors.
 SHA256 matched after copying them to the local machine. Picture lists on both
-channels were empty, so archived JPEG transfer remains unverified. The check
-made no cloud requests, door commands or changes to working services.
+channels were empty, so archived JPEG transfer on Tantos remains unverified.
+The check made no cloud requests, door commands or changes to working services.
 
 File Setup is `A9` with byte 9 equal to 1. In the ordinary download path,
 `ITDKDownload::OnCheckFile` (`0078420c`) calls the reader's initial Seek.
@@ -744,6 +752,15 @@ Open/Seek/Playback/`07` sent before reading replies. This is not the generic
 vHome/vEye Pro `SendOpen` body above; its authentication/pipelining behavior
 remains device-specific evidence, not verified Tantos behavior. The normal
 path and its authenticated EOF requirement are unchanged.
+
+On 2026-11-02, the Intelbras owner
+[confirmed the merged API](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434)
+on their reported `IDS94B1W`, using `main` commit `1d6d81d`: nested selectors
+were populated automatically, and `download_record(..., protocol="pipelined")`
+returned a 53,755-byte JPEG that opened and decoded as 1280x720 baseline MJPEG
+without errors. This is community hardware evidence for that model/profile,
+not a maintainer test or proof of Intelbras video/default-protocol downloads.
+The variant and nested-selector fixes are not in published PyPI 0.4.0.
 
 Only pipelined JPEG downloads may finish without EOF `08`. Their incremental
 marker parser skips length-delimited APP/COM segments, handles entropy byte
@@ -796,7 +813,7 @@ in the validation output. These were isolated LAN-only tests using the saved
 key, with no cloud requests, door commands or service changes.
 The owner also reviewed a downloaded MP4 locally and confirmed correct image
 and sound. Exact lip-sync and long-run playback quality were not measured.
-Archived JPEG transfer, Allo Plus/Intelbras firmware, and simultaneous
+Archived JPEG transfer on Tantos, archived video on Intelbras, and simultaneous
 archive/live resource availability remain unverified. H.265, AAC input,
 interactive/time-range playback, HTTP download and automatic cloud fallback
 are not supported by this implementation.

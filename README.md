@@ -3,6 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/quii-helper)](https://pypi.org/project/quii-helper/)
 [![Python](https://img.shields.io/pypi/pyversions/quii-helper)](https://pypi.org/project/quii-helper/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/xaer981/quii-helper/blob/main/LICENSE)
+[![Support on Boosty](https://img.shields.io/badge/Boosty-Support-F15F2C)](https://boosty.to/xaer981)
 
 Use QUII / Qualvision cameras and video intercoms from Python, without running
 the original mobile app. Capture images and video, serve RTSP, inspect device
@@ -53,9 +54,9 @@ file-backed audio adapter. For a PC microphone/headphones bridge,
 see [`session.start_talk()` / `stop_talk()`](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental)
 on the handle from `serve_rtsp()`, and `python -m examples.converse --channel 2`.
 Video and conversation share one preview; stopping talk leaves video running.
-The optional `audio` extra is needed only for explicit PC audio. Vimar talk and physical
-PC duplex quality remain unverified. No RTSP backchannel or echo cancellation
-is provided; use headphones.
+The optional `audio` extra is needed only for explicit PC audio. Vimar
+audio/talk remain under investigation; physical PC duplex quality is
+unverified. No RTSP backchannel or echo cancellation is provided; use headphones.
 
 Version 0.4.0 also adds experimental archived JPEG/MP4 downloads with
 [`Camera.download_record(entry)`](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries).
@@ -63,8 +64,11 @@ This LAN-only API returns bytes using a saved key/auth pair, without preview
 or cloud access. Video supports H.264 with optional G.711 audio and requires
 FFmpeg; private temporary files are cleaned automatically. Archived H.264 +
 G.711 video downloads were verified on Tantos/Pi, including owner-reviewed
-image and sound; archived JPEG downloads remain unverified. See
-[archive compatibility](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md#tantos-archive-downloads)
+image and sound. On `main`, Intelbras Allo wT7 archive JPEG downloads are also
+community verified with the explicit `protocol="pipelined"` variant and its
+additional credentials; this is not in PyPI 0.4.0. See
+[archive setup](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries)
+and [device reports](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md#intelbras-allo-wt7-community-reports)
 for the validation scope.
 
 ## Compatibility 🔍
@@ -74,7 +78,14 @@ for the validation scope.
   Shared-preview speech/reply and archived-video image/sound were also confirmed.
 - **Vimar K40955**, firmware **V401R001B002**, with **vEye Pro 1.9.4.0.2**:
   saved-key LAN RTSP, [confirmed by a user](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080)
-  on 2026-10-25. Other features on this model remain unverified.
+  on 2026-10-25. Video was observed at 352x288 / about 20 FPS;
+  audio remains unresolved.
+- **Intelbras Allo wT7** with **Allo Plus**: community reports cover LAN
+  snapshots/RTSP on **IDS9478AW** through [a Home Assistant integration](https://github.com/fdaneluzzi/homeassistant-allo-wt7),
+  and LAN live capture plus archive JPEG download on **IDS94B1W**,
+  [confirmed on `main`](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434)
+  with `protocol="pipelined"`. Model IDs, integration workarounds and API
+  coverage differ; this is not blanket support for every wT7 variant.
 
 Tantos LAN playback and cloud-key bootstrap were also checked on a physical
 Raspberry Pi (Linux ARM64). A saved key worked for about four days but no longer

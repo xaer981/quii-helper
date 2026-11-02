@@ -923,8 +923,13 @@ archive metadata. Since 0.4.0, the package additionally exposes a separate,
 experimental LAN TCP method to download an archived picture or video as bytes.
 Archived H.264 + G.711 video downloads were verified on Tantos/Pi; the owner
 also confirmed correct image and sound in a downloaded MP4. Archived JPEG
-downloads and other firmware remain unverified. See
-[archive compatibility](../COMPATIBILITY.md#tantos-archive-downloads).
+downloads are community verified on Intelbras Allo wT7 `IDS94B1W` using
+`main` commit `1d6d81d` and the explicit `pipelined` variant described below.
+That variant and the nested-selector fix are not in published PyPI 0.4.0.
+See [Tantos archive tests](../COMPATIBILITY.md#tantos-archive-downloads) and
+[Intelbras reports](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports)
+for the distinct validation scopes; other model/firmware combinations are
+unverified.
 Interactive archive playback/seek is not exposed.
 
 | Method | Returns | Purpose |
@@ -977,8 +982,9 @@ Only LAN-live AES-256/SHA256 is supported, without separately encrypted media.
 Integrity checks cover complete CPacket framing and JPEG SOI/EOI markers,
 **not full JPEG decoding**. The transport is closed on success and failure.
 
-`protocol="pipelined"` is an explicit alternative for firmware such as the
-Intelbras Allo wT7; it is not selected automatically. It requires the same LAN
+**Available on `main`, not in PyPI 0.4.0:** `protocol="pipelined"` is an
+explicit alternative for firmware such as the Intelbras Allo wT7; it is not
+selected automatically. It requires the same LAN
 key/auth pair, plus the device's cloud `dynamic_password` and original-app
 `oem` in `AutonomousConfig`. The dynamic password is distinct from `auth_code`
 and the cloud account password. Pass it explicitly; `load_config()` does not
@@ -988,6 +994,16 @@ does not persist it. Use `AutonomousConfig(..., dynamic_password=...)` or
 integration, retaining the configured LAN key/auth pair and OEM. Then call
 `camera.download_record(entry, protocol="pipelined")`.
 
+Until the next PyPI release, install `main` in your already configured virtual
+environment (Git is required):
+
+```shell
+python -m pip install --force-reinstall --no-deps "quii-helper @ git+https://github.com/xaer981/quii-helper.git@main"
+```
+
+This command keeps the dependencies installed during
+[setup](setup.md#using-an-installed-package).
+
 This variant sends Open/Seek/Playback/`07` before reading replies and uses the
 `adminapp` dynamic-password/OEM authentication form. JPEG transfers may end at
 a structural EOI without EOF `08`; metadata segments, escaped bytes and restart
@@ -995,6 +1011,11 @@ markers are accounted for, not merely searched for `FF D9`. Complete CPackets
 are still required, trailing bytes are rejected, and disconnect alone is not
 success. Video still requires EOF `08`. The existing default protocol is the
 verified Tantos path; the Intelbras alternative is not a universal replacement.
+
+The Intelbras owner confirmed that this public-API path returned a complete
+53,755-byte JPEG that opened and decoded at 1280x720 without FFmpeg errors.
+This is an archived picture, not a live snapshot resolution test or evidence
+that archived-video download or high-level talk works on Intelbras.
 
 Video is remuxed to MP4 without re-encoding H.264. Native per-frame timestamps
 are retained, including variable frame intervals; the search interval or

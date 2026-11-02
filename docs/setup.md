@@ -256,9 +256,12 @@ requires a restricted folder ACL. The file stores no cloud account password,
 session or opening password. It also does not store/discover the current IP.
 Do not use a file belonging to another device.
 
-Saved-key LAN RTSP has maintainer validation on Tantos and a community success
-report on Vimar K40955. Other features are not established by that report;
-see [Compatibility](../COMPATIBILITY.md) for per-model scope and prerequisites.
+Saved-key LAN RTSP has maintainer validation on Tantos and community reports
+for Vimar K40955 and Intelbras Allo wT7. The Intelbras Home Assistant integration
+uses its own credential bootstrap and audio/image workarounds; its full feature
+set does not establish support for every Camera API in an unmodified package.
+See [Compatibility](../COMPATIBILITY.md) for exact model IDs, tested versions,
+per-feature scope and prerequisites. Vimar audio remains unresolved.
 The Tantos investigation also confirmed that an old key can stop working and
 an explicitly fetched replacement can restore media. Maximum key lifetime,
 reboot persistence and operation with the camera's own Internet access blocked
