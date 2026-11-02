@@ -7,6 +7,10 @@ from dataclasses import replace
 import pytest
 
 from quii_helper.device.cgi.models import DeviceRecordFileInfo
+from quii_helper.device.cgi.parser import (
+    parse_cgi_response,
+    parse_record_message_info,
+)
 from quii_helper.protocols.quii.crypto import aes_cbc_crypt
 from quii_helper.protocols.tcp.archive import packets
 from quii_helper.support.errors import ConfigurationError
@@ -129,6 +133,41 @@ def test_open_has_structured_metadata_not_a_live_url_or_filename(monkeypatch):
     ).ljust(112, b"\0")
     assert FILENAME.encode() not in extension
     assert b"mode=real" not in extension
+
+
+def test_nested_picture_address_reaches_native_open_without_manual_idx(
+    monkeypatch,
+):
+    monkeypatch.setattr(packets.time, "time", lambda: 1234567890)
+    # Same nesting and zero-padded idx as wT7, with synthetic file selectors.
+    filename = (
+        "00_2026-01-02-03-04-05_2026-01-02-03-04-05"
+        "_00_00_16909060_406_01_223_0081"
+    )
+    response = parse_cgi_response(
+        "get.record.message",
+        f"""<envelope><body><error>0</error><content><record><datalist><data>
+        <filetype>picture</filetype><filename>{filename}</filename>
+        <starttime>2026-01-02T03:04:05Z</starttime><filesize>81</filesize>
+        <address><idx>0000000000</idx><idf>0</idf><ids>1</ids><idc>1</idc>
+        <idb>406</idb><idp>0</idp><idd>0</idd></address>
+        </data></datalist><page>0</page></record></content></body></envelope>""",
+    )
+    entry = parse_record_message_info(response).records[0]
+    assert entry.picture_index == "0000000000"
+    assert entry.channel_id == "1" and entry.stream == "main"
+    assert entry.frame_rate == 0 and entry.file_size == 81
+    descriptor = packets.record_descriptor(entry)
+    header, extension = plain(packets.open_packet(descriptor, "P" * 64, KEY))
+    assert header[0] == 2
+    assert header[13:] == bytes.fromhex(
+        "0000" "05314468" "00" "04030201" "01960000" "00000000"
+    )
+    body = b"adminapp2&&" + b"P" * 64 + b"\0\0"
+    assert extension == (body + hashlib.sha256(header + body).digest()).ljust(
+        112, b"\0"
+    )
+    assert filename.encode() not in extension
 
 
 def test_seek_mode_and_keepalive_are_header_only_native_commands(monkeypatch):
