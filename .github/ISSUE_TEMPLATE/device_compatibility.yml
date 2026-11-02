@@ -11,6 +11,7 @@ body:
     id: device
     attributes:
       label: Device model
+      description: Include the hardware model/revision if available, not only the product name. Do not include serial numbers or device IDs.
       placeholder: "Tantos Marilyn Wi-Fi s"
     validations:
       required: true
@@ -25,7 +26,7 @@ body:
     id: app
     attributes:
       label: Mobile app and version
-      placeholder: "vHome 2.2 or vEye Pro 1.9.4.0.2"
+      placeholder: "vHome 2.2, vEye Pro 1.9.4.0.2, or Allo Plus"
     validations:
       required: true
   - type: dropdown
@@ -56,6 +57,10 @@ body:
         - label: Snapshot works
         - label: MP4 capture works
         - label: RTSP serving works
+        - label: Receive audio works (specify RTSP, recording, or raw frames below)
+        - label: Talk transmission was explicitly authorized and physically heard
+        - label: Archive JPEG download works and the image opens
+        - label: Archive video download works and the file plays
         - label: Cloud/P2P login works
         - label: Incoming-call cloud history works
         - label: Door control was explicitly authorized and physically confirmed
@@ -63,6 +68,7 @@ body:
     id: notes
     attributes:
       label: Notes and redacted logs
+      description: Include the quii-helper version/commit, connection mode, protocol variant and any integration-specific patches or workarounds.
       render: text
     validations:
       required: false

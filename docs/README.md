@@ -22,7 +22,7 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); available since 0.3.0, tested on Tantos. |
 | Send sound to an intercom | [Experimental LAN talk](api.md#lan-talk-experimental); available since 0.4.0. Shared-preview speech/reply was confirmed on Tantos panel 2 with a file-backed adapter; see [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply). |
 | Watch and talk from a computer | [Computer conversation](api.md#computer-conversation-experimental); available since 0.4.0, `session.start_talk()` / `stop_talk()` share the RTSP preview. Optional audio extra, microphone and headphones. |
-| Download an archived picture or video | [Archive queries and downloads](api.md#archive-queries); experimental downloads since 0.4.0. Tantos video image/sound confirmed; archived JPEG unverified. |
+| Download an archived picture or video | [Archive queries and downloads](api.md#archive-queries); Tantos video image/sound confirmed. Intelbras archive JPEG is community verified on `main` with the new `pipelined` variant, not in PyPI 0.4.0; see [device reports](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports). |
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
 | Read incoming-call history | [Incoming call history](api.md#incoming-call-history-experimental); this is not a live subscription. |
 | Open a connected door | [Door control](api.md#door-control); these calls have physical effects. |

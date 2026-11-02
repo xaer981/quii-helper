@@ -2840,7 +2840,9 @@ class Camera:
         `entry.start_time` when supplied, otherwise the filename start time;
         both are device-local calendar values without timezone conversion.
         Experimental; H.264 + G.711 video downloads verified on Tantos/Pi.
-        Archived JPEG downloads and other firmware remain unverified.
+        Archived JPEG downloads are community verified on Intelbras Allo wT7
+        IDS94B1W with ``protocol="pipelined"``. Other model/protocol combinations
+        remain unverified; see COMPATIBILITY.md for per-device scope.
 
         Args:
             entry: A `CameraDeviceRecordFileInfo` from an archive query with

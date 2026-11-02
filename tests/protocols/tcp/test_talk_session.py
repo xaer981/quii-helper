@@ -163,7 +163,13 @@ def test_early_media_is_bounded():
     assert sock.closed
 
 
-def test_read_timeout_preserves_partial_header_and_body():
+def test_read_timeout_preserves_partial_header_and_body(monkeypatch):
+    # Scripted socket timeouts, not runner scheduling, drive fragmentation here.
+    clock = SimpleNamespace(monotonic=lambda: 100.0)
+    monkeypatch.setattr(talk_module, "time", clock)
+    monkeypatch.setattr(
+        "quii_helper.protocols.tcp.transport.socket_transport.time", clock
+    )
     session, sock = session_and_socket()
     packet = media(b"fragmented")
     with session:

@@ -5,6 +5,29 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Explicit `protocol="pipelined"` archive downloads with dynamic-password/OEM
+  authentication and Open/Seek/Playback/`07` sent before reading. The default
+  auth-code/wait-for-Open path is unchanged. Refs #20, #27.
+
+### Fixed
+
+- Read archive selectors from nested `address` metadata when flat values are
+  missing, preserving zero and zero-padded `idx`. Refs #20, #25.
+
+### Documentation
+
+- Add community compatibility reports for Intelbras Allo wT7 `IDS9478AW`
+  (Home Assistant integration) and `IDS94B1W` (public-API pipelined JPEG download
+  verified on `main` on 2026-11-02). Distinguish model IDs, tested builds,
+  integration-only workarounds and features from unmodified Camera API support.
+- Align README, setup/API guides, protocol notes, archive docstrings, Allo Plus
+  package keywords, and the device-report form with that evidence. Record the
+  unresolved Vimar audio limitation without claiming a hardware resolution limit.
+
 ## 0.4.0 - 2026-10-29
 
 ### Added
@@ -63,8 +86,9 @@ being stabilized.
 ### Documentation
 
 - Record two successful Tantos/Pi archive-video downloads and owner-confirmed
-  image/sound playback on 2026-10-29. Archived JPEG downloads and Intelbras /
-  Allo Plus compatibility remain unverified; this does not close issue #20.
+  image/sound playback on 2026-10-29. At release, archived JPEG downloads and
+  Intelbras / Allo Plus compatibility were unverified; later results are
+  recorded under Unreleased and in COMPATIBILITY.md.
 - Record the Tantos shared-preview conversation acceptance test and separate
   it from physical PC audio-device and Vimar coverage. Talk and archive
   downloads remain experimental in this release.
