@@ -87,6 +87,7 @@ def download_record_bytes(
     executable = require_ffmpeg() if entry.file_type == "video" else ""
     key = config.stream_key.encode("utf-8")
     pipelined = protocol == "pipelined"
+    pipelined_picture = pipelined and entry.file_type == "picture"
     if pipelined:
         if not config.dynamic_password:
             raise ConfigurationError(
@@ -125,11 +126,7 @@ def download_record_bytes(
                         "archive media arrived before Open reply"
                     )
                 media.feed(payload)
-                if (
-                    pipelined
-                    and entry.file_type == "picture"
-                    and bytes(media.jpeg).rstrip(b"\x00").endswith(b"\xff\xd9")
-                ):
+                if pipelined_picture and media.jpeg_complete():
                     # Pipelined firmware may not send a final command frame;
                     # stop once the JPEG is complete (EOI received).
                     media.finish()
@@ -147,6 +144,10 @@ def download_record_bytes(
                 transfer.send(seek_packet(record, key))
                 transfer.send(playback_mode_packet(key))
             elif kind == 8:
+                if pipelined_picture and not media.jpeg_complete():
+                    raise CameraCaptureError(
+                        "archive ended without a complete JPEG"
+                    )
                 media.finish()
                 break
             elif kind in {2, 3, 5} | PLAY_REPLY_TYPES and raw[11]:
