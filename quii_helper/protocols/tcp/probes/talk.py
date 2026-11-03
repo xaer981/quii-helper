@@ -6,11 +6,15 @@ from collections import Counter
 from queue import Empty, SimpleQueue
 from threading import Event, Lock, Thread
 from typing import Any
+from uuid import uuid4
 
 from quii_helper.config import AutonomousConfig
 from quii_helper.media.audio import CameraAudioFrame
 from quii_helper.media.frames.cframe_pack import QuiiCFramePack
 from quii_helper.models.packets import DecodedQuiiMessage
+from quii_helper.protocols.tcp.live.packet_builder import (
+    validate_live_identity,
+)
 from quii_helper.protocols.tcp.live.session import (
     LanTcpSession,
     validate_lan_config,
@@ -23,6 +27,7 @@ from quii_helper.protocols.tcp.transport.client import TcpTransportFactory
 from quii_helper.protocols.tcp.transport.socket_transport import (
     TcpSocketTransport,
 )
+from quii_helper.support.errors import ConfigurationError
 
 MAX_MESSAGE_BYTES = 1024 * 1024
 MAX_SOURCE_BYTES = 32 * 1024 * 1024
@@ -119,6 +124,8 @@ def diagnose_lan_talk(
     *,
     duration_seconds: float = 10.0,
     talk_channel: int = 65535,
+    profile: str = "current",
+    client_id: str = "",
     transport_factory: TcpTransportFactory = TcpSocketTransport,
 ) -> dict[str, Any]:
     """Observe preview and talk separately, without waiting for preview audio.
@@ -134,6 +141,12 @@ def diagnose_lan_talk(
             Connection stages additionally use config.connect_timeout.
         talk_channel: Native generic selector 65535, or an explicit panel id.
             No automatic selector retries or fallback are performed.
+        profile: Explicit identity comparison: current keeps path/empty IDs;
+            vhome uses config.oem without commas for both CustomIDs; veye
+            additionally sends the same ClientID on both connections.
+            This selects identity fields, not a complete app emulation.
+        client_id: Optional diagnostic identity for veye only. Otherwise one
+            UUID is generated for this invocation, never a phone's identity.
         transport_factory: Existing TCP transport seam for offline tests.
 
     Returns:
@@ -155,6 +168,24 @@ def diagnose_lan_talk(
         )
     validate_lan_config(config)
     selector = normalize_talk_channel(talk_channel)
+    if profile not in ("current", "vhome", "veye"):
+        raise ConfigurationError("unsupported LAN talk diagnostic profile")
+    if not isinstance(client_id, str):
+        raise ConfigurationError("client_id must be a string")
+    if profile != "veye" and client_id:
+        raise ConfigurationError("client_id requires the veye profile")
+    custom_id = None
+    if profile != "current":
+        if not isinstance(config.oem, str):
+            raise ConfigurationError("diagnostic OEM must be a string")
+        # Both QvCore.initParams implementations strip OEM commas for native.
+        custom_id = config.oem.replace(",", "")
+    if profile == "veye" and not client_id:
+        client_id = uuid4().hex
+    try:
+        validate_live_identity(custom_id, client_id)
+    except ValueError as exc:
+        raise ConfigurationError(str(exc)) from None
     started = time.monotonic()
     preview_traffic, talk_traffic = _Traffic(started), _Traffic(started)
     stopped = Event()
@@ -197,13 +228,20 @@ def diagnose_lan_talk(
                     failed("talk_close", close_error)
 
     try:
-        preview = LanTcpSession(config, transport_factory=transport_factory)
+        preview = LanTcpSession(
+            config,
+            transport_factory=transport_factory,
+            custom_id=custom_id,
+            client_id=client_id,
+        )
         stage = "talk_create"
         talk = LanTalkSession(
             config,
             channel=selector,
             transport_factory=transport_factory,
             message_observer=talk_traffic.feed,
+            custom_id=custom_id,
+            client_id=client_id,
         )
         stage = "preview_open"
         preview.open()
@@ -251,6 +289,12 @@ def diagnose_lan_talk(
             break
     return {
         "status": "failed" if errors else "completed",
+        "identity_profile": profile,
+        "identity": {
+            "custom_id_present": custom_id is not None,
+            "client_id_present": bool(client_id),
+            "shared_between_connections": profile != "current",
+        },
         "preview_channel": config.channel,
         "preview_stream": config.stream,
         "talk_channel": selector,

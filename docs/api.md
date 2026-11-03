@@ -385,8 +385,9 @@ deadline for the entire two-connection startup.
 The supported wire profile is AES-256/SHA256, G.711 A-law/mu-law at 8000 Hz
 mono, CPacket incoming audio, and either compact or full CPacket outgoing
 audio as negotiated by Open. Other codecs/profiles fail explicitly. The
-native client's optional vEye Pro `client_id`/`uhid` metadata and legacy
-HS/GLNK fallback are not implemented. See [native parity notes](protocol-notes.md#lan-talk).
+native client's optional vEye Pro `client_id` is available only in the
+diagnostic below, not the production conversation API; `uhid` metadata and
+legacy HS/GLNK fallback are not implemented. See [native parity notes](protocol-notes.md#lan-talk).
 
 `python -m examples.talk` sends **`data/talk.wav`** using saved credentials.
 It validates an uncompressed PCM16 LE, 8000 Hz mono WAV before connecting,
@@ -426,6 +427,33 @@ Observation lasts ten seconds **after talk readiness**, in addition to
 connection startup deadlines. Ctrl+C closes both connections. Diagnostic
 memory/media budgets are bounded; see [protocol notes](protocol-notes.md#receive-only-talk-diagnostics).
 The production `talk()` / `start_talk()` readiness policy is unchanged.
+
+To compare the native identity fields, run each profile explicitly and
+sequentially, with other viewing/talk clients closed:
+
+```shell
+python -m examples.diagnose_lan_talk --profile current > talk-current.json
+python -m examples.diagnose_lan_talk --profile vhome > talk-vhome.json
+python -m examples.diagnose_lan_talk --profile veye > talk-veye.json
+```
+
+`current` is the unchanged default: preview has the path body and talk has
+empty IDs. Both native profiles require `CAMERA_OEM` from your app, not a
+hardcoded OEM for another device. They remove its commas and send the same
+`CustomID` in preview and talk. `veye` also generates **one UUID per run**
+and sends it as the same `ClientID` on both connections; it does not copy
+your phone's ID. Internal Python callers may supply `client_id` explicitly
+to `diagnose_lan_talk(..., profile="veye", client_id=...)` for a repeatable
+comparison. Other profiles reject a nonempty `client_id` before connecting.
+
+The report adds `identity_profile` and `identity` presence/shared flags,
+**never identifier values**. Compare audio counts and C/D statuses in all
+three reports; `completed` alone does not demonstrate sound. These are
+identity-field profiles, not full app emulation: they retain Setup, panel,
+stream, generic talk 65535 and C1/D1, without FastPlay, `uhid`, `inner`,
+`newcn`, cloud discovery or automatic profile fallback. Previous preview-only
+OEM comparisons did not fix Vimar audio; matching identities across both
+connections remains an unverified diagnostic hypothesis.
 
 ## Computer Conversation (Experimental)
 

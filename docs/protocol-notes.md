@@ -275,8 +275,36 @@ gate. On 2026-10-30 GhidraMCP rechecks of vHome and exact vEye Pro confirmed
 layout at 14. `SendPlay` sends C1 then D1; `OnRecvPlay` makes D success the
 ready event, without checking for E3. A missing C reply is reported as absent
 even when D succeeds. Command statuses are retained only after SHA validation;
-setup itself is unencrypted. Codec selection and production wire packets
+setup itself is unencrypted. Codec selection and production defaults
 are unchanged; codec 8 is still not supported for outgoing talk.
+
+On 2026-11-03 GhidraMCP rechecked the identity bodies against both libraries:
+
+| Native | Preview `OnSendPlay` | Talk `SendOpen` | Identity body |
+| --- | --- | --- | --- |
+| vHome | `0047d898` | `0051b6ac` | `username&&password\0CustomID\0` |
+| Exact vEye Pro 1.9.4.0.2 | `0051250c` | `005154d0` | Same, plus `ClientID\0` when nonempty |
+
+Java `QvCore.initParams` strips commas from OEM before native initialization.
+vEye passes an additional client identity; its live and talk objects obtain
+both IDs from the same parent device. The explicit diagnostic profiles
+`vhome` and `veye` reproduce these shared fields using `config.oem` and, for
+vEye, one generated UUID (or an explicitly supplied diagnostic `client_id`).
+The generated ID is not the Android ID and does not reproduce all app state.
+Native talk can additionally append `uhid=...\0` if the URL provides it and
+ClientID is nonempty; this probe does not invent or transmit that optional
+field. Setup, selectors, C/D requests and media decoding remain unchanged.
+
+`current` retains the existing path-body preview and empty-ID talk. Profiles
+are opt-in with no retry/fallback, not a new Camera default. CustomID must
+be nonempty after comma removal; each ID accepts at most 256 UTF-8 bytes
+and no NUL (a diagnostic bound, not a discovered native protocol limit). All
+metadata is validated before transport creation. Reports expose the selected
+profile and presence/shared flags only, not IDs, credentials or raw bodies.
+Offline tests decrypt both Opens, compare identity fields and selectors,
+validate body lengths/SHA/padding and prove the current default byte-identical.
+Preview-only OEM/client-ID variants already failed to restore Vimar audio;
+the combined preview/talk identity comparison is not hardware-verified.
 
 One preview reader and the calling talk reader each own a separate CFrame
 packer. A diagnostic-only observer sees validated talk messages during Open

@@ -1,15 +1,20 @@
 """Receive-only diagnostics using synthetic TCP packets, never a real device."""
 
+import hashlib
 import json
 import socket
 import struct
 import threading
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
+from quii_helper.device.security.auth import encode_device_password
 from quii_helper.protocols.tcp.codec.message_codec import decode_tcp_header
+from quii_helper.protocols.tcp.live.session import LanTcpSession
 from quii_helper.protocols.tcp.probes import talk as probe
+from quii_helper.protocols.tcp.talk.session import LanTalkSession
 from quii_helper.protocols.tcp.transport.socket_transport import (
     TcpSocketTransport,
 )
@@ -88,9 +93,9 @@ def audio_wire(data=b"private-audio", **kwargs):
     return encrypt(bytes(header)) + packet[32:]
 
 
-def run(factory, **kwargs):
+def run(factory, *, oem="synthetic-oem", **kwargs):
     return probe.diagnose_lan_talk(
-        config(channel=2, stream=3, connect_timeout=0.1),
+        config(channel=2, stream=3, connect_timeout=0.1, oem=oem),
         duration_seconds=0.02,
         transport_factory=factory,
         **kwargs,
@@ -126,6 +131,127 @@ def test_talk_starts_without_preview_audio_and_never_sends_media(sockets):
     rendered = json.dumps(report)
     for secret in ("private-audio", "synthetic-auth", "K" * 32):
         assert secret not in rendered
+
+
+@pytest.mark.parametrize(
+    "profile,client_id,expected_custom,expected_client",
+    [
+        ("current", "", None, ""),
+        ("vhome", "", "syntheticoem", ""),
+        ("veye", "provided-identity", "syntheticoem", "provided-identity"),
+        ("veye", "", "syntheticoem", "generated-identity"),
+    ],
+)
+def test_profiles_share_native_identity_fields_without_changing_controls(
+    sockets, monkeypatch, profile, client_id, expected_custom, expected_client
+):
+    generated = Mock(return_value=SimpleNamespace(hex="generated-identity"))
+    monkeypatch.setattr(probe, "uuid4", generated)
+    factory, pair = sockets(
+        preview=[media(audio_cpacket(b"preview-audio"))],
+        talk=[reply(0x0B), reply(0x0C), reply(0x0D), audio_wire()],
+    )
+    report = run(
+        factory, oem="synthetic,oem", profile=profile, client_id=client_id
+    )
+    assert report["status"] == "completed"
+    assert report["identity_profile"] == profile
+    assert report["identity"] == {
+        "custom_id_present": expected_custom is not None,
+        "client_id_present": bool(expected_client),
+        "shared_between_connections": profile != "current",
+    }
+    if profile == "veye" and not client_id:
+        generated.assert_called_once_with()
+    else:
+        generated.assert_not_called()
+    credentials = (
+        b"adminapp2&&" + encode_device_password("synthetic-auth").encode()
+    )
+    for index, custom in enumerate(
+        (
+            (
+                "/mode=real&idc=2&ids=3&ap=2"
+                if expected_custom is None
+                else expected_custom
+            ),
+            expected_custom or "",
+        )
+    ):
+        packet = pair[index].sent[1]
+        header, tail = decrypt(packet[:32]), decrypt(packet[32:])
+        expected = credentials + b"\0" + custom.encode() + b"\0"
+        if expected_client:
+            expected += expected_client.encode() + b"\0"
+        assert struct.unpack_from("<H", header, 11)[0] == len(expected)
+        assert tail[: len(expected)] == expected
+        assert (
+            tail[len(expected) : len(expected) + 32]
+            == hashlib.sha256(header + expected).digest()
+        )
+        assert not any(tail[len(expected) + 32 :])
+        assert header[0] == (1 if index == 0 else 0x0B)
+        assert struct.unpack_from("<H", header, 13)[0] == (
+            2 if index == 0 else 65535
+        )
+        assert header[15:18] == (b"\1\2\0" if index == 0 else bytes(3))
+    assert [decrypt(w[:32])[0] for w in pair[1].sent[1:]] == [0x0B, 0x0C, 0x0D]
+    for source in ("preview", "talk"):
+        assert report[source]["audio_frames"] == 1
+    rendered = json.dumps(report)
+    for private in (
+        "syntheticoem",
+        "synthetic,oem",
+        "provided-identity",
+        "generated-identity",
+        "synthetic-auth",
+        credentials.decode(),
+    ):
+        assert private not in rendered
+
+
+@pytest.mark.parametrize(
+    "profile,oem,client_id",
+    [
+        ("unknown", "oem", ""),
+        ("current", "oem", "unexpected"),
+        ("vhome", "oem", "unexpected"),
+        ("vhome", "", ""),
+        ("vhome", ",,,", ""),
+        ("vhome", None, ""),
+        ("vhome", "a\0b", ""),
+        ("veye", "x" * 257, "id"),
+        ("veye", "oem", "id\0suffix"),
+        ("veye", "oem", "\u044f" * 129),
+        ("veye", "oem", None),
+    ],
+)
+def test_invalid_profile_metadata_is_rejected_before_transport_creation(
+    profile, oem, client_id
+):
+    factory = Mock()
+    with pytest.raises(ConfigurationError):
+        run(factory, profile=profile, oem=oem, client_id=client_id)
+    factory.assert_not_called()
+
+
+@pytest.mark.parametrize("session_type", [LanTcpSession, LanTalkSession])
+@pytest.mark.parametrize(
+    "custom_id,client_id",
+    [(None, "client"), ("", ""), ("a\0b", ""), ("oem", "x" * 257)],
+)
+def test_sessions_validate_identity_before_allocating_transport(
+    session_type, custom_id, client_id
+):
+    factory = Mock()
+    with pytest.raises(ConfigurationError):
+        session_type(
+            config(),
+            transport_factory=factory,
+            custom_id=custom_id,
+            client_id=client_id,
+        )
+    factory.assert_not_called()
 
 
 def test_separate_audio_assemblers_and_early_talk_media_count_once(sockets):
@@ -302,8 +428,9 @@ def test_audio_metadata_validation_and_buckets_are_bounded(monkeypatch):
     assert report["other_formats"] == 1
 
 
+@pytest.mark.parametrize("profile", ["current", "vhome", "veye"])
 def test_example_uses_saved_key_for_lan_only_without_microphone(
-    monkeypatch, capsys
+    monkeypatch, capsys, profile
 ):
     from examples import diagnose_lan_talk as example
 
@@ -316,7 +443,7 @@ def test_example_uses_saved_key_for_lan_only_without_microphone(
     )
     diagnostic = Mock(return_value={"status": "completed"})
     monkeypatch.setattr(example, "diagnose_lan_talk", diagnostic)
-    example.main()
+    example.main([] if profile == "current" else ["--profile", profile])
     used_config = diagnostic.call_args.args[0]
     assert used_config.connection_mode == "lan"
     assert (
@@ -326,5 +453,19 @@ def test_example_uses_saved_key_for_lan_only_without_microphone(
     assert diagnostic.call_args.kwargs == {
         "duration_seconds": 10,
         "talk_channel": 65535,
+        "profile": profile,
     }
     assert json.loads(capsys.readouterr().out) == {"status": "completed"}
+
+
+def test_example_rejects_unknown_profile_before_loading_credentials(
+    monkeypatch,
+):
+    from examples import diagnose_lan_talk as example
+
+    saved = Mock()
+    monkeypatch.setattr(example.CameraStreamCredentials, "load", saved)
+    with pytest.raises(SystemExit) as exc:
+        example.main(["--profile", "unknown"])
+    assert exc.value.code == 2
+    saved.assert_not_called()

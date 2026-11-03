@@ -2,7 +2,27 @@ import re
 import time
 from dataclasses import dataclass
 
-from quii_helper.protocols.quii.live_packets import build_live_play_packet
+from quii_helper.protocols.quii.live_bodies import build_live_credentials_body
+from quii_helper.protocols.quii.live_envelope import (
+    build_live_play_packet_from_body,
+)
+
+
+def validate_live_identity(custom_id: str | None, client_id: str) -> None:
+    """Bound opt-in native metadata; never allow embedded field separators."""
+    if not isinstance(client_id, str):
+        raise ValueError("client_id must be a string")
+    if custom_id is None:
+        if client_id:
+            raise ValueError("client_id requires an explicit custom_id")
+        return
+    if not isinstance(custom_id, str) or not custom_id.strip():
+        raise ValueError("custom_id must be a nonempty string")
+    for name, value in (("custom_id", custom_id), ("client_id", client_id)):
+        if "\x00" in value or len(value.encode("utf-8")) > 256:
+            raise ValueError(
+                f"{name} must contain at most 256 bytes and no NUL"
+            )
 
 
 @dataclass
@@ -20,7 +40,11 @@ class QuiiLiveOpenPacketBuilder:
         play_param: int = 1,
         stream_flag: int | None = None,
         timestamp_ms: int | None = None,
+        custom_id: str | None = None,
+        client_id: str = "",
     ) -> bytes:
+        """Preserve the path-body default; native identity fields are opt-in."""
+        validate_live_identity(custom_id, client_id)
         selectors = re.search(
             r"(?:^|[/?&])idc=([0-9]+)&ids=([0-9]+)(?:&|$)", self.path
         )
@@ -39,10 +63,15 @@ class QuiiLiveOpenPacketBuilder:
             or not 0 <= stream_flag <= 0xFF
         ):
             raise ValueError("stream_flag must be a byte-sized stream index")
-        _header, _body, packet = build_live_play_packet(
+        body = build_live_credentials_body(
             self.username,
             self.password,
-            self.path,
+            self.path if custom_id is None else custom_id,
+        )
+        if client_id:
+            body += client_id.encode("utf-8") + b"\x00"
+        _header, _body, packet = build_live_play_packet_from_body(
+            body,
             timestamp_ms=(
                 int(time.time()) if timestamp_ms is None else timestamp_ms
             ),

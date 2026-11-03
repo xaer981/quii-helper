@@ -22,6 +22,9 @@ from quii_helper.protocols.tcp.codec.message_codec import (
     decode_tcp_header,
     decode_tcp_payload,
 )
+from quii_helper.protocols.tcp.live.packet_builder import (
+    validate_live_identity,
+)
 from quii_helper.protocols.tcp.transport.client import (
     QuiiClient,
     TcpTransportFactory,
@@ -98,6 +101,8 @@ class LanTcpSession:
     supported initially. Other profiles fail closed rather than guessing keys.
     The caller supplies AUTH_CODE (raw or encoded) and the saved 32-byte key.
     No credentials are loaded, renewed or persisted by this class.
+    Explicit custom/client IDs are internal diagnostics only; Camera keeps
+    its existing path-body default and never selects an identity profile.
     """
 
     def __init__(
@@ -105,9 +110,17 @@ class LanTcpSession:
         config: AutonomousConfig,
         *,
         transport_factory: TcpTransportFactory = TcpSocketTransport,
+        custom_id: str | None = None,
+        client_id: str = "",
     ) -> None:
         validate_lan_config(config)
+        try:
+            validate_live_identity(custom_id, client_id)
+        except ValueError as exc:
+            raise ConfigurationError(str(exc)) from None
         self.config = config
+        self._custom_id = custom_id
+        self._client_id = client_id
         self._key = config.stream_key.encode("utf-8")
         self._client = QuiiClient(
             config.device_host,
@@ -145,7 +158,15 @@ class LanTcpSession:
                 raise QuiiConnectionError(
                     "unsupported LAN TCP crypto/SHA profile; AES-256/SHA256 required"
                 )
-            self._client.send_live_open()
+            if self._custom_id is None:
+                self._client.send_live_open()
+            else:
+                packet = self._client.live_open_builder.build_live_open_packet(
+                    crypto_mode=2,
+                    custom_id=self._custom_id,
+                    client_id=self._client_id,
+                )
+                self._client.transport.send_all(packet)
             self._opened = True
             self._last_keepalive = time.monotonic()
             self._check_cancelled()

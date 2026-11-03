@@ -19,6 +19,9 @@ from quii_helper.protocols.tcp.codec.message_codec import (
     decode_tcp_header,
     decode_tcp_payload,
 )
+from quii_helper.protocols.tcp.live.packet_builder import (
+    validate_live_identity,
+)
 from quii_helper.protocols.tcp.live.session import validate_lan_config
 from quii_helper.protocols.tcp.talk.packets import (
     audio_packet,
@@ -54,13 +57,21 @@ class LanTalkSession:
         channel: int | None = None,
         transport_factory: TcpTransportFactory = TcpSocketTransport,
         message_observer: Callable[[DecodedQuiiMessage], None] | None = None,
+        custom_id: str | None = None,
+        client_id: str = "",
     ) -> None:
         validate_lan_config(config)
+        try:
+            validate_live_identity(custom_id, client_id)
+        except ValueError as exc:
+            raise ConfigurationError(str(exc)) from None
         try:
             self.channel = talk_channel(65535 if channel is None else channel)
         except ValueError as exc:
             raise ConfigurationError(str(exc)) from exc
         self.config = config
+        self._custom_id = custom_id
+        self._client_id = client_id
         self._key = config.stream_key.encode("utf-8")
         self._password = encode_device_password(config.auth_code)
         self._transport = transport_factory(
@@ -116,7 +127,13 @@ class LanTalkSession:
             if raw[10:12] != b"\x02\x01":
                 raise QuiiConnectionError("LAN talk requires AES-256/SHA256")
             self._send(
-                open_packet(self.channel, self._password, self._key),
+                open_packet(
+                    self.channel,
+                    self._password,
+                    self._key,
+                    custom_id=self._custom_id,
+                    client_id=self._client_id,
+                ),
                 deadline=deadline,
             )
             while self.codec is None:

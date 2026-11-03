@@ -6,8 +6,12 @@ import time
 from datetime import datetime
 
 from quii_helper.protocols.quii.crypto import aes_cbc_crypt
+from quii_helper.protocols.quii.live_bodies import build_live_credentials_body
 from quii_helper.protocols.quii.live_envelope import (
     build_live_play_packet_from_body,
+)
+from quii_helper.protocols.tcp.live.packet_builder import (
+    validate_live_identity,
 )
 
 SAMPLES_PER_FRAME = 320
@@ -31,10 +35,20 @@ def setup_packet() -> bytes:
     return bytes(header)
 
 
-def open_packet(channel: int, password: str, key: bytes) -> bytes:
-    """Build SendOpen with empty custom/client ids and no live-play flags."""
+def open_packet(
+    channel: int,
+    password: str,
+    key: bytes,
+    *,
+    custom_id: str | None = None,
+    client_id: str = "",
+) -> bytes:
+    """Build SendOpen; native identity metadata is opt-in, play flags stay zero."""
     channel = talk_channel(channel)
-    body = b"adminapp2&&" + password.encode("utf-8") + b"\x00\x00"
+    validate_live_identity(custom_id, client_id)
+    body = build_live_credentials_body("adminapp2", password, custom_id or "")
+    if client_id:
+        body += client_id.encode("utf-8") + b"\x00"
     return build_live_play_packet_from_body(
         body,
         packet_type=0x0B,

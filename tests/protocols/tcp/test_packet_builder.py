@@ -2,6 +2,7 @@
 
 import pytest
 
+from quii_helper.protocols.quii.live_packets import build_live_play_packet
 from quii_helper.protocols.tcp.codec.message_codec import decode_tcp_header
 from quii_helper.protocols.tcp.live.packet_builder import (
     QuiiLiveOpenPacketBuilder,
@@ -37,6 +38,32 @@ def test_explicit_stream_flag_override_is_preserved():
     )
     header = builder.build_live_open_packet(crypto_mode=0, stream_flag=0)
     assert header[13:17] == b"\x02\x00\x01\x00"
+
+
+@pytest.mark.parametrize("crypto_mode", [0, 1, 2])
+def test_default_packet_is_byte_identical_to_existing_path_builder(
+    crypto_mode,
+):
+    path = "/mode=real&idc=258&ids=3&ap=2"
+    builder = QuiiLiveOpenPacketBuilder(
+        "synthetic", "password", path, "K" * 32
+    )
+    actual = builder.build_live_open_packet(
+        crypto_mode=crypto_mode, timestamp_ms=1700000000
+    )
+    expected = build_live_play_packet(
+        "synthetic",
+        "password",
+        path,
+        timestamp_ms=1700000000,
+        ext_len_low=2,
+        ext_len_high=1,
+        stream_flag=2,
+        crypto_mode=crypto_mode,
+        key=builder.key_bytes(crypto_mode) if crypto_mode else None,
+        encrypt=crypto_mode != 0,
+    )[2]
+    assert actual == expected
 
 
 @pytest.mark.parametrize(

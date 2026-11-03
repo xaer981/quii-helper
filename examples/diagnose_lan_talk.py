@@ -5,6 +5,7 @@ This reserves preview and talk connections and can contend with the app.
 No cloud login, microphone, audio playback, outgoing media or door command.
 """
 
+import argparse
 import json
 from dataclasses import replace
 
@@ -12,8 +13,16 @@ from quii_helper import CameraStreamCredentials, load_config
 from quii_helper.protocols.tcp.probes.talk import diagnose_lan_talk
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Print sanitized ten-second diagnostics; do not refresh the saved key."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--profile",
+        choices=("current", "vhome", "veye"),
+        default="current",
+        help="identity fields only; run each comparison explicitly",
+    )
+    args = parser.parse_args(argv)
     saved = CameraStreamCredentials.load("data/stream_credentials.json")
     config = replace(
         load_config(),
@@ -23,7 +32,10 @@ def main() -> None:
     )
     try:
         report = diagnose_lan_talk(
-            config, duration_seconds=10, talk_channel=65535
+            config,
+            duration_seconds=10,
+            talk_channel=65535,
+            profile=args.profile,
         )
     except KeyboardInterrupt:
         return
