@@ -424,6 +424,16 @@ check establishes Android-independent delivery or compatibility with other
 accounts, application versions, or firmware. Earlier discovery timeouts are
 historical failures, not the latest validation result.
 
+`examples.watch_call_events` adds caller-side polling only: a fresh first page
+(`page=0`, `max_id="0"`, 15 rows) every five seconds for a three-minute window.
+The first successful page initializes an in-memory record-id baseline; later
+unseen ids print once per run. A query failure neither initializes nor clears
+the baseline. Slow queries count towards the observation window, but are not
+cancelled at its deadline. Offline fake-camera/clock tests cover these rules,
+duplicate rows and Ctrl+C. No cloud protocol change or new live validation is
+implied; delayed history and rows outside that page remain limitations. See
+[setup](setup.md#cloud-call-history) and [API limits](api.md#incoming-call-history-experimental).
+
 ## Local Device APIs
 
 Many read-only device methods use local HTTP/CGI-style endpoints.
@@ -760,7 +770,7 @@ were populated automatically, and `download_record(..., protocol="pipelined")`
 returned a 53,755-byte JPEG that opened and decoded as 1280x720 baseline MJPEG
 without errors. This is community hardware evidence for that model/profile,
 not a maintainer test or proof of Intelbras video/default-protocol downloads.
-The variant and nested-selector fixes are not in published PyPI 0.4.0.
+The variant and nested-selector fixes are included since 0.4.1.
 
 Only pipelined JPEG downloads may finish without EOF `08`. Their incremental
 marker parser skips length-delimited APP/COM segments, handles entropy byte

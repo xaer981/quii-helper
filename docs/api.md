@@ -773,10 +773,23 @@ record/session, but never registers push, logs out existing clients, marks
 records read, deletes them, or changes notification settings.
 
 **This is history access, not a live ringing subscription.** Repeated queries
-can return the same rows; no background polling, deduplication, delivery-time
-guarantee, face recognition, or door automation is included. For a fresh check,
-compare a baseline with `page=0, max_id="0"` after a ring. Do not use history
-alone as an automatic door-opening trigger.
+can return the same rows; the API itself starts no background polling and
+provides no deduplication, delivery-time guarantee, face recognition or door
+automation. For a fresh check, compare a baseline with `page=0, max_id="0"`
+after a ring. Do not use history alone as an automatic door-opening trigger.
+
+From a configured checkout, run `python -m examples.call_events` to read one
+page, or `python -m examples.watch_call_events` to poll every five seconds for
+up to three minutes. Both explicitly select cloud mode and require the
+[cloud history setup](setup.md#cloud-call-history); neither requires a LAN host
+or stream key. They honor `TLS_VERIFY` from `.env`.
+The watcher uses its first successful page as a baseline, then prints each
+unseen record id once per run. Failed queries do not clear that baseline.
+Only the first 15 rows are checked: bursts can be missed, and previously
+unseen rows may be delayed history rather than a call happening now. The time
+limit stops new polls, not an in-flight query; press Ctrl+C to stop sooner.
+Each poll performs the cloud login/reader login described above, without
+push registration, marking records read, media downloads or door commands.
 
 Discovery/authentication/response failures raise `QuiiConnectionError`, not
 a successful empty page. Error `1012` is the native alarm-session error.
@@ -925,7 +938,7 @@ Archived H.264 + G.711 video downloads were verified on Tantos/Pi; the owner
 also confirmed correct image and sound in a downloaded MP4. Archived JPEG
 downloads are community verified on Intelbras Allo wT7 `IDS94B1W` using
 `main` commit `1d6d81d` and the explicit `pipelined` variant described below.
-That variant and the nested-selector fix are not in published PyPI 0.4.0.
+That variant and the nested-selector fix are available since 0.4.1.
 See [Tantos archive tests](../COMPATIBILITY.md#tantos-archive-downloads) and
 [Intelbras reports](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports)
 for the distinct validation scopes; other model/firmware combinations are
@@ -982,7 +995,7 @@ Only LAN-live AES-256/SHA256 is supported, without separately encrypted media.
 Integrity checks cover complete CPacket framing and JPEG SOI/EOI markers,
 **not full JPEG decoding**. The transport is closed on success and failure.
 
-**Available on `main`, not in PyPI 0.4.0:** `protocol="pipelined"` is an
+**Available since 0.4.1:** `protocol="pipelined"` is an
 explicit alternative for firmware such as the Intelbras Allo wT7; it is not
 selected automatically. It requires the same LAN
 key/auth pair, plus the device's cloud `dynamic_password` and original-app
@@ -994,15 +1007,13 @@ does not persist it. Use `AutonomousConfig(..., dynamic_password=...)` or
 integration, retaining the configured LAN key/auth pair and OEM. Then call
 `camera.download_record(entry, protocol="pipelined")`.
 
-Until the next PyPI release, install `main` in your already configured virtual
-environment (Git is required):
+Install or upgrade the package in your configured virtual environment:
 
 ```shell
-python -m pip install --force-reinstall --no-deps "quii-helper @ git+https://github.com/xaer981/quii-helper.git@main"
+python -m pip install --upgrade "quii-helper>=0.4.1"
 ```
 
-This command keeps the dependencies installed during
-[setup](setup.md#using-an-installed-package).
+See [setup](setup.md#using-an-installed-package) for a fresh environment.
 
 This variant sends Open/Seek/Playback/`07` before reading replies and uses the
 `adminapp` dynamic-password/OEM authentication form. JPEG transfers may end at
@@ -1164,6 +1175,7 @@ from its root after installation/configuration:
 | --- | --- |
 | `python -m examples.discover_env_values` | Service discovery; prints candidate cloud settings. |
 | `python -m examples.call_events` | Read one history page; may create an alarm reader session. |
+| `python -m examples.watch_call_events` | Poll the first cloud history page every five seconds for up to three minutes; baseline and in-memory deduplication, no door commands. |
 | `python -m examples.snapshot` | Capture one JPEG. |
 | `python -m examples.save_video` | Record the example's default 30-second collection window. |
 | `python -m examples.serve_rtsp` | Serve RTSP on localhost port `8554`. |

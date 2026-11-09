@@ -15,6 +15,7 @@ to inspect.
 - [Extract assets](#required-assets) and [find APK constants](#finding-apk-constants).
 - [Fill environment settings](#environment-settings) and [discover cloud values](#discovering-cloud-values).
 - [Run a first check](#first-read-only-check) and [install FFmpeg](#media-prerequisites).
+- [Read or poll cloud call history](#cloud-call-history), without a stream key.
 - [Handle TLS failures](#cloud-region-and-auth-url), [ARM64](#installing-on-linux-arm64), and [other errors](#troubleshooting).
 
 ## Using An Installed Package
@@ -287,6 +288,10 @@ assets/
 | `client.txt` | Matching client private key; do not publish or paste its contents. |
 | `libqv-p2p-v2.so` | `lib/arm64-v8a/libqv-p2p-v2.so` from the verified vHome 2.2 build; read for crypto tables. |
 
+Cloud call history uses the three service-discovery certificate/key files above,
+but does **not** read `libqv-p2p-v2.so`. A saved stream key alone cannot replace
+the cloud settings or discovery credentials.
+
 Use [JADX](https://github.com/skylot/jadx) for Java sources and
 [Apktool](https://apktool.org/docs/cli-parameters/) for resources. For example,
 with these tools already installed, decode an authorized `vendor.apk` into
@@ -452,6 +457,44 @@ construct a separate LAN Camera with the saved pair. These are real camera
 operations, not offline installation checks. The dedicated `examples.open_door` script sends
 a **real opening command** and must never be used as a read-only smoke test.
 
+## Cloud Call History
+
+This optional cloud feature is independent of LAN playback. It does not need
+`CAMERA_DEVICE_HOST`, `STREAM_KEY`, `AUTH_CODE`, `UNLOCK_PASSWORD` or FFmpeg.
+
+1. Fill the **10 cloud variables** in the
+   [first-run configuration block](#first-run-fetch-and-save), using the
+   account/app/region that works with your camera. Reuse that configuration,
+   but skip the stream-key fetch/save commands if you only need history.
+   Preserve `CLOUD_AUTH_VERSION` when required by your app.
+2. Put `ca.pem`, `client.pem` and `client.txt` in `assets/`, following
+   [Required Assets](#required-assets). The native `.so` is not needed here.
+3. From a configured [checkout](#using-a-checkout), run one example:
+
+```shell
+python -m examples.call_events
+```
+
+This prints the first history page. For repeated checks:
+
+```shell
+python -m examples.watch_call_events
+```
+
+Both examples explicitly select `connection_mode="cloud"`; leave the default
+LAN mode unchanged for other examples. They honor `TLS_VERIFY` from `.env`
+(`true` by default); see [TLS troubleshooting](#cloud-region-and-auth-url)
+if certificate verification fails.
+
+The watcher checks the first 15 rows every five seconds for up to three minutes.
+Its first successful read becomes the baseline; later unseen record ids print
+once per run. Errors preserve that baseline, and Ctrl+C stops the watcher.
+An in-flight query may finish after the three-minute observation window.
+This is history polling, not a live subscription or a confirmed LAN-only ring
+detector. Delayed records and bursts can be missed or observed late. No door
+commands, media downloads, push registration or read-state changes are sent.
+See [API details and limits](api.md#incoming-call-history-experimental).
+
 ## Media Prerequisites
 
 JPEG/MP4 rendering invokes the external **FFmpeg executable**. Install a build
@@ -537,7 +580,7 @@ these checks do not certify every PyPI build on ARM64.
 | VLC cannot connect | Wait for media readiness; check the bind host, server LAN IP, firewall, and producer error from `session.wait()`. |
 | No console progress in library code | Logging is disabled by default. Enable it explicitly as described in [Logging](api.md#logging). |
 | `AudioDeviceError` / no computer sound | Install the optional `audio` extra, check OS microphone permission and default devices; use `python -m examples.converse --list-devices`. Use headphones to avoid feedback. No audio device is required for normal capture/RTSP. |
-| Empty or repeated call history | History is not a live subscription. Read a fresh page and compare record ids; do not infer a new ring from old rows. |
+| Empty or repeated call history | Use the [cloud history setup/examples](#cloud-call-history). History is not a live subscription; compare fresh pages against a baseline and do not infer a new ring from old rows. |
 
 Collect `LOG_LEVEL=debug` diagnostics only when needed. Redact credentials,
 tokens, device ids, IPs, and private media before sharing. Do not upload `.env`,

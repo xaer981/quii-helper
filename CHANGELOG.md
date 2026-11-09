@@ -5,13 +5,19 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.4.1 - 2026-11-09
 
 ### Added
 
 - Explicit `protocol="pipelined"` archive downloads with dynamic-password/OEM
   authentication and Open/Seek/Playback/`07` sent before reading. The default
   auth-code/wait-for-Open path is unchanged. Refs #20, #27.
+- `python -m examples.watch_call_events`: explicitly opt into cloud history
+  polling every five seconds for a three-minute window. Initialize a baseline
+  on the first successful page, print unseen record ids once per run, retain
+  that baseline after connection errors and support Ctrl+C. Offline tests cover
+  timing, duplicates, empty pages, failures and interruption. Only the first
+  15 history rows are checked; this is not a live subscription or a door trigger.
 
 ### Fixed
 
@@ -27,6 +33,13 @@ being stabilized.
 - Align README, setup/API guides, protocol notes, archive docstrings, Allo Plus
   package keywords, and the device-report form with that evidence. Record the
   unresolved Vimar audio limitation without claiming a hardware resolution limit.
+- Add cloud-history setup and example commands to README, setup/API guides,
+  navigation and `.env.example`. Separate cloud history credentials/assets
+  from LAN media keys, clarify TLS policy and distinguish historical live
+  validation from offline watcher tests. Existing `get_call_events()` and the
+  one-page example are unchanged.
+- Document the pipelined archive variant as available since 0.4.1 and remove
+  temporary instructions to install unreleased archive fixes from `main`.
 
 ## 0.4.0 - 2026-10-29
 
@@ -88,7 +101,7 @@ being stabilized.
 - Record two successful Tantos/Pi archive-video downloads and owner-confirmed
   image/sound playback on 2026-10-29. At release, archived JPEG downloads and
   Intelbras / Allo Plus compatibility were unverified; later results are
-  recorded under Unreleased and in COMPATIBILITY.md.
+  recorded under 0.4.1 and in COMPATIBILITY.md.
 - Record the Tantos shared-preview conversation acceptance test and separate
   it from physical PC audio-device and Vimar coverage. Talk and archive
   downloads remain experimental in this release.
