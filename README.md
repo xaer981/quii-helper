@@ -15,6 +15,7 @@ information, and explicitly open a connected door.
 [Compatibility](https://github.com/xaer981/quii-helper#compatibility-) ·
 [Quick Start](https://github.com/xaer981/quii-helper#quick-start-) ·
 [RTSP](https://github.com/xaer981/quii-helper#rtsp-streaming-) ·
+[Call History](https://github.com/xaer981/quii-helper#cloud-call-history) ·
 [Documentation](https://github.com/xaer981/quii-helper#documentation-) ·
 [Safety](https://github.com/xaer981/quii-helper#safety-and-limitations-) ·
 [Support](https://github.com/xaer981/quii-helper#support-the-project)
@@ -32,12 +33,13 @@ information, and explicitly open a connected door.
 | Stream-key bootstrap | Explicitly fetch/save a cloud key/auth pair, then reuse it for LAN-only playback. |
 | Device inspection | Read supported cloud and local device information. |
 | LAN discovery | Find devices exposing Qualvision-compatible services. |
-| Call history | Read incoming-call cloud history with experimental `get_call_events()`. |
+| Cloud call history | Read incoming calls with experimental `get_call_events()`; includes one-page and polling examples. |
 | Door control | Send an explicit local opening command with `Camera.open_door()`. |
 
-Call history is **not** a live ringing subscription. Available device fields
-and local commands depend on firmware; an unsupported query does not imply
-that video capture is unsupported.
+Call history uses the vendor cloud even when video is LAN-only; reliable local
+call-event detection remains unconfirmed. Available device fields and local
+commands depend on firmware; an unsupported query does not imply that video
+capture is unsupported.
 
 Version 0.3.0 adds [experimental receive-only audio](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#receive-only-audio-experimental):
 `Camera.listen_audio()` returns encoded frames, and `serve_rtsp(audio=True)`
@@ -64,9 +66,9 @@ This LAN-only API returns bytes using a saved key/auth pair, without preview
 or cloud access. Video supports H.264 with optional G.711 audio and requires
 FFmpeg; private temporary files are cleaned automatically. Archived H.264 +
 G.711 video downloads were verified on Tantos/Pi, including owner-reviewed
-image and sound. On `main`, Intelbras Allo wT7 archive JPEG downloads are also
-community verified with the explicit `protocol="pipelined"` variant and its
-additional credentials; this is not in PyPI 0.4.0. See
+image and sound. Version 0.4.1 adds nested archive-selector fixes and the
+explicit `protocol="pipelined"` variant, community verified for Intelbras Allo
+wT7 archive JPEG downloads. This variant needs additional credentials. See
 [archive setup](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries)
 and [device reports](https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md#intelbras-allo-wt7-community-reports)
 for the validation scope.
@@ -279,6 +281,34 @@ includes `examples.cloud_key_rtsp` (fetch/save, then RTSP) and
 `examples.lan_rtsp` (reuse the saved file, no cloud requests). Run them with
 `python -m examples.<name>` from the repository root; they are not installed by pip.
 
+## Cloud Call History
+
+Cloud history is separate from local video: it needs your cloud account/app
+settings and service-discovery certificates, not a stream key or camera LAN IP.
+Follow the [cloud history setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history),
+then run either example from a configured checkout:
+
+```shell
+python -m examples.call_events
+```
+
+This prints one page of history. To watch for previously unseen records:
+
+```shell
+python -m examples.watch_call_events
+```
+
+The watcher polls every five seconds for up to three minutes. Its first
+successful page is a baseline; later unseen record ids are printed once per
+run. Stop with Ctrl+C. TLS verification follows `TLS_VERIFY` from `.env`.
+
+**This is not a live ringing subscription.** Delayed history and bursts beyond
+the first 15 rows can make detection late or incomplete. These examples do not
+open the door, start media or mark records read. See the
+[API limits](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental)
+before building automation. Examples require a checkout or source distribution;
+they are not installed with the wheel.
+
 ## Documentation 📚
 
 | I want to... | Read |
@@ -286,7 +316,7 @@ includes `examples.cloud_key_rtsp` (fetch/save, then RTSP) and
 | Get a key, save it, then view locally | [Key Bootstrap And Reuse](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#stream-key-bootstrap-and-local-reuse) |
 | Set up an account, assets, and `.env` | [Setup And APK Extraction](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md) |
 | Find methods, parameters, results, and errors | [Camera API Reference](https://github.com/xaer981/quii-helper/blob/main/docs/api.md) |
-| Read call history | [Incoming Call History](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental) |
+| Read or poll cloud call history | [Setup And Examples](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history), [API And Limits](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#incoming-call-history-experimental) |
 | View video and explicitly start/stop conversation | [Computer Conversation](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental) (optional `audio` extra) |
 | Download archived pictures or video | [Archive Queries And Downloads](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries) |
 | Open a door explicitly | [Door Control](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#door-control) |

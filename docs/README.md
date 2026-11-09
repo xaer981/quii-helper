@@ -5,10 +5,13 @@
 
 ## Start Here
 
-Start with [Setup](setup.md). On the first run, complete the
+Start with [Setup](setup.md) and choose the inputs for your operation.
+For LAN media without a saved key, first complete the
 [10 required cloud settings and save a key](setup.md#first-run-fetch-and-save).
 Already have that key file? Skip cloud setup and use the
 [local settings and saved-file example](setup.md#later-runs-load-and-view-locally).
+Only need call history? Use the separate [cloud history setup](setup.md#cloud-call-history);
+no stream key is needed.
 LAN-only is the default; cloud operations require explicit opt-in. Use the
 [API Reference](api.md) for individual methods.
 
@@ -22,9 +25,9 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); available since 0.3.0, tested on Tantos. |
 | Send sound to an intercom | [Experimental LAN talk](api.md#lan-talk-experimental); available since 0.4.0. Shared-preview speech/reply was confirmed on Tantos panel 2 with a file-backed adapter; see [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply). |
 | Watch and talk from a computer | [Computer conversation](api.md#computer-conversation-experimental); available since 0.4.0, `session.start_talk()` / `stop_talk()` share the RTSP preview. Optional audio extra, microphone and headphones. |
-| Download an archived picture or video | [Archive queries and downloads](api.md#archive-queries); Tantos video image/sound confirmed. Intelbras archive JPEG is community verified on `main` with the new `pipelined` variant, not in PyPI 0.4.0; see [device reports](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports). |
+| Download an archived picture or video | [Archive queries and downloads](api.md#archive-queries); Tantos video image/sound confirmed. Intelbras archive JPEG is community verified with `pipelined`, available since 0.4.1; see [device reports](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports). |
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
-| Read incoming-call history | [Incoming call history](api.md#incoming-call-history-experimental); this is not a live subscription. |
+| Read or poll incoming-call history | [Setup and examples](setup.md#cloud-call-history), [API and limits](api.md#incoming-call-history-experimental); cloud-based, not a live subscription. |
 | Open a connected door | [Door control](api.md#door-control); these calls have physical effects. |
 | Diagnose a failure | [Troubleshooting](setup.md#troubleshooting) and [error handling](api.md#error-codes). |
 

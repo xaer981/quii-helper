@@ -15,7 +15,7 @@ distinguished below.
 | Tantos Marilyn Wi-Fi s | vHome 2.2 | Maintainer tested | Snapshots, MP4 capture, RTSP, receive-only audio, shared-preview speech/reply, archived video with sound, explicit door opening in `auto` mode, and cloud call history. Per-feature tests and limits are described below; archived JPEG remains unverified on Tantos. |
 | Vimar K40955, firmware `V401R001B002` | vEye Pro 1.9.4.0.2 | Community verified, partial | Saved-key LAN RTSP through `lan_rtsp`, [reported by luigi-pi](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080). Video was observed at 352x288 / about 20 FPS; audio remains unresolved. |
 | Intelbras Allo wT7, reported model `IDS9478AW` | Allo Plus | Community verified through an integration | LAN snapshots and RTSP via quii-helper in [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7). The integration pins quii-helper 0.3.0 and applies its own compatibility workarounds; see the scope below. |
-| Intelbras Allo wT7, reported model `IDS94B1W` | Allo Plus | Community verified | LAN live capture, HTTPS archive listing, and complete 1280x720 archive JPEG download with `protocol="pipelined"`, [confirmed by ricfwolff on 2026-11-02](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434) using `main` commit `1d6d81d`. This variant is not in PyPI 0.4.0. |
+| Intelbras Allo wT7, reported model `IDS94B1W` | Allo Plus | Community verified | LAN live capture, HTTPS archive listing, and complete 1280x720 archive JPEG download with `protocol="pipelined"`, [confirmed by ricfwolff on 2026-11-02](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434) using `main` commit `1d6d81d`. This variant is available since 0.4.1. |
 
 Community verified means a device owner or integration author reported the
 listed operation working; it is not an independent maintainer hardware test
@@ -38,9 +38,12 @@ without a separate test, and do not verify simultaneous two-panel playback.
 
 On Tantos, door opening was confirmed on 2026-10-16 with capability 24 enabled
 and `error=0`. This verifies the encoded-password path, not the plain-password path
-or all firmware. Call-history reads and observation of a new call were
+or all firmware. Cloud call-history reads and observation of a new call were
 confirmed on 2026-10-19/20. Those checks establish neither a delivery-time
 guarantee nor delivery with Android fully disconnected.
+The new `examples.watch_call_events` baseline/deduplication/timeout behavior
+has offline coverage only; no new live delivery or LAN-only call-event support
+is claimed. See [cloud history examples and limits](docs/api.md#incoming-call-history-experimental).
 
 ### Vimar K40955: Community Report
 
@@ -118,8 +121,8 @@ is not the auth code or account password and is not saved in the stream-key
 JSON. See [archive setup](docs/api.md#archive-queries) for the explicit variant.
 It makes no cloud requests during download and does not open live preview.
 
-The nested-selector and pipelined fixes are in `main`, not published PyPI
-0.4.0. Archived-video download, default-protocol JPEG, current high-level
+The nested-selector and pipelined fixes are available since 0.4.1.
+Archived-video download, default-protocol JPEG, current high-level
 talk, and door control on `IDS94B1W` remain unverified. No maintainer hardware
 test or camera-WAN-isolation test is implied by this report.
 
@@ -266,7 +269,7 @@ evidence. Playback with the camera's WAN blocked remains unverified.
 | Tantos shared-preview talk on physical Pi, 2026-10-29 | PR #19 `679ef71`: file-backed speech source and reply recorder; owner confirmed intelligibility both ways on panel 2. No incoming talk-queue drops; video continued after talk stop, then workers/sockets closed. | A physical PC microphone/headphones backend, overlapping-speech quality, echo cancellation, long-run soak, or Vimar talk. |
 | Vimar K40955 community report, 2026-10-25 | The owner confirmed `lan_rtsp` video in [issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080), after troubleshooting cloud bootstrap. | Independent maintainer testing, strict cloud TLS validation, JPEG/MP4, door control, call history, two-way audio, or other firmware. |
 | Intelbras Allo wT7 `IDS9478AW` community integration, reviewed 2026-11-02 | [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7) uses quii-helper 0.3.0 for LAN snapshots/RTSP, with additional audio/geometry workarounds. | The current unmodified package, high-level talk/door APIs, a generic local ring subscription, or all wT7 variants. |
-| Intelbras Allo wT7 `IDS94B1W` community check, 2026-11-02 | [Owner confirmation](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434): `main` `1d6d81d`, nested archive selectors, explicit pipelined download, 53,755-byte JPEG decoded at 1280x720. | PyPI 0.4.0 support for the new variant, default-protocol JPEG, archived video on Intelbras, high-level talk/door APIs, or other firmware. |
+| Intelbras Allo wT7 `IDS94B1W` community check, 2026-11-02 | [Owner confirmation](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434): `main` `1d6d81d`, nested archive selectors, explicit pipelined download, 53,755-byte JPEG decoded at 1280x720; fixes included since 0.4.1. | Independent hardware validation of the released artifact, default-protocol JPEG, archived video on Intelbras, high-level talk/door APIs, or other firmware. |
 
 The earlier entrance-bot checks cover dependency integration, not media.
 The separate physical LAN tests cover that tested build/device only; they do not
