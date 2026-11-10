@@ -517,17 +517,27 @@ def test_transport_errors_are_domain_errors(
     assert cloud["request_userauth"].call_count == 1
 
 
+@pytest.mark.parametrize(
+    "method", ["get_call_events", "get_cloud_call_events"]
+)
 def test_camera_facade_never_opens_preview_or_fetches_device_token(
-    config: AutonomousConfig, monkeypatch: pytest.MonkeyPatch
+    config: AutonomousConfig, monkeypatch: pytest.MonkeyPatch, method: str
 ) -> None:
     config = replace(config, connection_mode="cloud")
     camera = Camera(config)
     camera.connector = Mock()
     fetch = Mock(return_value=CameraCallEventPage([], "0", 0, 0))
     monkeypatch.setattr("quii_helper.camera.api.fetch_call_events", fetch)
-    assert camera.get_call_events() == CameraCallEventPage([], "0", 0, 0)
+    assert getattr(camera, method)() == CameraCallEventPage([], "0", 0, 0)
     fetch.assert_called_once_with(config, **QUERY)
     assert camera.connector.mock_calls == []
+
+
+def test_cloud_method_is_a_compatible_alias() -> None:
+    assert Camera.get_cloud_call_events is Camera.get_call_events
+    camera = Camera(config=AutonomousConfig(connection_mode="lan"))
+    with pytest.raises(ConfigurationError, match="cloud"):
+        camera.get_cloud_call_events()
 
 
 def test_missing_login_session_never_queries_journal(
@@ -582,7 +592,7 @@ def test_example_only_reads_history(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     camera = Mock()
-    camera.get_call_events.return_value = parse_call_event_page(
+    camera.get_cloud_call_events.return_value = parse_call_event_page(
         _response(_row(recordresurl="https://media.example/private-token")),
         device_id="device-1",
     )
@@ -602,7 +612,7 @@ def test_example_only_reads_history(
     )
     load.assert_called_once_with()
     configure.assert_called_once_with(replace_existing=True)
-    assert [call[0] for call in camera.mock_calls] == ["get_call_events"]
+    assert [call[0] for call in camera.mock_calls] == ["get_cloud_call_events"]
     output = capsys.readouterr().out
     assert "Incoming calls: 1" in output
     assert "private-token" not in output

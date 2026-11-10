@@ -4,6 +4,8 @@ import ast
 import inspect
 import re
 import unicodedata
+import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch, sentinel
@@ -36,10 +38,32 @@ LINK = re.compile(r"(?<!!)\[[^\]\n]+\]\(([^)\s]+)\)")
 METHOD_ROW = re.compile(r"^\| `([a-z_]+\([^`]*\))` \|", re.MULTILINE)
 
 
+class HtmlReferences(HTMLParser):
+    """Collect HTML links, images and explicit compatibility anchors."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.urls: list[str] = []
+        self.anchors: set[str] = set()
+        self.feed(text)
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        values = dict(attrs)
+        anchor = values.get("id")
+        if anchor:
+            self.anchors.add(anchor)
+        key = {"a": "href", "img": "src"}.get(tag)
+        url = values.get(key) if key else None
+        if url:
+            self.urls.append(url)
+
+
 def heading_ids(text: str) -> set[str]:
     """Match GitHub-style ids, including duplicate headings and Unicode marks."""
     text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-    result: set[str] = set()
+    result = HtmlReferences(text).anchors
     seen: dict[str, int] = {}
     for heading in re.findall(r"^#{1,6}\s+(.+?)\s*#*$", text, re.MULTILINE):
         heading = re.sub(r"<[^>]+>", "", heading).lower()
@@ -59,6 +83,11 @@ def repository_target(source: Path, url: str) -> tuple[Path, str] | None:
     path = unquote(parsed.path)
     if not parsed.scheme:
         target = (source.parent / path).resolve() if path else source
+    elif parsed.netloc == "raw.githubusercontent.com":
+        prefix = "/xaer981/quii-helper/main/"
+        if not path.startswith(prefix):
+            return None
+        target = ROOT / path[len(prefix) :]
     elif parsed.netloc == "github.com":
         root_url = "/xaer981/quii-helper"
         if path.rstrip("/") == root_url:
@@ -75,15 +104,33 @@ def repository_target(source: Path, url: str) -> tuple[Path, str] | None:
 
 
 def test_heading_ids_handle_code_duplicates_and_emoji() -> None:
-    text = "# Quick Start \U0001f680\n## `Camera()`\n## `Camera()`\n```\n# Hidden\n```"
-    assert heading_ids(text) == {"quick-start-", "camera", "camera-1"}
+    text = '# Quick Start \U0001f680\n## `Camera()`\n## `Camera()`\n<a id="legacy"></a>\n```\n# Hidden\n```'
+    assert heading_ids(text) == {
+        "quick-start-",
+        "camera",
+        "camera-1",
+        "legacy",
+    }
+
+
+def test_html_references_decode_queries_and_collect_anchors() -> None:
+    parsed = HtmlReferences(
+        '<a id="old-section"></a><a href="https://example.com?a=1&amp;b=2">'
+        '<img src="https://example.com/banner.svg" alt="Banner"></a>'
+    )
+    assert parsed.urls == [
+        "https://example.com?a=1&b=2",
+        "https://example.com/banner.svg",
+    ]
+    assert parsed.anchors == {"old-section"}
 
 
 @pytest.mark.parametrize(
     "document", DOCUMENTS, ids=lambda p: str(p.relative_to(ROOT))
 )
 def test_repository_documentation_links(document: Path) -> None:
-    for url in LINK.findall(document.read_text(encoding="utf-8")):
+    text = document.read_text(encoding="utf-8")
+    for url in [*LINK.findall(text), *HtmlReferences(text).urls]:
         resolved = repository_target(document, url)
         if resolved is None:
             continue
@@ -110,19 +157,61 @@ def test_issue_contact_links_target_existing_sections() -> None:
 
 def test_readme_links_work_outside_a_checkout() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert all(urlsplit(url).scheme == "https" for url in LINK.findall(text))
+    urls = [*LINK.findall(text), *HtmlReferences(text).urls]
+    assert all(urlsplit(url).scheme == "https" for url in urls)
+
+
+def test_readme_signal_banner_is_a_public_accessible_svg() -> None:
+    url = "https://raw.githubusercontent.com/xaer981/quii-helper/main/docs/images/readme-signal.svg"
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert url in HtmlReferences(text).urls
+    resolved = repository_target(ROOT / "README.md", url)
+    assert resolved is not None
+    path, _ = resolved
+    root = ET.parse(path).getroot()
+    namespace = "{http://www.w3.org/2000/svg}"
+    assert root.tag == namespace + "svg"
+    assert root.findtext(namespace + "title")
+    assert root.findtext(namespace + "desc")
+    assert root.get("viewBox") == "0 0 1080 338"
+    assert all(
+        node.tag not in {namespace + "script", namespace + "foreignObject"}
+        for node in root.iter()
+    )
+
+
+def test_readme_preserves_existing_navigation_anchors() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert {
+        "features-",
+        "compatibility-",
+        "quick-start-",
+        "rtsp-streaming-",
+        "3-first-run-cloud-setup-and-key-save",
+        "4-later-runs-lan-only-playback",
+        "cloud-call-history",
+        "local-archive-observations",
+        "documentation-",
+        "safety-and-limitations-",
+        "support-the-project",
+    } <= heading_ids(text)
 
 
 def test_readme_quick_start_works_without_repository_examples() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    quick_start = text.split("## Quick Start", 1)[1].split(
-        "## RTSP Streaming", 1
+    quick_start = text.split("## Get Started", 1)[1].split(
+        "## Choose The Source", 1
     )[0]
     assert "python -m pip install quii-helper" in quick_start
     assert "fetch_stream_credentials()" in quick_start
     assert "CameraStreamCredentials.load(" in quick_start
     assert "python -m examples." not in quick_start
     assert "git clone" not in quick_start
+    operation_choice = quick_start.split("### 2 / Choose Your Scenario", 1)[
+        1
+    ].split('<a id="3-first-run', 1)[0]
+    assert "docs/setup.md#cloud-call-history" in operation_choice
+    assert "docs/setup.md#local-archive-observations" in operation_choice
 
 
 @pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])
@@ -201,9 +290,20 @@ def test_later_run_documents_only_local_settings(
 
 def test_all_runnable_examples_are_listed_in_api_guide() -> None:
     text = (ROOT / "docs/api.md").read_text(encoding="utf-8")
-    for example in (ROOT / "examples").glob("*.py"):
-        if example.stem != "__init__":
-            assert f"python -m examples.{example.stem}" in text
+    example_table = text.split("## Application Entry Point", 1)[1]
+    documented = set(
+        re.findall(
+            r"^\| `python -m examples\.([a-z_]+)` \|",
+            example_table,
+            re.MULTILINE,
+        )
+    )
+    runnable = {
+        example.stem
+        for example in (ROOT / "examples").glob("*.py")
+        if example.stem != "__init__"
+    }
+    assert documented == runnable
 
 
 @pytest.mark.parametrize(

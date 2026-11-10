@@ -16,6 +16,7 @@ to inspect.
 - [Fill environment settings](#environment-settings) and [discover cloud values](#discovering-cloud-values).
 - [Run a first check](#first-read-only-check) and [install FFmpeg](#media-prerequisites).
 - [Read or poll cloud call history](#cloud-call-history), without a stream key.
+- [Observe local archive pictures/videos](#local-archive-observations), without cloud queries.
 - [Handle TLS failures](#cloud-region-and-auth-url), [ARM64](#installing-on-linux-arm64), and [other errors](#troubleshooting).
 
 ## Using An Installed Package
@@ -49,9 +50,11 @@ Normal snapshot, recording, RTSP and caller-supplied PCM talk do not need this
 extra. See [computer conversation](api.md#computer-conversation-experimental).
 
 The wheel installs `quii_helper`, not `examples/`, `docs/`, or `.env.example`.
-Create `.env` in your application directory using the
-[first-run cloud block](#first-run-fetch-and-save) or, if you already have a
-saved key, the [later LAN-only block](#later-runs-load-and-view-locally).
+Choose [what your operation needs](#what-your-operation-needs) before creating
+`.env`. For video, use the [first-run cloud block](#first-run-fetch-and-save)
+or, with a saved key, the [later LAN-only block](#later-runs-load-and-view-locally).
+For [cloud history](#cloud-call-history) or [local archive metadata](#local-archive-observations),
+follow that feature's separate setup instead; neither needs a stream key.
 The full [environment template](https://github.com/xaer981/quii-helper/blob/main/.env.example)
 also covers other operations; not every setting is needed for playback.
 For a pinned version, use the template at its matching Git tag.
@@ -91,7 +94,8 @@ key acquisition and cloud/P2P preview require `connection_mode="cloud"`.
 | Explicit cloud stream-key bootstrap | Cloud account, device id, app/region settings and auth URL. Shared validation also requires the service URL, but no discovery, P2P assets, FFmpeg or device connection is used. |
 | Cloud/P2P snapshot, MP4, RTSP | Explicit cloud mode, cloud/app settings, device id, native assets, and a working preview connection. JPEG/MP4 also needs FFmpeg. |
 | `get_device_info()` | Explicit cloud mode, cloud account/device and app settings. It does not start a media session or discover the LAN host. |
-| `get_call_events()` | Explicit cloud mode, cloud/app settings and service-discovery TLS assets; no LAN host or FFmpeg. |
+| `get_cloud_call_events()` / `get_call_events()` | Identical cloud history method; explicit cloud mode, cloud/app settings and service-discovery TLS assets; no LAN host or FFmpeg. |
+| `watch_archive_events()` | LAN CGI host and local auth code; no cloud, stream key, native crypto asset or FFmpeg. Archive coverage depends on device saving settings and storage. |
 | Local CGI inspection | Reachable `CAMERA_DEVICE_HOST` and `AUTH_CODE`; no implicit cloud login, APK assets, or FFmpeg. |
 | `open_door()` with an explicit password mode | Local CGI settings and `UNLOCK_PASSWORD`; no cloud lookup, APK assets, or FFmpeg. |
 | `open_door(password_mode="auto")` | Local door settings plus known capability 24. An uncached cloud lookup requires explicit cloud mode; LAN mode rejects unknown capability before sending. |
@@ -459,6 +463,9 @@ a **real opening command** and must never be used as a read-only smoke test.
 
 ## Cloud Call History
 
+`get_cloud_call_events()` is the explicit cloud name; `get_call_events()`
+remains the same method for backward compatibility. Neither reads local events.
+
 This optional cloud feature is independent of LAN playback. It does not need
 `CAMERA_DEVICE_HOST`, `STREAM_KEY`, `AUTH_CODE`, `UNLOCK_PASSWORD` or FFmpeg.
 
@@ -494,6 +501,61 @@ This is history polling, not a live subscription or a confirmed LAN-only ring
 detector. Delayed records and bursts can be missed or observed late. No door
 commands, media downloads, push registration or read-state changes are sent.
 See [API details and limits](api.md#incoming-call-history-experimental).
+
+## Local Archive Observations
+
+This separate, read-only path watches new archive pictures/videos, not a
+confirmed list of calls. It reads local `/tdkcgi` metadata with a LAN host and
+auth code. No preview, stream key or cloud login is needed for the API itself.
+
+**Already using `examples.lan_rtsp`?** Keep the same private
+`data/stream_credentials.json` and `CAMERA_DEVICE_HOST` setting. The archive
+example loads the file's `device_id` and `auth_code` explicitly; it does not
+use the stream key, copy secrets into `.env`, or fetch/refresh anything.
+It forces LAN mode even if cloud settings are also configured. Run from the
+configured checkout root:
+
+```shell
+python -m examples.watch_archive_events
+```
+
+If the JSON is missing or invalid, the example stops without cloud fallback.
+Only run the [explicit bootstrap](#first-run-fetch-and-save) if you choose to
+obtain a new pair; it is not part of archive polling.
+
+Enter the current monitor time as `YYYY-MM-DD HH:MM:SS`. This avoids assuming
+that the computer/container and monitor share a timezone. The example watches
+a narrow window from five minutes before that value to four minutes after it;
+enter it promptly. The first complete read becomes the baseline. Wait for
+**Archive baseline ready**, then test; Ctrl+C stops. Polling is every five
+seconds for three minutes, with no downloads, preview or door commands.
+Invalid input prints a format hint and asks again; Ctrl+C also cancels the prompt.
+The readiness message is an INFO log; use `LOG_LEVEL=info` (or `debug`) to
+see it. The example uses local HTTP port 80, like `list_record_files()`.
+For a device requiring HTTPS, call the API with `scheme="https", port=443`
+and its appropriate trusted TLS configuration; the watcher never disables
+certificate verification automatically.
+
+**Have a local auth code but no saved JSON?** Use the library API directly
+with these `.env` inputs and the [API example](api.md#local-archive-observations):
+
+```dotenv
+CAMERA_DEVICE_HOST=192.0.2.10
+AUTH_CODE=your-local-auth-code
+```
+
+Replace both placeholders. `AUTH_CODE` is the device CGI authentication value,
+not `CLOUD_PASSWORD` or `UNLOCK_PASSWORD`. This path requires no JSON or stream
+key. The bundled example above deliberately uses the saved JSON instead, so
+its credential source matches the LAN RTSP example and is never chosen silently.
+
+The device's **save picture/video on call** setting must already be enabled
+for a call-related entry to appear. This code never changes it. `file_type="all"`
+covers both choices; unavailable storage or disabled saving can make a call
+invisible. On Tantos, a call video appeared after its 30-second recording ended,
+and `manual` was also returned for a manual monitor recording. Photo-mode
+timing is not yet tested. Errors stop observation rather than indicating no
+event; see [API bounds and limitations](api.md#local-archive-observations).
 
 ## Media Prerequisites
 

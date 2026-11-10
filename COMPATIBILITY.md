@@ -202,6 +202,22 @@ JPEG downloading remains unverified. These archive tests do not establish
 other firmware support, exact A/V sync, or concurrent
 archive/live availability. This experimental API is available since 0.4.0.
 
+### Tantos Archive Observations
+
+Limited read-only LAN CGI probes on Tantos Marilyn Wi-Fi s (V401R001B007,
+2026-11-09) found a new video after an owner-confirmed panel-2 ring. The owner
+confirmed that the monitor screen and melody worked. A separate manual video
+started on the monitor without a ring produced the same `occur_type="manual"`.
+Both 30-second recordings became visible about 31 seconds after their device
+start timestamps; this is a measured observation, not a delivery guarantee.
+
+Archive mode was set to save video on calls. The queried JPEG history was
+empty; photo-on-call mode and its latency have **not** been tested. These facts
+must not be generalized to other firmware. The new `watch_archive_events()`
+wrapper has offline regression coverage, not a new on-device validation.
+It reports archive additions, not confirmed calls; see
+[API limits](docs/api.md#local-archive-observations).
+
 ### Saved-Key Lifetime
 
 The Tantos pair obtained on 2026-10-23 still worked on 2026-10-27, but stopped

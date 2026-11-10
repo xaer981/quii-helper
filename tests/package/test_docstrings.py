@@ -2,6 +2,7 @@ import inspect
 
 from quii_helper import (
     Camera,
+    CameraArchiveEvent,
     CameraCallEvent,
     CameraCallEventPage,
     CameraDeviceAlarmChannel,
@@ -123,6 +124,9 @@ DOCUMENTED_OBJECTS = (
     CameraCallEvent,
     CameraCallEventPage,
     Camera.get_call_events,
+    Camera.get_cloud_call_events,
+    Camera.watch_archive_events,
+    CameraArchiveEvent,
     Camera.__init__,
     Camera.open_door,
     CameraDoorOpenResult,

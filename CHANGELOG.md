@@ -5,6 +5,32 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Explicit `Camera.get_cloud_call_events()` alias for cloud incoming-call
+  history; preserve the signature and behavior of `get_call_events()`.
+- Synchronous LAN-only `Camera.watch_archive_events()` and typed
+  `CameraArchiveEvent` for new picture/video archive entries. Fresh search
+  sessions, initial baseline, per-run deduplication, bounded memory/time and
+  explicit failure on incomplete reads; no preview or cloud fallback.
+- `python -m examples.watch_archive_events`, API/setup guidance and offline
+  regression tests. Document recording-setting/storage dependencies and that
+  `manual` is not a confirmed call: a manual monitor video can have the same
+  type. Photo-on-call timing remains untested. Refs #17.
+- List cloud history and local archive observation as distinct read-only
+  features, with direct navigation, a shared example index and minimal local
+  CGI setup. Keep archive additions separate from confirmed incoming calls.
+- Route first-time setup by operation before cloud/media configuration. Reuse
+  the LAN RTSP credential JSON in the archive example, retry invalid clock
+  input and handle Ctrl+C during both the prompt and polling. The library's
+  local auth-code API and wire protocol are unchanged.
+- Apply the Signal README layout with an original SVG banner, compact feature
+  overview and collapsible full cloud bootstrap. Preserve LAN/cloud boundaries,
+  compatibility limits, existing navigation anchors, Boosty and the cat GIF;
+  validate HTML links and public image URLs alongside Markdown links.
+
 ## 0.4.1 - 2026-11-09
 
 ### Added

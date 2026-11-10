@@ -111,6 +111,7 @@ from quii_helper.camera.device_json_cgi import (
     CameraDeviceVoiceFileInfo,
     CameraDeviceVoiceMessageInfo,
 )
+from quii_helper.camera.events import CameraArchiveEvent
 from quii_helper.camera.metadata import CameraDeviceInfo
 from quii_helper.camera.outputs.results import (
     CameraCaptureError,
@@ -135,6 +136,7 @@ from quii_helper.network import LanDeviceCandidate
 
 __all__ = [
     "Camera",
+    "CameraArchiveEvent",
     "CameraAudioFrame",
     "CameraAudioStream",
     "CameraConversationSession",

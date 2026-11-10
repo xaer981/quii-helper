@@ -436,6 +436,17 @@ implied; delayed history and rows outside that page remain limitations. See
 
 ## Local Device APIs
 
+`Camera.get_cloud_call_events()` is a naming alias of the existing
+`get_call_events()` cloud journal method; it changes no request or login.
+`Camera.watch_archive_events()` instead repeats the existing local CGI
+`get.record.session` / `get.record.message` sequence with a fresh session per
+poll. It introduces no new wire command or native-protocol interpretation.
+The Python wrapper only adds baseline, bounded deduplication and scheduling.
+It reads archive metadata; it does not subscribe to command 23 or infer a call
+from HANG_UP(0). The latter is a generic disconnect, not a safe ring signal.
+On Tantos, both ring-triggered and manual monitor recordings had type `manual`;
+see [dated evidence](../COMPATIBILITY.md#tantos-archive-observations).
+
 Many read-only device methods use local HTTP/CGI-style endpoints.
 
 Compatibility depends on device firmware. Some commands return `error=-1` even though the same package works for preview capture. This usually means the specific command is unsupported or requires a different firmware/app command variant.

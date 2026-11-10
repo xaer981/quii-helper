@@ -1,7 +1,8 @@
 """High-level camera API for media, device inspection, and explicit control."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from threading import Event
 
@@ -178,6 +179,8 @@ from quii_helper.camera.device_json_cgi import (
     fetch_third_party_push_info,
     fetch_voice_message_info,
 )
+from quii_helper.camera.events import CameraArchiveEvent
+from quii_helper.camera.events.archive import watch_archive_events
 from quii_helper.camera.metadata import (
     CameraDeviceInfo,
     camera_device_info_from_credentials,
@@ -678,6 +681,9 @@ class Camera:
     ) -> CameraCallEventPage:
         """Read one page of incoming calls from the cloud UserAlarm journal.
 
+        Also available as ``get_cloud_call_events()``. Both names perform the
+        same cloud operation; neither is a LAN event subscription.
+
         Args:
             page: Zero-based page number. Start with zero for a fresh query.
             page_size: Positive number of records requested per page.
@@ -716,6 +722,8 @@ class Camera:
             start_time=start_time,
             end_time=end_time,
         )
+
+    get_cloud_call_events = get_call_events
 
     def get_iot_command_support(self) -> CameraIotCommandSupportInfo:
         """Fetch read-only IoT/RRPC command support for this camera.
@@ -2755,6 +2763,93 @@ class Camera:
             file_type=file_type,
             occur_type=occur_type,
             stream=stream,
+            max_pages=max_pages,
+        )
+
+    def watch_archive_events(
+        self,
+        *,
+        start_time: str,
+        end_time: str,
+        channel_id: int = 1,
+        file_type: str = "all",
+        occur_type: str = "all",
+        stream: str = "all",
+        interval_seconds: float = 5.0,
+        duration_seconds: float = 180.0,
+        max_seen_records: int = 10000,
+        max_pages: int = 32,
+        port: int = 80,
+        scheme: str = "http",
+        auth_code: str | None = None,
+        verify_tls: bool | None = None,
+        debug: bool = False,
+    ) -> Iterator[CameraArchiveEvent]:
+        """Observe new local archive entries, not confirmed doorbell calls.
+
+        Args:
+            start_time: Fixed lower bound in device-local YYYY-MM-DD HH:MM:SS.
+            end_time: Fixed upper bound in the same format. Include the whole
+                observation window; no timezone conversion is performed.
+            channel_id: Native CGI channel selector; firmware may alias it.
+            file_type: Native file selector, e.g. "all", "picture", "video".
+            occur_type: Native occurrence filter, e.g. "all" or "manual".
+            stream: Native stream selector: "main", "sub", or "all".
+            interval_seconds: Positive finite polling interval, default five
+                seconds. Slow reads/consumers wait another interval, no bursts.
+            duration_seconds: Positive finite observation budget, default
+                three minutes, starting on iteration. Stops new polls, not an
+                in-flight query or delivery of its already fetched entries.
+            max_seen_records: Maximum unique identities retained for this run.
+                Exceeding the limit stops observation, without silent eviction.
+            max_pages: Safety cap per fresh archive search. Incomplete searches
+                stop observation instead of reporting a misleading empty result.
+            port: Local CGI port; no cloud fallback is performed.
+            scheme: Local CGI scheme, "http" or "https".
+            auth_code: Local auth override; otherwise use configured auth_code.
+            verify_tls: Optional HTTPS verification override.
+            debug: Enable raw CGI debug logging; metadata can be sensitive.
+
+        Returns:
+            A synchronous iterator of CameraArchiveEvent objects, in server
+            order. The first complete query is a baseline and emits nothing.
+            Later identities are emitted once per run; no background work is
+            started. Stop iteration or press Ctrl+C to stop polling.
+
+        Raises:
+            ConfigurationError: Invalid bounds or missing local CGI settings.
+            QuiiConnectionError: A read fails, is incomplete, lacks a usable
+                record identity, or exceeds max_seen_records. No automatic retry.
+
+        Uses a fresh list_record_files() session each poll. Requires automatic
+        picture/video saving on the device for call-related records to exist.
+        Disabled saving, storage failures, late records, or overwritten entries
+        can prevent or delay observation. "manual" also includes manual monitor
+        recordings on Tantos, so this is not safe for automatic door opening.
+        No preview, downloads, device-setting changes, or door commands are
+        started.
+        """
+        return watch_archive_events(
+            partial(
+                self.list_record_files,
+                start_time=start_time,
+                end_time=end_time,
+                channel_id=channel_id,
+                file_type=file_type,
+                occur_type=occur_type,
+                stream=stream,
+                max_pages=max_pages,
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
+            ),
+            start_time=start_time,
+            end_time=end_time,
+            interval_seconds=interval_seconds,
+            duration_seconds=duration_seconds,
+            max_seen_records=max_seen_records,
             max_pages=max_pages,
         )
 
