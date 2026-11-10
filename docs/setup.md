@@ -505,7 +505,8 @@ See [API details and limits](api.md#incoming-call-history-experimental).
 
 ## Local Archive Observations
 
-Available since 0.5.0.
+Use **0.5.1 or newer** for archive observation fixes:
+`python -m pip install --upgrade "quii-helper>=0.5.1"`.
 
 This separate, read-only path watches new archive pictures/videos, not a
 confirmed list of calls. It reads local `/tdkcgi` metadata with a LAN host and
@@ -529,7 +530,7 @@ obtain a new pair; it is not part of archive polling.
 Enter the current monitor time as `YYYY-MM-DD HH:MM:SS`. This avoids assuming
 that the computer/container and monitor share a timezone. The example watches
 a narrow window from five minutes before that value to four minutes after it;
-enter it promptly. The first complete read becomes the baseline. Wait for
+enter it promptly. The first complete poll batch becomes the baseline. Wait for
 **Archive baseline ready**, then test; Ctrl+C stops. Polling is every five
 seconds for three minutes, with no downloads, preview or door commands.
 Invalid input prints a format hint and asks again; Ctrl+C also cancels the prompt.
@@ -553,8 +554,12 @@ key. The bundled example above deliberately uses the saved JSON instead, so
 its credential source matches the LAN RTSP example and is never chosen silently.
 
 The device's **save picture/video on call** setting must already be enabled
-for a call-related entry to appear. This code never changes it. `file_type="all"`
-covers both choices; unavailable storage or disabled saving can make a call
+for a call-related entry to appear. This code never changes it. The example's
+`file_type="all"` performs two fresh searches per poll: `video`, then `picture`.
+Both must succeed and complete; otherwise polling stops without a partial
+batch. To use only one supported type, call the API with `file_type="video"`
+or `"picture"`. The per-search page cap applies separately to each type.
+Unavailable storage or disabled saving can make a call
 invisible. On Tantos, a call video appeared after its 30-second recording ended,
 and `manual` was also returned for a manual monitor recording. Photo-mode
 timing is not yet tested. Errors stop observation rather than indicating no

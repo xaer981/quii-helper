@@ -207,10 +207,14 @@ delayed history and bursts can be missed or detected late.
 
 ### Local Archive Observations
 
-Available since **0.5.0**, `watch_archive_events()` polls metadata every five
-seconds for three minutes by default. Each poll uses a fresh archive search;
-the first complete query is the baseline, later identities are deduplicated.
-Errors are not empty results.
+Use **0.5.1 or newer** for archive observation fixes. Upgrade with
+`python -m pip install --upgrade "quii-helper>=0.5.1"`.
+
+`watch_archive_events()` polls metadata every five seconds for three minutes
+by default. The default `file_type="all"` combines
+fresh `video` and `picture` searches each poll; either failing or incomplete
+search stops observation. The first complete batch is the baseline; later
+identities are deduplicated. Errors are not empty results.
 The bundled example reuses the RTSP credential JSON and asks for the monitor's
 current time; invalid input can be retried and Ctrl+C cancels the prompt.
 
@@ -222,7 +226,7 @@ current time; invalid input can be retried and Ctrl+C cancels the prompt.
 
 See [local setup, direct-auth usage and bounds](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#local-archive-observations).
 No cloud key refresh, preview, downloads or door commands are started by this
-watcher. The time budget stops new polls, not an in-flight query.
+watcher. The time budget stops new polls, not an in-flight poll batch.
 
 ## Start With An Example
 

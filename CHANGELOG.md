@@ -5,6 +5,24 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## 0.5.1 - 2026-11-10
+
+### Fixed
+
+- Serialize archive watcher bounds as native CGI `YYYY-MM-DDtHH:MM:SSz`,
+  keeping the public device-local `YYYY-MM-DD HH:MM:SS` arguments and clock
+  unchanged. On tested Tantos, the old space-separated wire values returned
+  a successful empty result despite matching archived videos. Add regression
+  checks against actual outgoing XML, including midnight and leap-day bounds.
+- Make `watch_archive_events(file_type="all")` combine explicit video and
+  picture searches, avoiding firmware-dependent native `all` filtering.
+  Each poll performs two fresh searches; either failed or incomplete search
+  stops observation without partial delivery. Keep one shared deduplication
+  limit and preserve direct `list_record_files()` behavior.
+- Correct the documented archive-download example to use native device-local
+  time strings and reject failed or incomplete searches before downloading.
+  Test the exact documentation block with empty, populated and failed results.
+
 ## 0.5.0 - 2026-11-10
 
 ### Added

@@ -978,10 +978,11 @@ Calendar/day/month queries are not exposed by this API.
 ### Local Archive Observations
 
 `watch_archive_events()` is a synchronous, LAN-only iterator over **new archive
-entries**, not a live ringing subscription. It uses the existing local CGI
-`list_record_files()` path, opening a **fresh search session per poll**; an old
-search session may be a fixed snapshot. It never starts preview, downloads,
-cloud authentication, device-setting changes or door commands.
+entries**, not a live ringing subscription. Use **0.5.1 or newer** for archive
+observation fixes. It uses the existing local CGI
+`list_record_files()` path, opening a **fresh search session per selected type
+each poll**; an old search session may be a fixed snapshot. It never starts
+preview, downloads, cloud authentication, device-setting changes or door commands.
 
 ```python
 from quii_helper import Camera, load_config
@@ -992,7 +993,7 @@ camera = Camera(config=load_config(), connection_mode="lan")
 for event in camera.watch_archive_events(
     start_time="2026-11-10 12:00:00",
     end_time="2026-11-10 12:10:00",
-    file_type="all",
+    file_type="all",  # Two searches per poll: video, then pictures.
     interval_seconds=5,
     duration_seconds=180,
 ):
@@ -1003,10 +1004,26 @@ for event in camera.watch_archive_events(
 | --- | --- |
 | `start_time`, `end_time` | Required fixed `YYYY-MM-DD HH:MM:SS` bounds in the **device-local** clock, start before end. No host-timezone assumption or conversion. |
 | `interval_seconds` | `5.0`; finite and positive. Reads never overlap. If a read or consumer exceeds the interval, wait another interval instead of catching up in a burst. |
-| `duration_seconds` | `180.0`; finite and positive, starting when iteration begins. Stops new polls, not an in-flight query or its already fetched batch. Consumer processing counts toward the budget. |
+| `duration_seconds` | `180.0`; finite and positive, starting when iteration begins. Stops new polls, not an in-flight poll batch or delivery of its fetched entries. Consumer processing counts toward the budget. |
 | `max_seen_records` | `10000`; positive integer cap on unique identities, including the baseline. Stops with an error on overflow, never silently evicts and re-emits old entries. |
-| `max_pages` | `32`; positive integer page limit for **each** search. A capped/incomplete search is an error, not an empty result. |
-| Archive/CGI selectors | Same as `list_record_files()`: `channel_id=1`, `file_type="all"`, `occur_type="all"`, `stream="all"`, `port=80`, `scheme="http"`, `auth_code=None`, `verify_tls=None`, `debug=False`. |
+| `max_pages` | `32`; positive integer page limit for **each type's search**. A capped/incomplete search is an error, not an empty result. |
+| `file_type` | `"all"` combines two explicit searches, `"video"` then `"picture"`, rather than sending native `"all"`. An explicit selector uses one search. |
+| Other archive/CGI selectors | Same as `list_record_files()`: `channel_id=1`, `occur_type="all"`, `stream="all"`, `port=80`, `scheme="http"`, `auth_code=None`, `verify_tls=None`, `debug=False`. |
+
+The watcher serializes these human-readable bounds as
+`YYYY-MM-DDtHH:MM:SSz` for CGI, matching both original clients. The lowercase
+`t` and `z` are literal separators, not a request to convert local time to UTC.
+Direct `list_record_files()` calls keep their existing native-string behavior.
+Their `file_type="all"` also remains a single native search, unlike this watcher.
+
+With the watcher's `"all"`, both searches must succeed and complete before the
+baseline or any later batch is accepted. There is no partial delivery, native
+`"all"` attempt or automatic retry. The shared identity limit covers both types;
+duplicates are suppressed even if firmware returns overlapping results. Results
+retain video-then-picture query order, not a global timestamp sort. These are
+two sequential snapshots, not an atomic view of the device. Use explicit
+`"video"` or `"picture"` to reduce traffic or if the other type is unsupported;
+the watcher never silently ignores an unsupported type.
 
 Configure `CAMERA_DEVICE_HOST` and local `AUTH_CODE`, or pass `device_host` and
 `auth_code` to `Camera`. A saved credential file's `auth_code` can be supplied
@@ -1015,7 +1032,7 @@ crypto asset or cloud settings are needed for these metadata queries. Prefer
 a narrow recent time range: searching the entire archive can take longer than
 the polling interval. Server order and channel selectors are firmware-specific.
 
-The first **complete successful** query is the baseline, even if empty; it
+The first **complete successful** poll batch is the baseline, even if empty; it
 emits no entries. With library logging enabled, **Archive baseline ready**
 indicates when this finishes. Later unseen identities are emitted once per
 iterator run. Deduplication uses type, channel, filename, picture index and
@@ -1037,8 +1054,12 @@ Stopping iteration starts no further work, and Ctrl+C interrupts normal polling.
 
 **Recording settings determine coverage.** Enable automatic saving on a call
 on the device itself if using this as an observation aid. Both picture and
-video modes are supported by `file_type="all"`, but disabled saving, missing/
-full storage or recording failure may produce no entry. A video can appear
+video metadata are supported, but native file selectors depend on firmware.
+On tested Tantos, a native `"all"` query returned no entries where `"video"`
+returned two. The watcher avoids that filter by querying both types explicitly;
+the direct archive API is unchanged. An empty result is still not proof that
+no call occurred. Disabled saving, missing/full storage or recording failure
+may also produce no entry. A video can appear
 only after it finishes; pictures might appear earlier, but photo-mode latency
 has not been verified. Phone-only recordings are not the monitor archive.
 On Tantos, ring-triggered and manually started monitor videos both had
@@ -1149,16 +1170,27 @@ With an already configured LAN `camera`, query pictures and download their
 bytes without assuming the archive is nonempty or saving anything to disk:
 
 ```python
+from quii_helper import QuiiConnectionError
+
 pictures = camera.list_record_files(
-    start_time="2026-10-29T00:00:00",
-    end_time="2026-10-29T23:59:59",
+    start_time="2026-10-29t00:00:00z",
+    end_time="2026-10-29t23:59:59z",
     file_type="picture",
 )
+if pictures.error != 0 or not pictures.completed:
+    raise QuiiConnectionError(
+        f"Archive search failed or incomplete (error={pictures.error})"
+    )
 for entry in pictures.records:
     jpeg_bytes = camera.download_record(entry)
 ```
 
-Use the device's own timestamp convention for the query bounds above.
+Replace the bounds with a narrow interval in the device's local clock. The
+literal lowercase `t`/`z` match both vHome and vEye Pro; they do not convert
+the clock to UTC. Unlike the watcher, direct `list_record_files()` passes
+these strings unchanged. Check both `error` and `completed` before using
+`records`: failed or incomplete searches can still contain partial entries.
+A successful complete empty search simply downloads nothing.
 For videos, query with `file_type="video"`, then pass a returned entry to the
 same method, for example `camera.download_record(entry, timeout=120, max_bytes=67108864)`.
 The returned bytes are MP4, not a copy of an on-device MP4 file.
