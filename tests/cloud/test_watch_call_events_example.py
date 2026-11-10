@@ -67,7 +67,7 @@ def test_polling_only_reads_fresh_first_pages_and_deduplicates(
     watcher: tuple[Mock, FakeClock], capsys: pytest.CaptureFixture[str]
 ) -> None:
     camera, clock = watcher
-    camera.get_call_events.side_effect = [
+    camera.get_cloud_call_events.side_effect = [
         history("baseline-only"),
         history("first", "first", "baseline-only"),
         history("baseline-only"),
@@ -81,11 +81,11 @@ def test_polling_only_reads_fresh_first_pages_and_deduplicates(
     )
     example.load_config.assert_called_once_with()
     example.configure_logging.assert_called_once_with(replace_existing=True)
-    assert camera.get_call_events.call_count == 4
-    for call in camera.get_call_events.call_args_list:
+    assert camera.get_cloud_call_events.call_count == 4
+    for call in camera.get_cloud_call_events.call_args_list:
         assert call.args == ()
         assert call.kwargs == {"page": 0, "max_id": "0", "page_size": 15}
-    assert {call[0] for call in camera.mock_calls} == {"get_call_events"}
+    assert {call[0] for call in camera.mock_calls} == {"get_cloud_call_events"}
     assert clock.sleeps == [5.0] * 4
     assert clock.now == 20.0
     output = capsys.readouterr().out
@@ -101,7 +101,7 @@ def test_query_errors_neither_initialize_nor_reset_the_baseline(
     watcher: tuple[Mock, FakeClock], capsys: pytest.CaptureFixture[str]
 ) -> None:
     camera, _ = watcher
-    camera.get_call_events.side_effect = [
+    camera.get_cloud_call_events.side_effect = [
         QuiiConnectionError("private-error-detail"),
         history("baseline-only"),
         QuiiConnectionError("private-error-detail"),
@@ -122,7 +122,7 @@ def test_empty_successful_page_is_a_valid_baseline(
     watcher: tuple[Mock, FakeClock], capsys: pytest.CaptureFixture[str]
 ) -> None:
     camera, _ = watcher
-    camera.get_call_events.side_effect = [
+    camera.get_cloud_call_events.side_effect = [
         history(),
         history("first-record"),
         history("first-record"),
@@ -149,7 +149,7 @@ def test_query_time_counts_towards_poll_interval_and_deadline(
         clock.now += query_seconds
         return history()
 
-    camera.get_call_events.side_effect = query
+    camera.get_cloud_call_events.side_effect = query
 
     example.main()
 
@@ -171,16 +171,16 @@ def test_ctrl_c_stops_without_another_query(
 ) -> None:
     camera, _ = watcher
     if phase == "query":
-        camera.get_call_events.side_effect = KeyboardInterrupt
+        camera.get_cloud_call_events.side_effect = KeyboardInterrupt
     else:
-        camera.get_call_events.return_value = history()
+        camera.get_cloud_call_events.return_value = history()
         monkeypatch.setattr(
             example, "sleep", Mock(side_effect=KeyboardInterrupt)
         )
 
     example.main()
 
-    camera.get_call_events.assert_called_once_with(
+    camera.get_cloud_call_events.assert_called_once_with(
         page=0, max_id="0", page_size=15
     )
     assert capsys.readouterr().out.endswith("Stopped.\n")
@@ -190,10 +190,12 @@ def test_configuration_errors_are_not_retried(
     watcher: tuple[Mock, FakeClock],
 ) -> None:
     camera, clock = watcher
-    camera.get_call_events.side_effect = ConfigurationError("missing setting")
+    camera.get_cloud_call_events.side_effect = ConfigurationError(
+        "missing setting"
+    )
 
     with pytest.raises(ConfigurationError, match="missing setting"):
         example.main()
 
-    assert camera.get_call_events.call_count == 1
+    assert camera.get_cloud_call_events.call_count == 1
     assert clock.sleeps == []

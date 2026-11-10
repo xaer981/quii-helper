@@ -35,7 +35,9 @@ def main() -> None:
         while monotonic() < deadline:
             started = monotonic()
             try:
-                page = camera.get_call_events(page=0, max_id="0", page_size=15)
+                page = camera.get_cloud_call_events(
+                    page=0, max_id="0", page_size=15
+                )
             except QuiiConnectionError:
                 print(
                     "Cloud history query failed; keeping the baseline "

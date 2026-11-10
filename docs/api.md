@@ -47,7 +47,7 @@ file, changes `.env`, or renews expired credentials.
 - [Computer conversation](#computer-conversation-experimental); microphone and headphones.
 - [Cloud queries](#cloud-read-only-methods) and [call history](#incoming-call-history-experimental).
 - [LAN discovery](#lan-discovery) and [local inspection](#local-device-read-only-methods).
-- [Archive queries](#archive-queries), [door control](#door-control), and [errors](#error-codes).
+- [Archive queries](#archive-queries), [local archive observations](#local-archive-observations), [door control](#door-control), and [errors](#error-codes).
 - [Bundled examples](#application-entry-point).
 
 ## Constructor
@@ -629,6 +629,7 @@ They do not open a preview or send opening commands.
 | `get_device_shadow_info()` | `CameraDeviceShadowInfo` | Cloud shadow/device state where supported. |
 | `get_iot_command_support()` | `CameraIotCommandSupportInfo` | Command-support metadata, not command execution. |
 | `get_call_events(...)` | `CameraCallEventPage` | Experimental incoming-call journal history. |
+| `get_cloud_call_events(...)` | `CameraCallEventPage` | Explicit cloud name for the same method; identical signature and behavior. |
 | `fetch_stream_credentials()` | `CameraStreamCredentials` | Fresh cloud login + device-token query; return a minimal key/auth pair for explicit LAN playback. |
 
 Sparse fields in `CameraDeviceInfo` do not necessarily mean parsing failed.
@@ -745,12 +746,19 @@ Missing/unreadable files raise `OSError`; invalid schema/values/size raise
 from quii_helper import Camera, load_config
 
 camera = Camera(config=load_config(), connection_mode="cloud")
-page = camera.get_call_events(page_size=15)
+page = camera.get_cloud_call_events(page_size=15)
 for event in page.events:
     print(event.record_id, event.alarm_id, event.time, event.channel)
 
-next_page = camera.get_call_events(page=1, max_id=page.max_id, page_size=15)
+next_page = camera.get_cloud_call_events(
+    page=1, max_id=page.max_id, page_size=15
+)
 ```
+
+`get_call_events()` remains a compatible alias of `get_cloud_call_events()`.
+There is no difference in filters, authentication or results; neither method
+reads a local event log. For LAN archive additions, use the separate
+[archive observer](#local-archive-observations), with its different semantics.
 
 | Argument | Default and meaning |
 | --- | --- |
@@ -951,6 +959,7 @@ Interactive archive playback/seek is not exposed.
 | `get_record_session_info(start_time=..., end_time=...)` | `CameraDeviceRecordSessionInfo` | Open a read-only archive search session. |
 | `get_record_message_info(session_id=...)` | `CameraDeviceRecordMessageInfo` | Read one page for the returned search-session id. |
 | `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Search and collect pages up to a safety cap. |
+| `watch_archive_events(start_time=..., end_time=...)` | `Iterator[CameraArchiveEvent]` | Poll local archive metadata, suppress the baseline and duplicates. Not confirmed calls. |
 | `get_record_alarm_info(timestamp=...)` | `CameraDeviceRecordAlarmInfo` | Read archive entries associated with an alarm timestamp. |
 | `download_record(entry, timeout=30.0, max_bytes=16777216, protocol="default")` | `bytes` | Download an archived JPEG or H.264 MP4 over LAN TCP, without live preview. |
 
@@ -965,6 +974,88 @@ time bounds are different interfaces and must not be assumed interchangeable.
 The list result exposes `records`, fetched `pages`, session/status fields, and
 completion information. A page cap is not proof of a complete archive search.
 Calendar/day/month queries are not exposed by this API.
+
+### Local Archive Observations
+
+`watch_archive_events()` is a synchronous, LAN-only iterator over **new archive
+entries**, not a live ringing subscription. It uses the existing local CGI
+`list_record_files()` path, opening a **fresh search session per poll**; an old
+search session may be a fixed snapshot. It never starts preview, downloads,
+cloud authentication, device-setting changes or door commands.
+
+```python
+from quii_helper import Camera, load_config
+
+camera = Camera(config=load_config(), connection_mode="lan")
+# Replace these bounds with a narrow interval in the device's local clock.
+# Include the whole upcoming observation window, not only past timestamps.
+for event in camera.watch_archive_events(
+    start_time="2026-11-10 12:00:00",
+    end_time="2026-11-10 12:10:00",
+    file_type="all",
+    interval_seconds=5,
+    duration_seconds=180,
+):
+    print(event.kind, event.observed_at, event.record.start_time)
+```
+
+| Argument | Default and meaning |
+| --- | --- |
+| `start_time`, `end_time` | Required fixed `YYYY-MM-DD HH:MM:SS` bounds in the **device-local** clock, start before end. No host-timezone assumption or conversion. |
+| `interval_seconds` | `5.0`; finite and positive. Reads never overlap. If a read or consumer exceeds the interval, wait another interval instead of catching up in a burst. |
+| `duration_seconds` | `180.0`; finite and positive, starting when iteration begins. Stops new polls, not an in-flight query or its already fetched batch. Consumer processing counts toward the budget. |
+| `max_seen_records` | `10000`; positive integer cap on unique identities, including the baseline. Stops with an error on overflow, never silently evicts and re-emits old entries. |
+| `max_pages` | `32`; positive integer page limit for **each** search. A capped/incomplete search is an error, not an empty result. |
+| Archive/CGI selectors | Same as `list_record_files()`: `channel_id=1`, `file_type="all"`, `occur_type="all"`, `stream="all"`, `port=80`, `scheme="http"`, `auth_code=None`, `verify_tls=None`, `debug=False`. |
+
+Configure `CAMERA_DEVICE_HOST` and local `AUTH_CODE`, or pass `device_host` and
+`auth_code` to `Camera`. A saved credential file's `auth_code` can be supplied
+explicitly; this method does not load or refresh it. No stream key, native
+crypto asset or cloud settings are needed for these metadata queries. Prefer
+a narrow recent time range: searching the entire archive can take longer than
+the polling interval. Server order and channel selectors are firmware-specific.
+
+The first **complete successful** query is the baseline, even if empty; it
+emits no entries. With library logging enabled, **Archive baseline ready**
+indicates when this finishes. Later unseen identities are emitted once per
+iterator run. Deduplication uses type, channel, filename, picture index and
+start time, not mutable end time, size, URLs or session-relative record ids.
+It is not persisted across runs. Previously unseen old entries may be delayed
+history; overwritten or short-lived entries can be missed between polls.
+
+`CameraArchiveEvent.record` contains the original `CameraDeviceRecordFileInfo`;
+`observed_at` is aware UTC **observation time**, not ring time. Device timestamps
+remain untouched. `kind` is always `"archive_record_added"`. The record is
+hidden from the event's repr, but accessing/serializing its metadata can expose
+private filenames or URLs. Do not post raw records or enable raw debug logs
+in a public report.
+
+`ConfigurationError` reports invalid bounds/settings. `QuiiConnectionError`
+stops iteration on a failed/incomplete query, missing usable identity or memory
+limit. Errors are never treated as empty history; there is no automatic retry.
+Stopping iteration starts no further work, and Ctrl+C interrupts normal polling.
+
+**Recording settings determine coverage.** Enable automatic saving on a call
+on the device itself if using this as an observation aid. Both picture and
+video modes are supported by `file_type="all"`, but disabled saving, missing/
+full storage or recording failure may produce no entry. A video can appear
+only after it finishes; pictures might appear earlier, but photo-mode latency
+has not been verified. Phone-only recordings are not the monitor archive.
+On Tantos, ring-triggered and manually started monitor videos both had
+`occur_type="manual"`; it is **not a reliable call classification**. Do not
+automatically open a door based on this iterator.
+
+From a configured checkout, run `python -m examples.watch_archive_events` for
+an interactive device-clock prompt and a three-minute watch. Like
+`examples.lan_rtsp`, it loads `data/stream_credentials.json`; it passes the
+file's device id/auth code to a LAN camera, without using the stream key or
+fetching credentials. Invalid clock input is retried and Ctrl+C cancels the
+prompt or polling. The library method itself still needs only a local host
+and auth code, not a JSON file. See
+[setup](setup.md#local-archive-observations) and the dated
+[Tantos observations](../COMPATIBILITY.md#tantos-archive-observations).
+
+### Archive Downloads And Metadata
 
 Entries preserve `picture_index` (`idx`, including zero/leading zeros),
 `frame_rate` (`idf`), and `stream` (`ids=1/2` maps to `main/sub` if no explicit
@@ -1176,6 +1267,7 @@ from its root after installation/configuration:
 | `python -m examples.discover_env_values` | Service discovery; prints candidate cloud settings. |
 | `python -m examples.call_events` | Read one history page; may create an alarm reader session. |
 | `python -m examples.watch_call_events` | Poll the first cloud history page every five seconds for up to three minutes; baseline and in-memory deduplication, no door commands. |
+| `python -m examples.watch_archive_events` | Load `data/stream_credentials.json` like LAN RTSP, ask for the monitor's current clock, then observe new local archive pictures/videos every five seconds for three minutes. Requires the LAN host and device-side saving; no cloud, downloads, preview or door commands. |
 | `python -m examples.snapshot` | Capture one JPEG. |
 | `python -m examples.save_video` | Record the example's default 30-second collection window. |
 | `python -m examples.serve_rtsp` | Serve RTSP on localhost port `8554`. |

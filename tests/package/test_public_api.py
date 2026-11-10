@@ -7,6 +7,7 @@ ROOT_PUBLIC_API = [
     "AudioDeviceError",
     "AutonomousConfig",
     "Camera",
+    "CameraArchiveEvent",
     "CameraAudioFrame",
     "CameraAudioStream",
     "CameraConversationSession",

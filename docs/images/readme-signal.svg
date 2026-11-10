@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="338" viewBox="0 0 1080 338" role="img" aria-labelledby="title desc">
+  <title id="title">Make your intercom part of your code</title>
+  <desc id="desc">QUII Helper. Python and Qualvision. Camera and terminal connected by a local signal path.</desc>
+  <defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.8" fill="#b0d9c5" opacity="0.13"/></pattern>
+    <linearGradient id="surface" x2="1" y2="1"><stop stop-color="#102d26"/><stop offset="1" stop-color="#183b35"/></linearGradient>
+  </defs>
+  <rect width="1080" height="338" rx="14" fill="url(#surface)"/>
+  <rect width="1080" height="338" rx="14" fill="url(#grid)"/>
+  <path d="M0 309h1080" stroke="#9ec7af" stroke-opacity="0.16"/>
+  <g font-family="Verdana, sans-serif">
+    <circle cx="43" cy="42" r="4" fill="#edb86f"/>
+    <text x="58" y="46" font-size="11" font-weight="700" letter-spacing="2" fill="#bcd6c8">QUII HELPER / PYTHON TOOLKIT</text>
+    <text x="40" y="118" font-family="Georgia, serif" font-size="49" fill="#fff7e8">Make your intercom</text>
+    <text x="40" y="178" font-family="Georgia, serif" font-size="49" fill="#fff7e8">part of your code.</text>
+    <text x="42" y="222" font-size="15" fill="#bcd6c8">Local media. Explicit cloud access. One Python API.</text>
+    <rect x="42" y="257" width="99" height="26" rx="13" fill="#edb86f"/>
+    <text x="59" y="274" font-size="10" font-weight="700" fill="#19352b">LAN FIRST</text>
+    <text x="160" y="274" font-size="11" letter-spacing="1.4" fill="#c2dbcd">RTSP / AUDIO / ARCHIVES</text>
+  </g>
+  <g fill="none" stroke="#a8c8b5" stroke-width="1.5">
+    <circle cx="805" cy="155" r="115" opacity="0.12"/>
+    <circle cx="805" cy="155" r="88" opacity="0.16"/>
+    <rect x="660" y="78" width="87" height="144" rx="17" fill="#17372e"/>
+    <circle cx="703.5" cy="115" r="20"/>
+    <circle cx="703.5" cy="115" r="9" stroke="#edb86f" stroke-width="3"/>
+    <path d="M685 165h37m-37 10h37m-27 25h17" stroke-linecap="round"/>
+    <path d="M748 151h71l14-13 14 26 14-26 14 13h29" stroke="#edb86f" stroke-width="2"/>
+    <rect x="905" y="108" width="123" height="88" rx="8" fill="#17372e"/>
+    <path d="M905 129h123M919 120h2m6 0h2m6 0h2M921 149l8 8-8 8m19 0h26" stroke-linecap="round"/>
+    <circle cx="820" cy="151" r="4" fill="#edb86f" stroke="none"/>
+  </g>
+  <g font-family="Verdana, sans-serif" font-size="10" letter-spacing="2" fill="#bcd6c8">
+    <text x="675" y="248">INTERCOM</text><text x="933" y="223">PYTHON</text>
+    <text x="783" y="286" fill="#edb86f">YOUR NETWORK. YOUR CODE.</text>
+  </g>
+</svg>
