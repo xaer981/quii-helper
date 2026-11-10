@@ -4,6 +4,8 @@ Run ``python -m examples.watch_archive_events`` from a configured checkout.
 Reuses data/stream_credentials.json like examples.lan_rtsp. Set the camera IP
 in CAMERA_DEVICE_HOST; the example uses only the file's device id/auth code.
 No cloud login or key refresh is attempted, even if the file is missing.
+Each poll combines two fresh searches: video, then pictures. Either failed or
+incomplete search stops observation without a partial batch.
 Device automatic saving determines whether pictures/videos appear at all.
 "manual" may also mean a manual monitor recording. No door commands are sent.
 """

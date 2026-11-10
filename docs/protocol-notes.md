@@ -440,8 +440,19 @@ implied; delayed history and rows outside that page remain limitations. See
 `get_call_events()` cloud journal method; it changes no request or login.
 `Camera.watch_archive_events()` instead repeats the existing local CGI
 `get.record.session` / `get.record.message` sequence with a fresh session per
-poll. It introduces no new wire command or native-protocol interpretation.
-The Python wrapper only adds baseline, bounded deduplication and scheduling.
+selected type each poll. Its logical `file_type="all"` combines explicit
+`video` and `picture` searches, accepting only complete successful batches.
+Both vHome and exact vEye Pro `IQVCGIVDP::MediaSearch` and
+`IQVCGIVSU::MediaSearch` encode these two explicit selectors. The union is a
+Python wrapper policy, not a claim that native always performs both searches;
+the direct `list_record_files()` API still sends its requested selector.
+No wire command or packet layout changes.
+The Python wrapper adds baseline, bounded deduplication and scheduling, and
+serializes its validated `YYYY-MM-DD HH:MM:SS` bounds to native CGI
+`YYYY-MM-DDtHH:MM:SSz`. Both vHome and exact vEye Pro
+`DeviceRequestHelp.getRecordSession()` use `QvDateTime.parseXml()` to construct
+that format, also used by both native `IQVCGIConfig::GetStringTime()` functions.
+Its lowercase `t`/`z` are literals; device-local wall time is unchanged.
 It reads archive metadata; it does not subscribe to command 23 or infer a call
 from HANG_UP(0). The latter is a generic disconnect, not a safe ring signal.
 On Tantos, both ring-triggered and manual monitor recordings had type `manual`;

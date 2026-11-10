@@ -2,6 +2,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import replace
 from datetime import datetime, timezone
 from http.client import IncompleteRead
+from io import BytesIO
 from unittest.mock import Mock
 from urllib.error import URLError
 
@@ -24,8 +25,13 @@ from quii_helper.device.cgi.models import (
     DeviceRecordMessageInfo,
     DeviceRecordSessionInfo,
 )
+from quii_helper.device.http import transport
 
 WINDOW = dict(start_time="2026-11-10 12:00:00", end_time="2026-11-10 12:10:00")
+CGI_WINDOW = dict(
+    start_time="2026-11-10t12:00:00z", end_time="2026-11-10t12:10:00z"
+)
+VIDEO_WINDOW = dict(**WINDOW, file_type="video")
 
 
 class FakeClock:
@@ -85,8 +91,12 @@ def test_baseline_photos_videos_and_deduplication(watcher) -> None:
     )
     read.side_effect = [
         page(baseline),
-        page(video, video, baseline, picture),
-        page(changed, picture, next_picture),
+        page(),
+        page(video, video, baseline),
+        page(picture),
+        page(changed),
+        page(picture, next_picture),
+        page(),
         page(),
     ]
 
@@ -97,13 +107,13 @@ def test_baseline_photos_videos_and_deduplication(watcher) -> None:
     assert all(event.observed_at.tzinfo is timezone.utc for event in events)
     assert all(event.record.start_time == video.start_time for event in events)
     assert events[0].observed_at == events[1].observed_at
-    assert read.call_count == 4
+    assert read.call_count == 8
     assert camera.connector.mock_calls == []
-    for call in read.call_args_list:
+    for index, call in enumerate(read.call_args_list):
         assert call.kwargs == dict(
-            **WINDOW,
+            **CGI_WINDOW,
             channel_id=1,
-            file_type="all",
+            file_type="video" if index % 2 == 0 else "picture",
             occur_type="all",
             stream="all",
             max_pages=32,
@@ -122,13 +132,124 @@ def test_empty_baseline_and_lazy_start_and_close(watcher) -> None:
         page(record("new")),
         page(record("never-read")),
     ]
-    events = camera.watch_archive_events(**WINDOW, duration_seconds=20)
+    events = camera.watch_archive_events(**VIDEO_WINDOW, duration_seconds=20)
     read.assert_not_called()
     clock.now = 1000  # The budget starts on iteration, not construction.
     assert next(events).record.file_name == "new"
     events.close()
     assert read.call_count == 2
     assert clock.sleeps == [5]
+
+
+@pytest.mark.parametrize("phase", ["baseline", "later"])
+@pytest.mark.parametrize("failed_type", ["video", "picture"])
+@pytest.mark.parametrize(
+    "failure", ["device", "incomplete", "transport", "interrupt"]
+)
+def test_all_requires_both_complete_types_before_emitting(
+    watcher, phase, failed_type, failure
+) -> None:
+    camera, read, _ = watcher
+    partial = record("not-an-event")
+    failed = {
+        "device": replace(page(partial), error=-1),
+        "incomplete": replace(page(partial), completed=False),
+        "transport": OSError("read failed"),
+        "interrupt": KeyboardInterrupt(),
+    }[failure]
+    prefix = [page(), page()] if phase == "later" else []
+    batch = [failed] if failed_type == "video" else [page(partial), failed]
+    read.side_effect = prefix + batch
+    events = camera.watch_archive_events(**WINDOW)
+    expected = (
+        KeyboardInterrupt if failure == "interrupt" else QuiiConnectionError
+    )
+    with pytest.raises(expected):
+        next(events)
+    assert [call.kwargs["file_type"] for call in read.call_args_list] == (
+        (["video", "picture"] if phase == "later" else [])
+        + (["video"] if failed_type == "video" else ["video", "picture"])
+    )
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+def test_all_shares_identity_limit_across_types(watcher, limit) -> None:
+    camera, read, _ = watcher
+    video = record("video")
+    picture = replace(record("picture"), file_type="picture")
+    read.side_effect = [
+        page(video),
+        page(picture),
+        page(video, record("later-video")),
+        page(picture),
+    ]
+    with pytest.raises(QuiiConnectionError, match="max_seen_records"):
+        next(camera.watch_archive_events(**WINDOW, max_seen_records=limit))
+    assert read.call_count == (2 if limit == 1 else 4)
+
+
+def test_all_deduplicates_overlapping_native_type_results(watcher) -> None:
+    camera, read, _ = watcher
+    video = record("shared-name")
+    picture = replace(video, file_type="picture", picture_index="0007")
+    read.side_effect = [
+        page(),
+        page(),
+        page(video, picture),
+        page(video, picture),
+        page(video, picture),
+        page(video, picture),
+    ]
+    events = list(camera.watch_archive_events(**WINDOW, duration_seconds=11))
+    assert [event.record for event in events] == [video, picture]
+    assert events[0].observed_at == events[1].observed_at
+    assert read.call_count == 6
+
+
+@pytest.mark.parametrize(
+    "duration, starts, sleeps",
+    [
+        (5, [("video", 0), ("picture", 4)], []),
+        (
+            20,
+            [("video", 0), ("picture", 4), ("video", 13), ("picture", 17)],
+            [5],
+        ),
+    ],
+)
+def test_all_query_budget_covers_the_complete_batch(
+    watcher, duration, starts, sleeps
+) -> None:
+    camera, read, clock = watcher
+    actual = []
+
+    def query(**kwargs):
+        actual.append((kwargs["file_type"], clock.now))
+        clock.now += 4
+        return page()
+
+    read.side_effect = query
+    assert (
+        list(camera.watch_archive_events(**WINDOW, duration_seconds=duration))
+        == []
+    )
+    assert actual == starts
+    assert clock.sleeps == sleeps
+
+
+def test_direct_archive_all_remains_one_native_search(
+    watcher, monkeypatch
+) -> None:
+    camera, _, _ = watcher
+    monkeypatch.delattr(camera, "list_record_files")
+    result = page()
+    fetch = Mock(return_value=result)
+    monkeypatch.setattr(api, "fetch_record_list_info", fetch)
+    assert camera.list_record_files(**CGI_WINDOW, file_type="all") is result
+    fetch.assert_called_once()
+    assert fetch.call_args.kwargs["file_type"] == "all"
+    assert fetch.call_args.kwargs["start_time"] == CGI_WINDOW["start_time"]
+    assert fetch.call_args.kwargs["end_time"] == CGI_WINDOW["end_time"]
 
 
 @pytest.mark.parametrize("phase", ["baseline", "later"])
@@ -142,7 +263,7 @@ def test_failed_queries_are_not_empty_results(watcher, phase, failure) -> None:
     }[failure]
     read.side_effect = ([page()] if phase == "later" else []) + [result]
     with pytest.raises(QuiiConnectionError):
-        list(camera.watch_archive_events(**WINDOW))
+        list(camera.watch_archive_events(**VIDEO_WINDOW))
     assert read.call_count == (2 if phase == "later" else 1)
     assert len(clock.sleeps) == (1 if phase == "later" else 0)
 
@@ -193,7 +314,7 @@ def test_invalid_batch_emits_nothing(watcher, phase, failure) -> None:
         page(*records)
     ]
     with pytest.raises(QuiiConnectionError):
-        next(camera.watch_archive_events(**WINDOW, max_seen_records=1))
+        next(camera.watch_archive_events(**VIDEO_WINDOW, max_seen_records=1))
 
 
 def test_memory_limit_includes_baseline_and_never_evicts(watcher) -> None:
@@ -205,7 +326,7 @@ def test_memory_limit_includes_baseline_and_never_evicts(watcher) -> None:
         page(first, second),
         page(record("third")),
     ]
-    events = camera.watch_archive_events(**WINDOW, max_seen_records=2)
+    events = camera.watch_archive_events(**VIDEO_WINDOW, max_seen_records=2)
     assert next(events).record is second
     with pytest.raises(QuiiConnectionError, match="max_seen_records"):
         next(events)
@@ -267,7 +388,8 @@ def test_query_budget_no_overlap_or_catchup(
 
     read.side_effect = query
     assert (
-        list(camera.watch_archive_events(**WINDOW, duration_seconds=20)) == []
+        list(camera.watch_archive_events(**VIDEO_WINDOW, duration_seconds=20))
+        == []
     )
     assert actual == starts
     assert clock.sleeps == sleeps
@@ -276,7 +398,7 @@ def test_query_budget_no_overlap_or_catchup(
 def test_slow_consumer_counts_towards_deadline(watcher) -> None:
     camera, read, clock = watcher
     read.side_effect = [page(), page(record("first"), record("second"))]
-    events = camera.watch_archive_events(**WINDOW, duration_seconds=10)
+    events = camera.watch_archive_events(**VIDEO_WINDOW, duration_seconds=10)
     assert next(events).record.file_name == "first"
     clock.now += 50
     assert next(events).record.file_name == "second"  # Already fetched batch.
@@ -308,7 +430,8 @@ def test_fresh_session_and_native_completion_on_every_poll(
     monkeypatch.setattr(cgi, "fetch_record_session_info", session)
     monkeypatch.setattr(cgi, "fetch_record_message_info", message)
     assert (
-        list(camera.watch_archive_events(**WINDOW, duration_seconds=11)) == []
+        list(camera.watch_archive_events(**VIDEO_WINDOW, duration_seconds=11))
+        == []
     )
     assert session.call_count == 3
     assert [call.kwargs for call in message.call_args_list] == [
@@ -355,13 +478,116 @@ def test_each_poll_reuses_existing_local_cgi_path(
         )
         assert endpoint.verify_tls is True
         assert call.kwargs == dict(
-            **WINDOW,
+            **CGI_WINDOW,
             channel_id=2,
             file_type="picture",
             occur_type="manual",
             stream="sub",
             max_pages=3,
         )
+
+
+@pytest.mark.parametrize(
+    "file_type, native_types",
+    [
+        ("video", ["video"]),
+        ("picture", ["picture"]),
+        ("all", ["video", "picture"]),
+    ],
+)
+@pytest.mark.parametrize(
+    "window, native_start, native_end",
+    [
+        (WINDOW, "2026-11-10t12:00:00z", "2026-11-10t12:10:00z"),
+        (
+            dict(
+                start_time="2026-12-31 23:59:00",
+                end_time="2027-01-01 00:03:00",
+            ),
+            "2026-12-31t23:59:00z",
+            "2027-01-01t00:03:00z",
+        ),
+        (
+            dict(
+                start_time="2028-02-29 03:04:05",
+                end_time="2028-02-29 03:09:10",
+            ),
+            "2028-02-29t03:04:05z",
+            "2028-02-29t03:09:10z",
+        ),
+        (
+            dict(start_time="2026-1-2 3:4:5", end_time="2026-1-2 3:9:10"),
+            "2026-01-02t03:04:05z",
+            "2026-01-02t03:09:10z",
+        ),
+    ],
+)
+def test_watcher_serializes_native_cgi_times_without_utc_conversion(
+    watcher,
+    monkeypatch,
+    window,
+    native_start,
+    native_end,
+    file_type,
+    native_types,
+) -> None:
+    camera, _, _ = watcher
+    monkeypatch.delattr(camera, "list_record_files")
+    searches = []
+
+    def respond(request, **kwargs):
+        assert request.full_url == "http://192.0.2.10:80/tdkcgi"
+        root = ET.fromstring(request.data)
+        command = root.findtext("./body/command")
+        if command == "get.record.session":
+            record = root.find("./body/content/record")
+            assert record is not None
+            searches.append(
+                (
+                    record.findtext("starttime"),
+                    record.findtext("endtime"),
+                    record.findtext("filetype"),
+                )
+            )
+            assert record.findtext("channel") == "2"
+            content = f"<record><id>test-search-{len(searches)}</id></record>"
+        else:
+            assert command == "get.record.message"
+            assert root.findtext("./body/content/record/id") == (
+                f"test-search-{len(searches)}"
+            )
+            content = "<record><datalist/><page>0</page></record>"
+        # Valid empty replies must not hide malformed outgoing search bounds.
+        return BytesIO(
+            (
+                "<envelope><body><error>0</error><content>"
+                + content
+                + "</content></body></envelope>"
+            ).encode()
+        )
+
+    network = Mock(side_effect=respond)
+    monkeypatch.setattr(transport.urllib.request, "urlopen", network)
+    assert (
+        list(
+            camera.watch_archive_events(
+                **window,
+                channel_id=2,
+                file_type=file_type,
+                duration_seconds=11,
+            )
+        )
+        == []
+    )
+    assert network.call_count == 6 * len(native_types)
+    assert (
+        searches
+        == [
+            (native_start, native_end, native_type)
+            for native_type in native_types
+        ]
+        * 3
+    )
 
 
 @pytest.fixture

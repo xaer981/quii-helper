@@ -5,10 +5,11 @@ import inspect
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
+from contextlib import nullcontext
 from html.parser import HTMLParser
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch, sentinel
+from unittest.mock import Mock, call, patch, sentinel
 from urllib.parse import unquote, urlsplit
 
 import black
@@ -18,7 +19,10 @@ from dotenv import dotenv_values
 from quii_helper import (
     AutonomousConfig,
     Camera,
+    CameraDeviceRecordFileInfo,
+    CameraDeviceRecordListInfo,
     CameraStreamCredentials,
+    QuiiConnectionError,
     load_config,
 )
 from quii_helper.cloud.config.runtime import validate_runtime_config
@@ -403,6 +407,53 @@ def test_api_documents_every_constructor_parameter() -> None:
 
 
 @pytest.mark.parametrize(
+    "error,completed,record_count,failed",
+    [
+        (0, True, 0, False),
+        (0, True, 2, False),
+        (0, False, 1, True),
+        (-1, True, 1, True),
+        (1, True, 1, True),
+        (-1, False, 0, True),
+    ],
+)
+def test_archive_download_example_checks_status_before_downloading(
+    error: int, completed: bool, record_count: int, failed: bool
+) -> None:
+    source = next(
+        block
+        for block in PYTHON_BLOCK.findall(
+            (ROOT / "docs/api.md").read_text(encoding="utf-8")
+        )
+        if "pictures = camera.list_record_files(" in block
+    )
+    records = [
+        CameraDeviceRecordFileInfo(
+            file_name=f"synthetic-{index}", file_type="picture"
+        )
+        for index in range(record_count)
+    ]
+    camera = Mock(spec=Camera)
+    camera.list_record_files.return_value = CameraDeviceRecordListInfo(
+        error=error, completed=completed, records=records
+    )
+    with (
+        pytest.raises(QuiiConnectionError, match="failed or incomplete")
+        if failed
+        else nullcontext()
+    ):
+        exec(compile(source, "docs/api.md", "exec"), {"camera": camera})
+    camera.list_record_files.assert_called_once_with(
+        start_time="2026-10-29t00:00:00z",
+        end_time="2026-10-29t23:59:59z",
+        file_type="picture",
+    )
+    assert camera.download_record.call_args_list == (
+        [] if failed else [call(record) for record in records]
+    )
+
+
+@pytest.mark.parametrize(
     "document", DOCUMENTS, ids=lambda p: str(p.relative_to(ROOT))
 )
 def test_python_examples_use_mocked_public_api(
@@ -424,6 +475,9 @@ def test_python_examples_use_mocked_public_api(
         patch("loguru.logger.enable"),
         patch("builtins.print"),
     ):
+        camera_cls.return_value.list_record_files.return_value = (
+            CameraDeviceRecordListInfo(error=0, completed=True)
+        )
         for block in blocks:
             assert (
                 black.format_str(

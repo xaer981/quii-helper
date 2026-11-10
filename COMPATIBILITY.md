@@ -214,10 +214,46 @@ start timestamps; this is a measured observation, not a delivery guarantee.
 Archive mode was set to save video on calls. The queried JPEG history was
 empty; photo-on-call mode and its latency have **not** been tested. These facts
 must not be generalized to other firmware. The `watch_archive_events()`
-wrapper, available since 0.5.0, has offline regression coverage, not a new
-on-device validation.
+wrapper is available since 0.5.0; use **0.5.1 or newer** for the date/filter
+corrections validated below.
 It reports archive additions, not confirmed calls; see
 [API limits](docs/api.md#local-archive-observations).
+
+The time-serialization fix included in 0.5.1 was checked on physical Pi on
+2026-11-10. For the same 16:20-16:50 device-local interval, space-separated
+CGI bounds returned no entries; native lowercase t/z bounds returned the two
+owner-identified videos at 16:28:21 and 16:43:35. Both original Java clients
+serialize that native format without converting the clock to UTC.
+The candidate watcher then read both videos in three fresh searches, emitted
+neither as a new baseline event, and stopped on interruption during polling.
+A video search with a future upper bound also returned the known entries.
+These checks establish serialization and baseline/cancellation; the separate
+new-record observation follows below.
+
+A subsequent 180-second owner-controlled panel-2 ring trial observed one new
+30-second `manual` video exactly once, with 36 successful polls, no query
+errors, and normal shutdown. The owner confirmed normal monitor screen/melody
+and exactly one matching entry on the monitor. The entry became visible about
+four seconds after its recorded end; this is not measured button-press latency
+or evidence that `manual` identifies calls universally. No cloud, downloads,
+door commands or service changes were performed.
+
+In the same narrow interval, a direct native `file_type="all"` search returned
+zero entries while `"video"` returned both. Both original clients support
+explicit video/picture selectors. The watcher in 0.5.1 therefore defines its
+`"all"` as two explicit searches, leaving the direct archive API
+unchanged. This is not a retry after an empty native `"all"` response.
+
+The combined watcher was then checked from a separately installed candidate
+wheel on Pi: three polls over that fixed interval each returned two videos and
+zero pictures, with both searches successful and complete. All historical
+entries stayed in the baseline; no duplicate events were emitted. The check
+used exactly 12 CGI commands, plus one rejected strict TLS handshake before
+the explicitly permitted temporary local exception for verify_code=66.
+The 11-second observation budget completed in 11.75 seconds because the last
+in-flight batch is allowed to finish. No cloud, downloads, new ring, door
+commands or service changes occurred. Mixed-type delivery and failed-partial
+suppression have offline coverage; new photo-on-call delivery remains untested.
 
 ### Saved-Key Lifetime
 
