@@ -196,7 +196,8 @@ does not require a manually supplied LAN IP; local CGI does.
 
 ### Cloud Call History
 
-`get_cloud_call_events()` and `get_call_events()` are the same method.
+Since **0.5.0**, `get_cloud_call_events()` is the explicit cloud name;
+`get_call_events()` remains the same method for backward compatibility.
 Each query authenticates; tokenless alarm login may create an isolated reader
 session, without push registration or marking records read.
 See [cloud setup and limits](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history).
@@ -206,9 +207,10 @@ delayed history and bursts can be missed or detected late.
 
 ### Local Archive Observations
 
-`watch_archive_events()` polls metadata every five seconds for three minutes
-by default. Each poll uses a fresh archive search; the first complete query is
-the baseline, later identities are deduplicated. Errors are not empty results.
+Available since **0.5.0**, `watch_archive_events()` polls metadata every five
+seconds for three minutes by default. Each poll uses a fresh archive search;
+the first complete query is the baseline, later identities are deduplicated.
+Errors are not empty results.
 The bundled example reuses the RTSP credential JSON and asks for the monitor's
 current time; invalid input can be retried and Ctrl+C cancels the prompt.
 

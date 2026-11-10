@@ -5,7 +5,7 @@
 ## Supported Versions
 
 `0.1.0` is the first published final release. Security fixes target the latest
-`0.4.x` release; older versions do not receive separate backports.
+`0.5.x` release; older versions do not receive separate backports.
 The API remains pre-`1.0`, with experimental features and compatibility limits
 documented explicitly. See the [Changelog](CHANGELOG.md).
 
@@ -48,6 +48,9 @@ a scanner and rotate affected credentials after an exposure.
 - Cloud history is not a live subscription or a sufficient access-control
   signal by itself. Authentication, freshness/deduplication, and authorization
   policy belong to the embedding application.
+- Local archive observations are not confirmed calls. Device recording
+  settings and storage determine coverage; `manual` also occurs for manually
+  started recordings. Never use archive additions alone to authorize unlocking.
 - Validate caller-supplied output paths; explicit paths can leave `data_dir`.
 - Native-asset fingerprints check a supported layout, not APK trustworthiness.
 

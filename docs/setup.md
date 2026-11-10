@@ -463,8 +463,9 @@ a **real opening command** and must never be used as a read-only smoke test.
 
 ## Cloud Call History
 
-`get_cloud_call_events()` is the explicit cloud name; `get_call_events()`
-remains the same method for backward compatibility. Neither reads local events.
+Since 0.5.0, `get_cloud_call_events()` is the explicit cloud name.
+`get_call_events()` remains the same method for backward compatibility.
+Neither reads local events.
 
 This optional cloud feature is independent of LAN playback. It does not need
 `CAMERA_DEVICE_HOST`, `STREAM_KEY`, `AUTH_CODE`, `UNLOCK_PASSWORD` or FFmpeg.
@@ -503,6 +504,8 @@ commands, media downloads, push registration or read-state changes are sent.
 See [API details and limits](api.md#incoming-call-history-experimental).
 
 ## Local Archive Observations
+
+Available since 0.5.0.
 
 This separate, read-only path watches new archive pictures/videos, not a
 confirmed list of calls. It reads local `/tdkcgi` metadata with a LAN host and

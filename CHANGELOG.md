@@ -5,7 +5,7 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.5.0 - 2026-11-10
 
 ### Added
 
@@ -19,6 +19,9 @@ being stabilized.
   regression tests. Document recording-setting/storage dependencies and that
   `manual` is not a confirmed call: a manual monitor video can have the same
   type. Photo-on-call timing remains untested. Refs #17.
+
+### Changed
+
 - List cloud history and local archive observation as distinct read-only
   features, with direct navigation, a shared example index and minimal local
   CGI setup. Keep archive additions separate from confirmed incoming calls.

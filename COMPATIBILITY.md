@@ -213,8 +213,9 @@ start timestamps; this is a measured observation, not a delivery guarantee.
 
 Archive mode was set to save video on calls. The queried JPEG history was
 empty; photo-on-call mode and its latency have **not** been tested. These facts
-must not be generalized to other firmware. The new `watch_archive_events()`
-wrapper has offline regression coverage, not a new on-device validation.
+must not be generalized to other firmware. The `watch_archive_events()`
+wrapper, available since 0.5.0, has offline regression coverage, not a new
+on-device validation.
 It reports archive additions, not confirmed calls; see
 [API limits](docs/api.md#local-archive-observations).
 

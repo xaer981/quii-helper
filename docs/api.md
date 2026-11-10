@@ -629,7 +629,7 @@ They do not open a preview or send opening commands.
 | `get_device_shadow_info()` | `CameraDeviceShadowInfo` | Cloud shadow/device state where supported. |
 | `get_iot_command_support()` | `CameraIotCommandSupportInfo` | Command-support metadata, not command execution. |
 | `get_call_events(...)` | `CameraCallEventPage` | Experimental incoming-call journal history. |
-| `get_cloud_call_events(...)` | `CameraCallEventPage` | Explicit cloud name for the same method; identical signature and behavior. |
+| `get_cloud_call_events(...)` | `CameraCallEventPage` | Explicit cloud name since 0.5.0; identical signature and behavior. |
 | `fetch_stream_credentials()` | `CameraStreamCredentials` | Fresh cloud login + device-token query; return a minimal key/auth pair for explicit LAN playback. |
 
 Sparse fields in `CameraDeviceInfo` do not necessarily mean parsing failed.
@@ -959,7 +959,7 @@ Interactive archive playback/seek is not exposed.
 | `get_record_session_info(start_time=..., end_time=...)` | `CameraDeviceRecordSessionInfo` | Open a read-only archive search session. |
 | `get_record_message_info(session_id=...)` | `CameraDeviceRecordMessageInfo` | Read one page for the returned search-session id. |
 | `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Search and collect pages up to a safety cap. |
-| `watch_archive_events(start_time=..., end_time=...)` | `Iterator[CameraArchiveEvent]` | Poll local archive metadata, suppress the baseline and duplicates. Not confirmed calls. |
+| `watch_archive_events(start_time=..., end_time=...)` | `Iterator[CameraArchiveEvent]` | Since 0.5.0: poll local archive metadata, suppress the baseline and duplicates. Not confirmed calls. |
 | `get_record_alarm_info(timestamp=...)` | `CameraDeviceRecordAlarmInfo` | Read archive entries associated with an alarm timestamp. |
 | `download_record(entry, timeout=30.0, max_bytes=16777216, protocol="default")` | `bytes` | Download an archived JPEG or H.264 MP4 over LAN TCP, without live preview. |
 
