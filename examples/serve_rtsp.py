@@ -12,8 +12,11 @@ def main() -> None:
     """Start RTSP serving with environment-backed settings."""
     configure_logging(replace_existing=True)
     camera = Camera(config=load_config())
-    with camera.serve_rtsp(port=8554) as stream:
-        stream.wait()
+    try:
+        with camera.serve_rtsp(port=8554) as stream:
+            stream.wait()
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

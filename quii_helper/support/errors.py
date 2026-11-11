@@ -5,6 +5,19 @@ class QuiiHelperError(Exception):
 class ConfigurationError(ValueError, QuiiHelperError):
     """Raised when user or application configuration is invalid."""
 
+    setting: str | None = None
+    hint: str | None = None
+
+    @classmethod
+    def for_setting(
+        cls, setting: str, hint: str, *, message: str | None = None
+    ) -> "ConfigurationError":
+        """Attach a value-free hint without changing the exception message."""
+        error = cls(message if message is not None else hint)
+        error.setting = setting
+        error.hint = hint
+        return error
+
 
 class AssetMissingError(FileNotFoundError, QuiiHelperError):
     """Raised when a required local asset is missing or unusable."""

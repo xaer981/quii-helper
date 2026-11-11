@@ -51,6 +51,8 @@ python -m pip install quii-helper
 Upgrade with `python -m pip install --upgrade quii-helper`.
 RTSP needs no FFmpeg; snapshot/MP4 rendering does.
 See [installation and media prerequisites](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-an-installed-package).
+For builds with the installed command, see the [offline LAN check](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#offline-lan-check)
+and [LAN RTSP command](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#lan-rtsp-from-the-command-line).
 
 ### 2 / Choose Your Scenario
 
@@ -142,9 +144,25 @@ other ids depend on firmware. Explicit `Camera(..., stream_quality="high")`
 overrides the configured choice. These are separate from advanced protocol
 compatibility options; see [stream settings](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#what-your-operation-needs).
 
-Run the following from the directory containing `.env` and the saved JSON.
-**This code contacts no cloud service**, even if cloud settings remain in
-`.env`. Do not include the cloud-fetch code in this script:
+If your build includes the CLI, run this from your application directory
+(the one with `.env`):
+
+```shell
+quii-helper rtsp --credentials data/stream_credentials.json
+```
+
+Open the URL printed after `RTSP stream ready` in VLC. Press Ctrl+C to stop.
+The command uses LAN only and never fetches or renews the saved key. For viewing
+from another computer, see the [SSH tunnel setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#watch-from-another-computer).
+
+If your installed version does not include the command, use the Python
+example below or [install from a checkout](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-a-checkout).
+
+<details>
+<summary><strong>Use the Python API instead</strong></summary>
+
+Run this from the same application directory. Keep the cloud bootstrap code
+out of this script: this example forces LAN mode and reuses the saved pair.
 
 ```python
 from quii_helper import Camera, CameraStreamCredentials, load_config
@@ -156,6 +174,7 @@ camera = Camera(
     device_id=saved.device_id,
     stream_key=saved.stream_key,
     auth_code=saved.auth_code,
+    status=print,
 )
 
 try:
@@ -165,17 +184,21 @@ except KeyboardInterrupt:
     pass
 ```
 
-Open `rtsp://127.0.0.1:8554/live` in VLC once media starts arriving.
-Ctrl+C stops the stream; the context manager closes the session and
-`wait()` propagates background failures. For a trusted LAN, explicitly bind
+Open the printed URL in VLC after `RTSP stream ready`. The context manager
+closes the session on Ctrl+C, and `wait()` propagates background failures.
+For a trusted LAN, the Python API can explicitly bind
 `host="0.0.0.0"` and connect to the server's LAN IP, not `0.0.0.0`.
-RTSP has **no authentication or TLS**: never expose the port publicly.
 
 For JPEG/MP4, install FFmpeg and use `camera.snapshot()` or
 `camera.save_video(duration_seconds=15)`. Both return a `pathlib.Path`;
 default outputs go to `./data/`. See [capture parameters](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#capture-methods)
-for timeouts and rendering overhead. Saved keys may stop working: check
-connectivity/settings and explicitly repeat bootstrap if needed.
+for timeouts and rendering overhead.
+
+</details>
+
+RTSP has **no authentication or TLS**: never expose the port publicly.
+Saved keys may stop working: check connectivity and settings, then explicitly
+repeat bootstrap if needed.
 Their lifetime is not guaranteed; timeouts do not renew credentials.
 
 ## Choose The Source

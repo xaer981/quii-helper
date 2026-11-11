@@ -107,6 +107,15 @@ class CameraRtspStream:
         return self.server.url
 
     @property
+    def ready(self) -> bool:
+        """Whether the running server has published an IDR with SPS/PPS."""
+        return (
+            self.server.video_ready.is_set()
+            and not self.server.stop_event.is_set()
+            and (not self.audio or self.server.audio_format is not None)
+        )
+
+    @property
     def stats(self) -> dict[str, object]:
         """Runtime stream statistics for diagnostics."""
         return {
@@ -437,13 +446,7 @@ class CameraRtspStream:
         if self._stop_event.is_set():
             return
         self.assembler.feed_message(decoded)
-        if self.assembler.access_unit_count > 0 and (
-            not self.audio
-            or (
-                self.server.audio_format is not None
-                and self.server.parameter_sets
-            )
-        ):
+        if self.ready:
             self._announce_ready_once()
 
     def _announce_ready_once(self) -> None:

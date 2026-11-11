@@ -209,6 +209,9 @@ def test_readme_quick_start_works_without_repository_examples() -> None:
     assert "python -m pip install quii-helper" in quick_start
     assert "fetch_stream_credentials()" in quick_start
     assert "CameraStreamCredentials.load(" in quick_start
+    assert quick_start.index(
+        "quii-helper rtsp --credentials data/stream_credentials.json"
+    ) < quick_start.index("CameraStreamCredentials.load(")
     assert "python -m examples." not in quick_start
     assert "git clone" not in quick_start
     operation_choice = quick_start.split("### 2 / Choose Your Scenario", 1)[

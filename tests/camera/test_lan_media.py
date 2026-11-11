@@ -45,7 +45,12 @@ def _read_exact(sock, size):
 
 @contextmanager
 def local_camera(
-    packets, *, setup_status=0, disconnect=False, before_media=None
+    packets,
+    *,
+    setup_status=0,
+    play_status=0,
+    disconnect=False,
+    before_media=None,
 ):
     stop, closed = threading.Event(), threading.Event()
     errors = []
@@ -67,7 +72,9 @@ def local_camera(
                     )
                     assert play.header.packet_type == 1
                     _read_exact(sock, play.read_size)
-                    sock.sendall(command())
+                    sock.sendall(command(status=play_status))
+                    if play_status:
+                        return
                     if before_media is not None:
                         assert before_media.wait(2)
                     sock.sendall(b"".join(packets))

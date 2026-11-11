@@ -13,28 +13,46 @@ from quii_helper.support.errors import ConfigurationError
 def validate_stream_credentials(stream_key: str, auth_code: str) -> None:
     """Check the supported LAN key/auth pair without I/O or exposing values."""
     if not isinstance(stream_key, str):
-        raise ConfigurationError("STREAM_KEY must be a string")
+        raise ConfigurationError.for_setting(
+            "STREAM_KEY",
+            "Use a text key with exactly 32 UTF-8 bytes and no NUL.",
+            message="STREAM_KEY must be a string",
+        )
     try:
         key = stream_key.encode("utf-8")
     except UnicodeError:
-        raise ConfigurationError(
-            "STREAM_KEY must contain valid UTF-8"
+        raise ConfigurationError.for_setting(
+            "STREAM_KEY",
+            "Use a text key with exactly 32 UTF-8 bytes and no NUL.",
+            message="STREAM_KEY must contain valid UTF-8",
         ) from None
     if len(key) != 32 or "\x00" in stream_key:
-        raise ConfigurationError(
-            "STREAM_KEY must contain exactly 32 UTF-8 bytes"
+        raise ConfigurationError.for_setting(
+            "STREAM_KEY",
+            "Use a text key with exactly 32 UTF-8 bytes and no NUL.",
+            message="STREAM_KEY must contain exactly 32 UTF-8 bytes",
         )
     if not isinstance(auth_code, str) or not auth_code:
-        raise ConfigurationError("LAN playback requires a nonempty AUTH_CODE")
+        raise ConfigurationError.for_setting(
+            "AUTH_CODE",
+            "Use the nonempty auth code paired with the stream key.",
+            message="LAN playback requires a nonempty AUTH_CODE",
+        )
     try:
         encoded_auth = encode_device_password(auth_code)
         encoded_auth.encode("utf-8")
     except UnicodeError:
-        raise ConfigurationError(
-            "AUTH_CODE must contain valid UTF-8"
+        raise ConfigurationError.for_setting(
+            "AUTH_CODE",
+            "Use a valid UTF-8 auth code paired with the stream key.",
+            message="AUTH_CODE must contain valid UTF-8",
         ) from None
     if any(c in encoded_auth for c in ("\x00", "&")):
-        raise ConfigurationError("LAN playback requires a valid AUTH_CODE")
+        raise ConfigurationError.for_setting(
+            "AUTH_CODE",
+            "Use the original auth code paired with the stream key.",
+            message="LAN playback requires a valid AUTH_CODE",
+        )
 
 
 def request_streamkey(**kwargs: Any) -> dict[str, str]:

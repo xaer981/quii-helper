@@ -88,7 +88,11 @@ class RtspH264Server:
         self.video_ready.clear()
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # Windows address reuse can admit two listeners on one port.
+            bind_option = getattr(
+                socket, "SO_EXCLUSIVEADDRUSE", socket.SO_REUSEADDR
+            )
+            self._sock.setsockopt(socket.SOL_SOCKET, bind_option, 1)
             self._sock.bind((self.host, self.port))
             self._sock.listen()
             self._sock.settimeout(0.25)
@@ -168,8 +172,6 @@ class RtspH264Server:
                 self._sps = unit
             elif unit[0] & 31 == 8 and len(unit) <= 4096:
                 self._pps = unit
-        if self._sps and self._pps:
-            self.video_ready.set()
         timestamp = self.rtp_timestamp() if timestamp is None else timestamp
         result = packetize_h264_access_unit(
             access_unit,
@@ -182,6 +184,8 @@ class RtspH264Server:
         self._sequence_number = result.next_sequence_number
         if not result.packets:
             return
+        if keyframe and self._sps and self._pps:
+            self.video_ready.set()
 
         for client in self._playing_clients():
             if not client.enqueue_rtp_packets(

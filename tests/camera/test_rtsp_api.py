@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -10,14 +10,21 @@ from quii_helper.config import AutonomousConfig
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
 )
+from tests.media.frames.test_parsing import _cpacket
+
+H264_PARAMETERS = b"\x00\x00\x01\x67sps\x00\x00\x01\x68pps"
+H264_IDR = b"\x00\x00\x01\x65idr"
 
 
-class _FakeRtspAssembler:
-    access_unit_count = 0
-
-    def feed_message(self, decoded: dict[str, Any]) -> list[bytes]:
-        self.access_unit_count = decoded["access_unit_count"]
-        return []
+def _feed_video(stream, bitstream):
+    stream._feed_assembler_message(
+        {
+            "header": SimpleNamespace(packet_type=0xA0),
+            "payload": _cpacket(
+                bitstream, frame_stamp=(26 << 26) | (1 << 22) | (1 << 17)
+            ),
+        }
+    )
 
 
 class CameraRtspApiTests:
@@ -56,16 +63,16 @@ class CameraRtspApiTests:
             emit=lambda value: None,
             status=statuses.append,
             audio=True,
+            port=0,
         )
-        stream.assembler = _FakeRtspAssembler()
-        stream._feed_assembler_message({"access_unit_count": 1})
-        assert not statuses
-        stream.server.audio_format = G711Format(4)
-        stream._feed_assembler_message({"access_unit_count": 1})
-        assert not statuses
-        stream.server._sps, stream.server._pps = b"sps", b"pps"
-        stream._feed_assembler_message({"access_unit_count": 1})
-        stream._feed_assembler_message({"access_unit_count": 2})
+        with stream.server:
+            _feed_video(stream, H264_PARAMETERS)
+            assert not stream.ready and not statuses
+            _feed_video(stream, H264_IDR)
+            assert not stream.ready and not statuses
+            stream.server.audio_format = G711Format(4)
+            _feed_video(stream, H264_IDR)
+            assert stream.ready
         assert len(statuses) == 1 and statuses[0].startswith(
             "RTSP stream ready:"
         )
@@ -125,7 +132,7 @@ class CameraRtspApiTests:
         start.assert_called_once_with()
         close.assert_called_once_with()
 
-    def test_rtsp_ready_status_is_emitted_after_first_access_unit(
+    def test_rtsp_ready_status_requires_idr_with_decoder_parameters(
         self,
     ) -> None:
         statuses = []
@@ -136,12 +143,16 @@ class CameraRtspApiTests:
             emit=lambda obj: None,
             status=statuses.append,
             host="127.0.0.1",
-            port=8555,
+            port=0,
         )
-        stream.assembler = _FakeRtspAssembler()
-
-        stream._feed_assembler_message({"access_unit_count": 0})
-        stream._feed_assembler_message({"access_unit_count": 1})
-        stream._feed_assembler_message({"access_unit_count": 2})
-
-        assert [f"RTSP stream ready: {stream.url}"] == statuses
+        with stream.server:
+            _feed_video(stream, H264_IDR)
+            assert not stream.ready and not statuses
+            _feed_video(stream, H264_PARAMETERS)
+            _feed_video(stream, b"\x00\x00\x01\x41p")
+            assert not stream.ready and not statuses
+            _feed_video(stream, H264_IDR)
+            _feed_video(stream, H264_IDR)
+            assert stream.ready
+            assert statuses == [f"RTSP stream ready: {stream.url}"]
+        assert not stream.ready
