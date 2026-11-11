@@ -5,7 +5,7 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.6.0 - 2026-11-11
 
 ### Added
 
@@ -17,6 +17,13 @@ being stabilized.
 - Installed `quii-helper rtsp` command for video-only LAN preview on loopback.
   It validates settings before connecting, reports startup failures by stage,
   and prints the URL after initial H.264 is available. It never uses cloud.
+
+### Fixed
+
+- Report RTSP video as ready only after an H.264 keyframe and parameter sets
+  are available, rather than after parameter sets alone.
+- Use an exclusive RTSP listener bind on Windows so a second server cannot
+  silently start on an occupied port.
 
 ## 0.5.1 - 2026-11-10
 

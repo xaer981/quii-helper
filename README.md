@@ -51,7 +51,7 @@ python -m pip install quii-helper
 Upgrade with `python -m pip install --upgrade quii-helper`.
 RTSP needs no FFmpeg; snapshot/MP4 rendering does.
 See [installation and media prerequisites](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-an-installed-package).
-For builds with the installed command, see the [offline LAN check](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#offline-lan-check)
+Since **0.6.0**, the installed command provides an [offline LAN check](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#offline-lan-check)
 and [LAN RTSP command](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#lan-rtsp-from-the-command-line).
 
 ### 2 / Choose Your Scenario
@@ -144,8 +144,8 @@ other ids depend on firmware. Explicit `Camera(..., stream_quality="high")`
 overrides the configured choice. These are separate from advanced protocol
 compatibility options; see [stream settings](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#what-your-operation-needs).
 
-If your build includes the CLI, run this from your application directory
-(the one with `.env`):
+With **0.6.0 or newer**, run this from your application directory (the one
+with `.env`):
 
 ```shell
 quii-helper rtsp --credentials data/stream_credentials.json
@@ -155,8 +155,8 @@ Open the URL printed after `RTSP stream ready` in VLC. Press Ctrl+C to stop.
 The command uses LAN only and never fetches or renews the saved key. For viewing
 from another computer, see the [SSH tunnel setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#watch-from-another-computer).
 
-If your installed version does not include the command, use the Python
-example below or [install from a checkout](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-a-checkout).
+On an older version, upgrade with `python -m pip install --upgrade quii-helper`
+or use the Python example below.
 
 <details>
 <summary><strong>Use the Python API instead</strong></summary>
