@@ -10,6 +10,8 @@ from quii_helper.config.connection import validate_connection_options
 from quii_helper.config.validation import resolve_stream_quality
 from quii_helper.support.errors import ConfigurationError
 
+CHANNEL_SETTINGS = ("CAMERA_CHANNEL", "VIDEO_PANEL", "QUII_CHANNEL")
+STREAM_SETTINGS = ("CAMERA_STREAM", "QUII_STREAM")
 _DEFAULT_SETTINGS: "EnvironmentSettings | None" = None
 _DEFAULT_SETTINGS_LOCK = Lock()
 
@@ -88,11 +90,13 @@ class SettingsLoader:
         validate_connection_options(mode, port)
         try:
             stream = resolve_stream_quality(
-                self.getenv("CAMERA_STREAM", "QUII_STREAM", default="low")
+                self.getenv(*STREAM_SETTINGS, default="low")
             )
         except ConfigurationError as exc:
-            raise ConfigurationError(
-                f"CAMERA_STREAM (or QUII_STREAM): {exc}"
+            raise ConfigurationError.for_setting(
+                STREAM_SETTINGS[0],
+                "Use high, low, or a numeric stream ID from 1 to 256.",
+                message=f"CAMERA_STREAM (or QUII_STREAM): {exc}",
             ) from exc
         return EnvironmentSettings(
             project_root=self.project_root,
@@ -132,12 +136,7 @@ class SettingsLoader:
                 assets_dir / "libqv-p2p-v2.so",
                 native_lib_dir / "arm64-v8a" / "libqv-p2p-v2.so",
             ),
-            camera_channel=self.getenv_int(
-                "CAMERA_CHANNEL",
-                "VIDEO_PANEL",
-                "QUII_CHANNEL",
-                default=1,
-            ),
+            camera_channel=self.getenv_int(*CHANNEL_SETTINGS, default=1),
             camera_stream=stream,
             tls_verify=self.getenv_bool(
                 "TLS_VERIFY",
@@ -147,39 +146,56 @@ class SettingsLoader:
         )
 
     def getenv(self, *names: str, default: str = "") -> str:
+        selected = self._selected_setting(*names)
+        return selected[1] if selected else default
+
+    def _selected_setting(self, *names: str) -> tuple[str, str] | None:
         for name in names:
             value = self.env_value(name)
             if value is not None and value.strip():
-                return value
-        return default
+                return name, value
+        return None
+
+    def setting_origin(self, name: str, *aliases: str) -> tuple[str, str]:
+        """Return the effective setting name and source without its value."""
+        selected = self._selected_setting(name, *aliases)
+        if selected:
+            name = selected[0]
+        if self.env is not None:
+            return name, "supplied settings" if name in self.env else "not set"
+        if name in os.environ:
+            return name, "process environment; overrides .env for this name"
+        return name, ".env" if name in self._file_values else "not set"
 
     def getenv_int(self, *names: str, default: int) -> int:
-        for name in names:
-            value = self.env_value(name)
-            if value is None or not value.strip():
-                continue
+        selected = self._selected_setting(*names)
+        if selected:
+            name, value = selected
             try:
                 return int(value)
             except ValueError as exc:
                 joined_names = ", ".join(names)
-                raise ConfigurationError(
-                    f"{name} must be an integer; checked {joined_names}"
+                raise ConfigurationError.for_setting(
+                    name,
+                    "Enter an integer.",
+                    message=f"{name} must be an integer; checked {joined_names}",
                 ) from exc
         return default
 
     def getenv_bool(self, *names: str, default: bool) -> bool:
-        for name in names:
-            value = self.env_value(name)
-            if value is None or not value.strip():
-                continue
+        selected = self._selected_setting(*names)
+        if selected:
+            name, value = selected
             normalized = value.strip().lower()
             if normalized in {"1", "true", "yes", "on"}:
                 return True
             if normalized in {"0", "false", "no", "off"}:
                 return False
             joined_names = ", ".join(names)
-            raise ConfigurationError(
-                f"{name} must be a boolean; checked {joined_names}"
+            raise ConfigurationError.for_setting(
+                name,
+                "Use true or false.",
+                message=f"{name} must be a boolean; checked {joined_names}",
             )
         return default
 

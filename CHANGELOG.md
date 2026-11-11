@@ -5,6 +5,19 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Installed `quii-helper doctor` command for offline LAN configuration checks
+  and optional FFmpeg/miniaudio availability. Failures identify the setting,
+  its source and a fix without displaying values. Saved credentials are read
+  only with `--credentials FILE`. No preview, cloud login or device connection
+  is started.
+- Installed `quii-helper rtsp` command for video-only LAN preview on loopback.
+  It validates settings before connecting, reports startup failures by stage,
+  and prints the URL after initial H.264 is available. It never uses cloud.
+
 ## 0.5.1 - 2026-11-10
 
 ### Fixed

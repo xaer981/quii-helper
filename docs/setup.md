@@ -10,6 +10,8 @@ to inspect.
 ## Contents
 
 - [Install from PyPI](#using-an-installed-package) or [use a checkout](#using-a-checkout).
+- [Check LAN settings offline](#offline-lan-check).
+- [Watch LAN RTSP from the command line](#lan-rtsp-from-the-command-line).
 - [Choose the inputs for your operation](#what-your-operation-needs).
 - [Get a stream key and reuse it locally](#stream-key-bootstrap-and-local-reuse).
 - [Extract assets](#required-assets) and [find APK constants](#finding-apk-constants).
@@ -59,6 +61,103 @@ The full [environment template](https://github.com/xaer981/quii-helper/blob/main
 also covers other operations; not every setting is needed for playback.
 For a pinned version, use the template at its matching Git tag.
 Do not edit `site-packages`.
+
+## Offline LAN Check
+
+Builds from this source include an installed `quii-helper` command. From
+your application directory, run `doctor` to validate the LAN preview
+configuration without starting a preview:
+
+```shell
+quii-helper doctor
+```
+
+It reads the current directory's `.env` and process environment using the
+same precedence as `load_config()` (process values win). Both `doctor` and
+`rtsp` parse the full configuration, including `.env` settings that LAN RTSP
+doesn't use. Leave unused cloud settings blank rather than putting placeholders
+in numeric or boolean fields. Neither command needs cloud credentials.
+
+Use `STREAM_KEY` and `AUTH_CODE` from those settings, or explicitly select a
+saved key/auth JSON file:
+
+```shell
+quii-helper doctor --credentials data/stream_credentials.json
+```
+
+An explicit JSON file overrides the configured key/auth pair. A missing or
+invalid file is an error; no file is opened automatically and there is no
+fallback. The check requires LAN mode and an explicit device IP. On failure
+it shows the first blocking setting, its source and how to fix it. For example:
+
+```text
+LAN configuration: FAIL. CAMERA_DEVICE_HOST (.env): Set CAMERA_DEVICE_HOST to the camera's numeric IP address.
+```
+
+If the source is the process environment, fix or unset that variable before
+retrying; editing `.env` alone won't override it. For errors in saved JSON,
+check that you selected a valid file written by `CameraStreamCredentials.save()`.
+No configuration values or credential paths are displayed.
+
+Exit code `0` means the effective LAN settings passed offline validation;
+`1` means they could not be loaded or validated. FFmpeg on `PATH` and the
+presence of `miniaudio` are informational; neither is required for LAN RTSP.
+The command does not execute FFmpeg, open audio devices, create files, or
+contact the camera/cloud. It cannot confirm reachability or credential
+acceptance by the device.
+
+## LAN RTSP From The Command Line
+
+Run from your application directory after [saving a key/auth pair](#stream-key-bootstrap-and-local-reuse).
+Set `CAMERA_DEVICE_HOST` to the camera's local IP, then run:
+
+```shell
+quii-helper rtsp --credentials data/stream_credentials.json
+```
+
+If `STREAM_KEY` and `AUTH_CODE` are already configured, run `quii-helper rtsp`
+without `--credentials`. The command checks settings before connecting, so a
+separate `doctor` run is not required. It only connects directly to the camera:
+no cloud login, key refresh, FFmpeg, or microphone access.
+
+On the same machine, open the printed `rtsp://127.0.0.1:8554/live` URL in VLC
+after the command reports that the stream is ready. Use `--port 8555` if the
+local RTSP port is occupied; this does not change the camera's
+`CAMERA_STREAM_PORT`. Ctrl+C
+closes the session. The CLI serves video only and listens on loopback only.
+For optional audio or a trusted LAN bind, use the [Python API](api.md#rtsp-streaming).
+RTSP has no authentication or TLS; never expose it publicly.
+
+The command gives the preview up to 45 seconds to publish an H.264 keyframe
+with its decoder parameters available.
+It reports a local listener error, a failed camera TCP connection, an explicit
+setup/play rejection, or missing video separately. No video before the deadline
+does not prove an expired key; also check the channel and stream selection.
+Exit code `1` means a startup/stream failure, `2` means invalid CLI arguments,
+and `130` means interrupted with Ctrl+C.
+
+### Watch From Another Computer
+
+If the command runs on a Raspberry Pi, `127.0.0.1` in its output refers to
+the Pi, not your computer. Leave `quii-helper rtsp` running on the Pi. From
+your computer, open an SSH tunnel (replace `user@raspberrypi` with your SSH
+login and the Pi's hostname or IP):
+
+```shell
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8554:127.0.0.1:8554 user@raspberrypi
+```
+
+Keep that terminal open. On your computer, open the stream in VLC using RTSP
+over TCP, so video travels through the SSH tunnel:
+
+```shell
+vlc --rtsp-tcp rtsp://127.0.0.1:8554/live
+```
+
+If VLC is not on `PATH`, use its executable path. If you change the port on
+the Pi, change the last `8554` in `-L` to match. If the port is busy on your
+computer, change the first `8554` and the VLC URL. No RTSP port needs to be
+exposed on the Pi or forwarded on the router.
 
 ## Using A Checkout
 
@@ -217,9 +316,10 @@ requests in LAN mode. `assets/` can also be absent. The JSON supplies device id,
 stream key and auth code, so this example needs none of those values in `.env`.
 It does not contain the camera IP, which must still be configured above.
 
-Replace the cloud-fetch code in `app.py` with the following and run
-`python app.py`. This loads the saved file explicitly and starts RTSP;
-do not keep the bootstrap call in this script:
+To watch video without writing Python, use the [LAN RTSP command](#lan-rtsp-from-the-command-line).
+For Python integration, replace the cloud-fetch code in `app.py` with the
+following and run `python app.py`. Do not keep the bootstrap call in this
+script:
 
 ```python
 from quii_helper import Camera, CameraStreamCredentials, load_config
@@ -231,16 +331,16 @@ camera = Camera(
     device_id=saved.device_id,
     stream_key=saved.stream_key,
     auth_code=saved.auth_code,
+    status=print,
 )
 try:
     with camera.serve_rtsp(port=8554) as session:
-        print(session.url)
         session.wait()
 except KeyboardInterrupt:
     pass
 ```
 
-Open `rtsp://127.0.0.1:8554/live` in VLC on the same machine once media arrives.
+Open the printed URL in VLC on the same machine after `RTSP stream ready`.
 Use `Ctrl+C` to stop. This phase never contacts cloud, even if cloud settings
 remain in `.env`. Missing files, invalid keys and connection errors fail without
 renewal or fallback. Use `camera.snapshot()` or `camera.save_video(15)` instead

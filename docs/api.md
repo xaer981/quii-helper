@@ -524,17 +524,16 @@ Running this on a headless Pi does not give it access to a laptop microphone.
 ```python
 from quii_helper import Camera, load_config
 
-camera = Camera(config=load_config())
+camera = Camera(config=load_config(), status=print)
 
 try:
     with camera.serve_rtsp(port=8554) as session:
-        print(session.url)
         session.wait()
 except KeyboardInterrupt:
     pass
 ```
 
-Open `rtsp://127.0.0.1:8554/live` in VLC after media arrives. The helper forwards
+Open the URL in VLC after `RTSP stream ready`. The helper forwards
 the QUII H.264 preview; it does not enable native RTSP on the camera or require
 FFmpeg. Each call opens its own preview session.
 
@@ -552,8 +551,9 @@ Live PLAY responses do not announce `RTP-Info` sequence/timestamp values that
 cannot be known before the next keyframe; timestamps remain in the RTP packets.
 
 With audio enabled, SDP advertises track 0 (H.264) and track 1 (PCMA/PCMU) only
-after actual audio format and H.264 parameters are available. An early DESCRIBE
-can wait up to ten seconds, then return `503`/`Retry-After`. Unknown audio
+after an IDR keyframe, H.264 decoder parameters and the audio format are
+available. An early DESCRIBE can wait up to ten seconds, then return
+`503`/`Retry-After`. Unknown audio
 profiles, a codec change or invalid device timestamps fail explicitly and stop
 the producer; use `audio=False` on unsupported cameras. A joining/resuming
 viewer waits for a keyframe rather than receiving undecodable P-frames.
@@ -566,13 +566,15 @@ Vimar/cloud audio and subjective sound quality remain unverified.
 | Stream handle | Meaning |
 | --- | --- |
 | `session.url` | Address, **not** a readiness check. |
+| `session.ready` | `True` once the running stream has published an H.264 IDR with SPS/PPS available and, if audio is enabled, knows its format. |
 | `session.stats` | Current RTSP/H.264 counters and `talk_active`. |
 | `session.wait(timeout=None)` | Wait for completion; re-raise producer failure; remain responsive to `Ctrl+C`. A timeout alone does not close the stream. |
 | `session.close()` | Request cancellation and release the listener; also called by the context manager. |
 | `session.start_talk()` / `session.stop_talk()` | Explicit PC conversation on the same LAN preview; see [computer conversation](#computer-conversation-experimental). Preview alone never opens audio devices. |
 
-The `RTSP stream ready` log appears after the first assembled H.264 access
-unit (and known audio format/SPS/PPS when enabled), if library logging is enabled.
+The stream reports `RTSP stream ready` once when it first becomes ready.
+Use `status=print` as above to see the message, or enable library logging if
+you use the default status callback.
 A producer failure closes the listener;
 there is no automatic camera reconnect. An in-flight cloud/connection call can
 finish only at its own timeout during shutdown; subsequent startup stages are

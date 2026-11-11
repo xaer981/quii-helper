@@ -41,6 +41,7 @@ class ExampleModuleTests:
             with pytest.raises(RuntimeError) as error:
                 exec(compile(source, document, "exec"), {})
             assert error.value is failure
+            assert camera_cls.call_args.kwargs["status"] is print
             stream.wait.assert_called_once_with()
             context.__exit__.assert_called_once()
             camera_cls.return_value.open_door.assert_not_called()
@@ -119,6 +120,21 @@ class ExampleModuleTests:
         context.__exit__.assert_called_once()
         camera.open_door.assert_not_called()
         camera.get_device_info.assert_not_called()
+
+    def test_serve_rtsp_example_handles_ctrl_c(self) -> None:
+        module = importlib.import_module("examples.serve_rtsp")
+        with (
+            patch.object(module, "Camera", autospec=True) as camera_cls,
+            patch.object(module, "load_config", return_value=sentinel.config),
+            patch.object(module, "configure_logging"),
+        ):
+            session = camera_cls.return_value.serve_rtsp.return_value
+            stream = session.__enter__.return_value
+            stream.wait.side_effect = KeyboardInterrupt
+            module.main()
+
+        stream.wait.assert_called_once_with()
+        session.__exit__.assert_called_once()
 
     def test_open_door_example_requires_explicit_main_call(
         self, capsys: pytest.CaptureFixture[str]

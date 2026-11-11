@@ -148,6 +148,15 @@ def test_installed_checks_use_both_archives_and_isolated_imports(
     check.check_install(tmp_path, soak_seconds=3)
     commands = [call.args[0] for call in run.call_args_list]
     assert len([cmd for cmd in commands if "--smoke" in cmd]) == 2
+    for command in ("doctor", "rtsp"):
+        assert (
+            sum(
+                Path(cmd[0]).stem == "quii-helper"
+                and cmd[1:] == [command, "--help"]
+                for cmd in commands
+            )
+            == 2
+        )
     tests = [cmd for cmd in commands if "-c" in cmd]
     assert len(tests) == 2
     assert all(

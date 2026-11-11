@@ -1,5 +1,7 @@
 import socket
 
+import pytest
+
 from quii_helper.streaming.rtsp import RtspH264Server
 
 
@@ -23,6 +25,24 @@ def _rtsp_request(
 
 
 class RtspH264ServerTests:
+    def test_listener_rejects_an_occupied_port_then_releases_it(self):
+        with RtspH264Server(port=0) as server:
+            port = server.port
+            with pytest.raises(OSError):
+                with RtspH264Server(port=port):
+                    pytest.fail(
+                        "two RTSP listeners on the same address and port"
+                    )
+            with socket.create_connection(
+                ("127.0.0.1", port), timeout=2
+            ) as viewer:
+                viewer.sendall(_rtsp_request("OPTIONS", server.url, 1))
+                assert b"200 OK" in _recv_until(viewer, b"\r\n\r\n")
+                server.close()
+                assert viewer.recv(1) == b""
+        with RtspH264Server(port=port) as restarted:
+            assert restarted.port == port
+
     def test_wildcard_bind_url_uses_loopback_connect_host(self) -> None:
         server = RtspH264Server(host="0.0.0.0", port=0).start()
         try:

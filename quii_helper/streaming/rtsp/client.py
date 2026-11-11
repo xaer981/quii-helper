@@ -270,6 +270,7 @@ class RtspClient:
                 return
             if self.server.audio and (
                 not self.server.video_ready.wait(5.0)
+                or self.server.stop_event.is_set()
                 or not self.server.parameter_sets
             ):
                 self._send_response(

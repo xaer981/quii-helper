@@ -22,9 +22,10 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | --- | --- |
 | First installation | [Install from PyPI](setup.md#using-an-installed-package) and [choose operation prerequisites](setup.md#what-your-operation-needs). |
 | Configure an existing application | [Environment settings](setup.md#environment-settings) and [library configuration](api.md#library-configuration). |
+| Check LAN settings without connecting | [Offline `doctor` command](setup.md#offline-lan-check). |
 | Capture an image or video | [Capture methods](api.md#capture-methods). |
 | Obtain a stream key, then play locally | [First-run bootstrap and later local starts](setup.md#stream-key-bootstrap-and-local-reuse), [persistence API](api.md#stream-key-bootstrap-and-persistence). |
-| Watch a live stream in VLC | [RTSP streaming](api.md#rtsp-streaming). |
+| Watch a live stream in VLC | [LAN RTSP command](setup.md#lan-rtsp-from-the-command-line) or [Python RTSP API](api.md#rtsp-streaming). |
 | Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); available since 0.3.0, tested on Tantos. |
 | Send sound to an intercom | [Experimental LAN talk](api.md#lan-talk-experimental); available since 0.4.0. Shared-preview speech/reply was confirmed on Tantos panel 2 with a file-backed adapter; see [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply). |
 | Watch and talk from a computer | [Computer conversation](api.md#computer-conversation-experimental); available since 0.4.0, `session.start_talk()` / `stop_talk()` share the RTSP preview. Optional audio extra, microphone and headphones. |

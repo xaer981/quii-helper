@@ -24,6 +24,9 @@ dependencies = [
     "python-dotenv>=1.2.1",
 ]
 
+[project.scripts]
+quii-helper = "quii_helper.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/xaer981/quii-helper"
 Repository = "https://github.com/xaer981/quii-helper"
@@ -70,6 +73,7 @@ python_version = "3.10"
 files = [
     "quii_helper/__init__.py",
     "quii_helper/camera",
+    "quii_helper/cli",
     "quii_helper/cloud",
     "quii_helper/config/__init__.py",
     "quii_helper/config/constants.py",

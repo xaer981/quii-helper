@@ -36,6 +36,14 @@ COMMAND_TYPES = {0, 1, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 0xAA, 0xFE}
 PLAY_REPLY_TYPES = {1, 12, 13, 17, 0xAA}
 
 
+class LanTcpConnectError(QuiiConnectionError):
+    """TCP connection could not be established."""
+
+
+class LanTcpRejectedError(QuiiConnectionError):
+    """The device explicitly rejected LAN setup or play."""
+
+
 def validate_lan_config(config: AutonomousConfig) -> None:
     """Validate only LAN playback inputs; never read assets or resolve hosts."""
     if config.connection_mode != "lan":
@@ -58,12 +66,16 @@ def validate_lan_config(config: AutonomousConfig) -> None:
     try:
         address = ipaddress.ip_address(config.device_host)
     except ValueError:
-        raise ConfigurationError(
-            "LAN playback requires an explicit device_host IP address"
+        raise ConfigurationError.for_setting(
+            "CAMERA_DEVICE_HOST",
+            "Set CAMERA_DEVICE_HOST to the camera's numeric IP address.",
+            message="LAN playback requires an explicit device_host IP address",
         ) from None
     if address.is_unspecified or address.is_multicast:
-        raise ConfigurationError(
-            "LAN playback requires a unicast device_host IP address"
+        raise ConfigurationError.for_setting(
+            "CAMERA_DEVICE_HOST",
+            "Use the camera's unicast IP address.",
+            message="LAN playback requires a unicast device_host IP address",
         )
     validate_stream_credentials(config.stream_key, config.auth_code)
     for name in ("channel", "stream"):
@@ -74,8 +86,10 @@ def validate_lan_config(config: AutonomousConfig) -> None:
             or not isinstance(value, int)
             or not 1 <= value <= maximum
         ):
-            raise ConfigurationError(
-                f"{name} must be an integer between 1 and {maximum}"
+            raise ConfigurationError.for_setting(
+                f"CAMERA_{name.upper()}",
+                f"Use an integer from 1 to {maximum}.",
+                message=f"{name} must be an integer between 1 and {maximum}",
             )
     if (
         not math.isfinite(config.connect_timeout)
@@ -132,15 +146,19 @@ class LanTcpSession:
             raise QuiiConnectionError(
                 "LAN TCP session is closed; create a new session to reconnect"
             )
+        connected = False
         try:
             self._client.connect(timeout=self.config.connect_timeout)
+            connected = True
             self._check_cancelled()
             self._client.send_setup()
             setup = self._client.recv_setup()
             self._check_cancelled()
             raw = cast(bytes, setup["raw"])
-            if raw[0] != 0xA9 or setup["status"] != 0:
+            if raw[0] != 0xA9:
                 raise QuiiConnectionError("LAN TCP setup was rejected")
+            if setup["status"] != 0:
+                raise LanTcpRejectedError("LAN TCP setup was rejected")
             if setup["crypto_mode"] != 2 or raw[11] != 1:
                 raise QuiiConnectionError(
                     "unsupported LAN TCP crypto/SHA profile; AES-256/SHA256 required"
@@ -155,7 +173,12 @@ class LanTcpSession:
             if isinstance(
                 exc, (OSError, RuntimeError, ValueError)
             ) and not isinstance(exc, QuiiConnectionError):
-                raise QuiiConnectionError(
+                error_type = (
+                    LanTcpConnectError
+                    if not connected and isinstance(exc, OSError)
+                    else QuiiConnectionError
+                )
+                raise error_type(
                     "LAN TCP startup failed; no cloud fallback attempted"
                 ) from exc
             raise
@@ -251,7 +274,7 @@ class LanTcpSession:
             raise QuiiConnectionError("LAN TCP command SHA256 check failed")
         if header.header.packet_type in PLAY_REPLY_TYPES:
             if header.header.raw[11] != 0:
-                raise QuiiConnectionError(
+                raise LanTcpRejectedError(
                     f"LAN TCP play rejected with status {header.header.raw[11]}"
                 )
             self.play_accepted = header.header.raw[12] == 1
