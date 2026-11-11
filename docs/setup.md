@@ -64,9 +64,9 @@ Do not edit `site-packages`.
 
 ## Offline LAN Check
 
-Builds from this source include an installed `quii-helper` command. From
-your application directory, run `doctor` to validate the LAN preview
-configuration without starting a preview:
+Since 0.6.0, the package installs the `quii-helper` command. From your
+application directory, run `doctor` to validate the LAN preview configuration
+without starting a preview:
 
 ```shell
 quii-helper doctor
