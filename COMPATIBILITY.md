@@ -287,7 +287,8 @@ Local CGI uses HTTP port `80` by default; do not substitute native port `34567`.
 
 The package declares Python **3.10 or newer**. CI exercises Windows x86_64 and
 Linux x86_64 on Python **3.10 and 3.11**, including wheel/sdist installation.
-Other Python/platform combinations are not covered by that matrix.
+A separate Linux ARM64 job on Python **3.11** checks the built wheel, offline
+`doctor` and synthetic RTSP over loopback. It does not run the full matrix.
 
 `cryptography>=50.0.0` is a runtime dependency. Upstream version 49 removed
 wheels for 32-bit Windows and Intel (`x86_64`) macOS; do not assume a binary
@@ -311,6 +312,7 @@ evidence. Playback with the camera's WAN blocked remains unverified.
 | Check | Evidence | Does not establish |
 | --- | --- | --- |
 | Windows/Linux CI | Offline tests and isolated wheel/sdist installation on Python 3.10/3.11. | Live camera/cloud compatibility. |
+| Linux ARM64 CI smoke | Built wheel and binary dependencies, `pip check`, offline `doctor`, and synthetic loopback RTSP on Python 3.11. | ARM64 sdist installation, optional audio devices, or live camera/cloud behavior. |
 | RTSP release soak | Two-minute synthetic loopback test of sending, backpressure, shutdown, and retained Python allocations. | Real UDP delivery, camera quality, codec correctness, ARM64 behavior, or process RSS bounds. |
 | Linux ARM64 under QEMU, 2026-10-20 | Installation and `pip check` in two entrance-bot Python 3.11 images; 11 mocked integration tests per image. | Native-speed performance or live media. |
 | Physical Raspberry Pi ARM64, 2026-10-21 | Earlier local wheel in entrance-bot; 140 isolated tests with fake door openers and networking disabled. | A fresh installation of every later PyPI release or live ARM64 preview/RTSP. |
