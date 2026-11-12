@@ -32,6 +32,7 @@ class RtspH264Server:
     payload_type: int = DEFAULT_H264_PAYLOAD_TYPE
     max_payload_size: int = DEFAULT_MAX_RTP_PAYLOAD_SIZE
     audio: bool = field(default=False, kw_only=True)
+    wait_for_keyframe: bool = field(default=False, kw_only=True)
     ssrc: int = field(default_factory=lambda: secrets.randbits(32))
     session_id: str = field(
         default_factory=lambda: secrets.token_hex(8), init=False
@@ -52,6 +53,8 @@ class RtspH264Server:
         default_factory=lambda: secrets.randbits(16), init=False
     )
     _running: bool = field(default=False, init=False)
+    _media_suspended: bool = field(default=False, init=False)
+    last_video_at: float = field(default=0.0, init=False)
     audio_format: G711Format | None = field(default=None, init=False)
     audio_ready: threading.Event = field(
         default_factory=threading.Event, init=False, repr=False
@@ -78,14 +81,10 @@ class RtspH264Server:
 
         self.path = _normalize_path(self.path)
         self._stop_event.clear()
-        self.audio_ready.clear()
-        self.audio_format = None
-        self._audio_timestamp = None
+        self._media_suspended = False
+        self._reset_media()
         if self._audio_ssrc == self.ssrc:
             self._audio_ssrc = (self.ssrc + 1) & 0xFFFFFFFF
-        self._media_clock = RtpMediaClock()
-        self._sps = self._pps = b""
-        self.video_ready.clear()
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             # Windows address reuse can admit two listeners on one port.
@@ -142,6 +141,12 @@ class RtspH264Server:
         return self._stop_event
 
     @property
+    def accepting_viewers(self) -> bool:
+        """Whether the listener is running and not suspended for recovery."""
+        with self._clients_lock:
+            return self._running and not self._media_suspended
+
+    @property
     def parameter_sets(self) -> str:
         """Bounded H.264 decoder configuration for a joining RTSP viewer."""
         if not self._sps or not self._pps:
@@ -151,6 +156,32 @@ class RtspH264Server:
             + ","
             + b64encode(self._pps).decode("ascii")
         )
+
+    def _reset_media(self) -> None:
+        self.audio_ready.clear()
+        self.video_ready.clear()
+        self.audio_format = None
+        self._audio_timestamp = None
+        self._media_clock = RtpMediaClock()
+        self._sps = self._pps = b""
+        self.last_video_at = 0.0
+
+    def suspend_media(self) -> None:
+        """Drop old RTSP sessions and decoder state without rebinding the port."""
+        with self._clients_lock:
+            if not self._running:
+                return
+            self._media_suspended = True
+            self._reset_media()
+            clients = self._clients[:]
+            self._clients.clear()
+        for client in clients:
+            client.close()
+
+    def resume_media(self) -> None:
+        """Accept viewers again after the new source has decoder parameters."""
+        with self._clients_lock:
+            self._media_suspended = False
 
     def publish_frame(self, access_unit: bytes, frame: dict[str, Any]) -> None:
         """Publish video on the same native-timestamp timeline as audio."""
@@ -166,11 +197,16 @@ class RtspH264Server:
             return
 
         units = annexb_nal_units(access_unit)
-        keyframe = any(unit[0] & 31 == 5 for unit in units)
+        keyframe = False
+        has_video = False
         for unit in units:
-            if unit[0] & 31 == 7 and len(unit) <= 4096:
+            nal_type = unit[0] & 31
+            if 1 <= nal_type <= 5:
+                has_video = True
+                keyframe = keyframe or nal_type == 5
+            elif nal_type == 7 and len(unit) <= 4096:
                 self._sps = unit
-            elif unit[0] & 31 == 8 and len(unit) <= 4096:
+            elif nal_type == 8 and len(unit) <= 4096:
                 self._pps = unit
         timestamp = self.rtp_timestamp() if timestamp is None else timestamp
         result = packetize_h264_access_unit(
@@ -184,6 +220,8 @@ class RtspH264Server:
         self._sequence_number = result.next_sequence_number
         if not result.packets:
             return
+        if has_video:
+            self.last_video_at = time.monotonic()
         if keyframe and self._sps and self._pps:
             self.video_ready.set()
 
@@ -278,6 +316,7 @@ class RtspH264Server:
             with self._clients_lock:
                 if (
                     self._stop_event.is_set()
+                    or self._media_suspended
                     or len(self._clients) >= MAX_RTSP_CLIENTS
                 ):
                     client.close()

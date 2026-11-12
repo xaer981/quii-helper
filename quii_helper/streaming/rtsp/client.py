@@ -43,7 +43,7 @@ class RtspClient:
         self.playing = False
         self.tracks = {0: RtpTransport()}
         self._setup_tracks: set[int] = set()
-        self._waiting_keyframe = server.audio
+        self._waiting_keyframe = server.audio or server.wait_for_keyframe
         self._send_lock = threading.RLock()
         self._outgoing_condition = threading.Condition()
         self._outgoing: deque[tuple[list[bytes], int, float, int]] = deque()
@@ -308,7 +308,9 @@ class RtspClient:
             return
         if method == "PLAY":
             with self._send_lock:
-                self._waiting_keyframe = self.server.audio
+                self._waiting_keyframe = (
+                    self.server.audio or self.server.wait_for_keyframe
+                )
                 self.playing = True
                 self._send_response(
                     200,

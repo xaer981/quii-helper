@@ -136,6 +136,14 @@ does not prove an expired key; also check the channel and stream selection.
 Exit code `1` means a startup/stream failure, `2` means invalid CLI arguments,
 and `130` means interrupted with Ctrl+C.
 
+### Optional LAN RTSP Recovery
+
+Since **0.7.0**, add `--reconnect` to the command above to retry a lost or
+stalled LAN preview after initial playback. It is off by default and never
+renews the saved key.
+Wait for `LAN RTSP reconnected`, then reopen the same URL if your player did
+not reconnect. See [recovery limits](api.md#rtsp-streaming).
+
 ### Watch From Another Computer
 
 If the command runs on a Raspberry Pi, `127.0.0.1` in its output refers to
@@ -748,6 +756,7 @@ these checks do not certify every PyPI build on ARM64.
 | Device `error=-1` with empty content | Often an unsupported/rejected firmware command. Inspect the raw response or profile status; do not assume every device implements every query. |
 | Missing JPEG/MP4 | Check FFmpeg in the application's environment and inspect the capture error/summary and retained H.264. |
 | VLC cannot connect | Wait for media readiness; check the bind host, server LAN IP, firewall, and producer error from `session.wait()`. |
+| VLC stopped after a working LAN stream | With [recovery enabled](#optional-lan-rtsp-recovery), wait for `LAN RTSP reconnected` and reopen the same URL if playback does not resume. If recovery fails, check the LAN connection and the saved pair before explicitly refreshing it. |
 | No console progress in library code | Logging is disabled by default. Enable it explicitly as described in [Logging](api.md#logging). |
 | `AudioDeviceError` / no computer sound | Install the optional `audio` extra, check OS microphone permission and default devices; use `python -m examples.converse --list-devices`. Use headphones to avoid feedback. No audio device is required for normal capture/RTSP. |
 | Empty or repeated call history | Use the [cloud history setup/examples](#cloud-call-history). History is not a live subscription; compare fresh pages against a baseline and do not infer a new ring from old rows. |

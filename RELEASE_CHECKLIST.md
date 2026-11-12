@@ -82,11 +82,18 @@ State whether testing was live, mocked, native-static, loopback, or installed
 artifact validation; do not substitute one for another.
 
 For the LAN path, check the two phases separately: explicit cloud
-bootstrap/save/load (including the TLS policy), then capture/RTSP and a fresh
-process reconnect using only the saved pair. Verify there are no cloud requests
-or automatic renewal/fallback during LAN playback. Record the tested profile,
-key age and decoded media results without publishing secrets. Do not claim
-camera-WAN isolation, a key TTL or reboot persistence unless separately tested.
+bootstrap/save/load (including the TLS policy), then capture/RTSP and a manual
+restart in a fresh process using only the saved pair. Verify there are no
+cloud requests or automatic renewal/fallback during LAN playback. Record the
+tested profile, key age and decoded media results without publishing secrets.
+Do not claim camera-WAN isolation, a key TTL or reboot persistence unless
+separately tested.
+
+For opt-in LAN RTSP recovery, separately interrupt only the test camera
+connection after media has been decoded. Keep the RTSP process running,
+reopen the same URL after recovery, decode media again, and verify shutdown
+releases the test ports. Record how the interruption was induced and which
+player decoded the stream; a manual restart does not prove automatic recovery.
 
 For protocol changes, verify packet fixtures and original-client/native parity.
 Keep regression coverage for reordering/window limits, large/fragmented/chained

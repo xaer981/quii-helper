@@ -59,7 +59,7 @@ class TcpSocketTransport:
                 if self.sock is not sock:
                     raise RuntimeError("socket is closed")
                 if not chunk:
-                    raise RuntimeError(
+                    raise ConnectionError(
                         f"socket closed while reading {size} bytes"
                     )
                 buffer.extend(chunk)

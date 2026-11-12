@@ -17,6 +17,7 @@ from quii_helper.protocols.quii.crypto import aes_cbc_crypt
 from quii_helper.protocols.tcp.live.session import (
     MAX_TCP_PAYLOAD_BYTES,
     LanTcpSession,
+    LanTcpTransportError,
     validate_lan_config,
 )
 from quii_helper.protocols.tcp.transport.socket_transport import (
@@ -357,7 +358,7 @@ def test_eof_mid_body_closes_session():
     session, sock = session_and_socket()
     sock.chunks.append(command()[:40])
     with session:
-        with pytest.raises(QuiiConnectionError):
+        with pytest.raises(LanTcpTransportError):
             session.recv_message()
         assert sock.closed
 

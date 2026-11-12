@@ -4,6 +4,8 @@ Run ``python -m examples.lan_rtsp`` from the checkout root. Set the camera IP,
 channel and stream in `.env` (CAMERA_STREAM accepts "high", "low", or numeric
 ids); first save `data/stream_credentials.json` using
 the explicit cloud bootstrap API/example. No key refresh is attempted here.
+Since 0.7.0, add `reconnect=True` to `serve_rtsp()` to opt
+into LAN recovery. Reopen the same RTSP URL after recovery if needed.
 """
 
 from quii_helper import Camera, CameraStreamCredentials, load_config

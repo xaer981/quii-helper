@@ -10,6 +10,7 @@ from quii_helper.config import AutonomousConfig
 from quii_helper.preview.pipeline.config import (
     DEFAULT_PREVIEW_CAPTURE_SETTINGS,
 )
+from quii_helper.support.errors import ConfigurationError
 from tests.media.frames.test_parsing import _cpacket
 
 H264_PARAMETERS = b"\x00\x00\x01\x67sps\x00\x00\x01\x68pps"
@@ -92,6 +93,11 @@ class CameraRtspApiTests:
         with patch("quii_helper.camera.api.CameraRtspStream") as stream_cls:
             camera.serve_rtsp()
         assert stream_cls.call_args.kwargs["host"] == "127.0.0.1"
+        assert stream_cls.call_args.kwargs["reconnect"] is False
+
+    def test_rtsp_reconnect_rejects_cloud_mode(self):
+        with pytest.raises(ConfigurationError, match="requires LAN mode"):
+            Camera(connection_mode="cloud").serve_rtsp(reconnect=True)
 
     def test_serve_rtsp_builds_and_starts_stream(self) -> None:
         camera = Camera(connection_mode="cloud")

@@ -111,12 +111,18 @@ def _rtsp_port(value: str) -> int:
     raise argparse.ArgumentTypeError("use a port from 1 to 65535")
 
 
-def _serve_lan_rtsp(config: AutonomousConfig, port: int) -> int:
-    ready = False
+def _serve_lan_rtsp(
+    config: AutonomousConfig, port: int, *, reconnect: bool
+) -> int:
+    def status(message: str) -> None:
+        if message.startswith("LAN RTSP reconnect"):
+            print(message, flush=True)
+
+    stream = None
     try:
-        camera = Camera(config=config, status=lambda _: None)
+        camera = Camera(config=config, status=status)
         try:
-            stream = camera.serve_rtsp(port=port)
+            stream = camera.serve_rtsp(port=port, reconnect=reconnect)
         except OSError:
             print(
                 "Cannot start the local RTSP listener. Try a different --port.",
@@ -126,10 +132,12 @@ def _serve_lan_rtsp(config: AutonomousConfig, port: int) -> int:
         with stream:
             print("Waiting for LAN preview video...", flush=True)
             deadline = monotonic() + RTSP_STARTUP_TIMEOUT_SECONDS
-            while not stream.ready:
+            while not stream.playback_started:
                 remaining = deadline - monotonic()
                 if remaining <= 0:
                     stream.wait(timeout=0)
+                    if stream.playback_started:
+                        break
                     print(
                         "No playable H.264 video before the startup deadline. "
                         "Check CAMERA_CHANNEL and CAMERA_STREAM.",
@@ -137,8 +145,8 @@ def _serve_lan_rtsp(config: AutonomousConfig, port: int) -> int:
                     )
                     return 1
                 stream.wait(timeout=min(remaining, 0.25))
-            ready = True
-            print(f"RTSP stream ready: {stream.url}", flush=True)
+            if stream.ready:
+                print(f"RTSP stream ready: {stream.url}", flush=True)
             stream.wait()
     except KeyboardInterrupt:
         return 130
@@ -149,7 +157,7 @@ def _serve_lan_rtsp(config: AutonomousConfig, port: int) -> int:
     except Exception:
         problem = (
             "The LAN RTSP stream stopped after startup."
-            if ready
+            if stream is not None and stream.playback_started
             else "LAN preview failed before RTSP was ready. Check device compatibility and the saved key/auth pair."
         )
     else:
@@ -182,6 +190,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=8554,
         help="local RTSP port (default: 8554)",
     )
+    rtsp.add_argument(
+        "--reconnect",
+        action="store_true",
+        help="retry a lost LAN preview on the same RTSP URL after startup",
+    )
     for command in (doctor, rtsp):
         command.add_argument(
             "--credentials",
@@ -200,4 +213,4 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     if args.command == "doctor":
         return _report_doctor(None)
-    return _serve_lan_rtsp(config, args.port)
+    return _serve_lan_rtsp(config, args.port, reconnect=args.reconnect)

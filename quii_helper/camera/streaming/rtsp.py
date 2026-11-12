@@ -18,13 +18,19 @@ from quii_helper.preview.pipeline.stream import TunnelPacketStream
 from quii_helper.preview.processing.packets.processor import (
     PreviewPacketProcessor,
 )
-from quii_helper.protocols.tcp.live.session import LanTcpSession
+from quii_helper.protocols.tcp.live.session import (
+    LanTcpSession,
+    LanTcpTransportError,
+)
 from quii_helper.streaming.h264 import H264LiveAssembler
 from quii_helper.streaming.rtsp import RtspH264Server
 from quii_helper.support.errors import ConfigurationError, QuiiConnectionError
 
 STREAM_PACKET_BATCH_SECONDS = 1.0
 STREAM_PACKET_TIMEOUT_SECONDS = 1.0
+LAN_VIDEO_STALL_SECONDS = 15.0
+LAN_RECONNECT_DELAYS = (1.0, 2.0, 4.0)
+LAN_RECONNECT_STABLE_SECONDS = 30.0
 PRODUCER_JOIN_TIMEOUT_SECONDS = 2.0
 PRODUCER_WAIT_INTERVAL_SECONDS = 0.1
 LIVE_PREVIEW_SETUP_SEQ = 0
@@ -52,6 +58,7 @@ class CameraRtspStream:
         port: TCP port bound by the RTSP server.
         path: RTSP path exposed by the server.
         connection_mode: Explicit source selection; LAN never fetches credentials.
+        reconnect: Retry a lost LAN source after the stream first becomes ready.
     """
 
     connector: Any
@@ -64,6 +71,7 @@ class CameraRtspStream:
     path: str = "/live"
     connection_mode: str = "cloud"
     audio: bool = False
+    reconnect: bool = field(default=False, kw_only=True)
     server: RtspH264Server = field(init=False)
     assembler: H264LiveAssembler = field(init=False)
     _stop_event: threading.Event = field(
@@ -76,6 +84,7 @@ class CameraRtspStream:
     _error: BaseException | None = field(default=None, init=False, repr=False)
     _started: bool = field(default=False, init=False)
     _ready_announced: bool = field(default=False, init=False)
+    _recovered_video_at: float | None = field(default=None, init=False)
     _lifecycle_lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False
     )
@@ -88,14 +97,23 @@ class CameraRtspStream:
     )
 
     def __post_init__(self) -> None:
+        if self.reconnect and self.connection_mode != "lan":
+            raise ConfigurationError("RTSP reconnect requires LAN mode")
         self.server = RtspH264Server(
             host=self.host,
             port=self.port,
             path=self.path,
             audio=self.audio,
+            wait_for_keyframe=self.reconnect,
         )
-        self.assembler = H264LiveAssembler(
+        self.assembler = self._new_assembler()
+
+    def _new_assembler(
+        self, *, wait_for_keyframe: bool = False
+    ) -> H264LiveAssembler:
+        return H264LiveAssembler(
             sink=self.server.publish,
+            wait_for_keyframe=wait_for_keyframe,
             audio_sink=self.server.publish_audio if self.audio else None,
             frame_sink=self.server.publish_frame if self.audio else None,
             audio_frame_observer=self._observe_audio_frame,
@@ -108,7 +126,17 @@ class CameraRtspStream:
 
     @property
     def ready(self) -> bool:
-        """Whether the running server has published an IDR with SPS/PPS."""
+        """Whether the server accepts viewers and has playable media."""
+        return self._media_ready and self.server.accepting_viewers
+
+    @property
+    def playback_started(self) -> bool:
+        """Whether playable media became available at least once on this run."""
+        # Read the sticky flag last in case playback drops during the check.
+        return self.ready or self._ready_announced
+
+    @property
+    def _media_ready(self) -> bool:
         return (
             self.server.video_ready.is_set()
             and not self.server.stop_event.is_set()
@@ -165,6 +193,11 @@ class CameraRtspStream:
                 or self._stop_event.is_set()
                 or self._thread is None
                 or not self._thread.is_alive()
+                or (
+                    self.reconnect
+                    and self._ready_announced
+                    and (self._packet_stream is None or not self.ready)
+                )
             ):
                 raise QuiiConnectionError(
                     "start_talk requires an active preview session"
@@ -231,12 +264,8 @@ class CameraRtspStream:
             self.status("Starting RTSP server")
             self._error = None
             self.server.start()
-            self.assembler = H264LiveAssembler(
-                sink=self.server.publish,
+            self.assembler = self._new_assembler(
                 wait_for_keyframe=self.connection_mode == "lan",
-                audio_sink=self.server.publish_audio if self.audio else None,
-                frame_sink=self.server.publish_frame if self.audio else None,
-                audio_frame_observer=self._observe_audio_frame,
             )
             self._ready_announced = False
             self._stop_event.clear()
@@ -328,7 +357,7 @@ class CameraRtspStream:
             if self._stop_event.is_set():
                 return
             if self.connection_mode == "lan":
-                self._run_lan_preview()
+                self._run_lan_preview_with_reconnect()
                 return
             self.status("Fetching runtime credentials")
             if self._stop_event.is_set():
@@ -420,7 +449,40 @@ class CameraRtspStream:
                     break
                 processor.process_packet(packet, phase="live")
 
-    def _run_lan_preview(self) -> None:
+    def _run_lan_preview_with_reconnect(self) -> None:
+        attempt = 0
+        while not self._stop_event.is_set():
+            self._recovered_video_at = None
+            try:
+                self._run_lan_preview(recovering=attempt > 0)
+                return
+            except LanTcpTransportError as exc:
+                if self._stop_event.is_set():
+                    return
+                if not self.reconnect or not self._ready_announced:
+                    raise
+                if (
+                    self._recovered_video_at is not None
+                    and self.server.last_video_at - self._recovered_video_at
+                    >= LAN_RECONNECT_STABLE_SECONDS
+                ):
+                    attempt = 0
+                if attempt == len(LAN_RECONNECT_DELAYS):
+                    raise LanTcpTransportError(
+                        "LAN RTSP reconnect attempts exhausted"
+                    ) from exc
+                self.server.suspend_media()
+                self.stop_talk()
+                self.assembler = self._new_assembler(wait_for_keyframe=True)
+                delay = LAN_RECONNECT_DELAYS[attempt]
+                attempt += 1
+                self.status(
+                    f"LAN RTSP reconnecting ({attempt}/{len(LAN_RECONNECT_DELAYS)})"
+                )
+                if self._stop_event.wait(delay):
+                    return
+
+    def _run_lan_preview(self, *, recovering: bool) -> None:
         self.status("Opening LAN preview session")
         with self._lifecycle_lock:
             if self._stop_event.is_set():
@@ -428,19 +490,41 @@ class CameraRtspStream:
             session = self.connector.create_lan_session()
             self._packet_stream = session
         # Register before opening so close() can interrupt setup/receive too.
-        with session:
-            if self._stop_event.is_set():
-                return
-            self.status("Connected")
-            self.status("Receiving media packets")
-            while not self._stop_event.is_set():
-                try:
-                    decoded = session.recv_message(
-                        timeout=STREAM_PACKET_TIMEOUT_SECONDS
-                    )
-                except TimeoutError:
-                    continue
-                self._feed_assembler_message(decoded)
+        try:
+            with session:
+                if self._stop_event.is_set():
+                    return
+                self.status("Connected")
+                self.status("Receiving media packets")
+                recovery_deadline = time.monotonic() + LAN_VIDEO_STALL_SECONDS
+                while not self._stop_event.is_set():
+                    if recovering or (self.reconnect and self.ready):
+                        deadline = (
+                            recovery_deadline
+                            if recovering
+                            else self.server.last_video_at
+                            + LAN_VIDEO_STALL_SECONDS
+                        )
+                        if time.monotonic() >= deadline:
+                            raise LanTcpTransportError(
+                                "LAN RTSP timed out waiting for video"
+                            )
+                    try:
+                        decoded = session.recv_message(
+                            timeout=STREAM_PACKET_TIMEOUT_SECONDS
+                        )
+                    except TimeoutError:
+                        continue
+                    self._feed_assembler_message(decoded)
+                    if recovering and self._media_ready:
+                        recovering = False
+                        self._recovered_video_at = self.server.last_video_at
+                        self.server.resume_media()
+                        if self.ready:
+                            self.status(f"LAN RTSP reconnected: {self.url}")
+        finally:
+            with self._lifecycle_lock:
+                self._packet_stream = None
 
     def _feed_assembler_message(self, decoded: DecodedQuiiMessage) -> None:
         if self._stop_event.is_set():

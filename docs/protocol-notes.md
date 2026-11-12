@@ -334,8 +334,10 @@ queue capacities or bound total process RSS:
 
 An unexpected terminal receiver/decoder failure clears pending application
 payloads and aborts capture. A valid prefix does not promise a usable partial
-recording. RTSP closes the listener and reports producer failure through
-`session.wait()`; it does not reconnect the camera automatically.
+recording. RTSP closes the listener and reports terminal producer failures
+through `session.wait()`. The default LAN path and cloud/P2P never reconnect
+automatically. Opt-in LAN RTSP recovery can retry a transport failure or
+video stall after initial playback, without changing the listener URL.
 
 Shutdown requests producer cancellation and releases sockets/listeners. A
 cloud/connection call already in flight still has its own timeout; later
