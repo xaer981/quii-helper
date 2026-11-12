@@ -325,11 +325,13 @@ evidence. Playback with the camera's WAN blocked remains unverified.
 | Vimar K40955 community report, 2026-10-25 | The owner confirmed `lan_rtsp` video in [issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080), after troubleshooting cloud bootstrap. | Independent maintainer testing, strict cloud TLS validation, JPEG/MP4, door control, call history, two-way audio, or other firmware. |
 | Intelbras Allo wT7 `IDS9478AW` community integration, reviewed 2026-11-02 | [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7) uses quii-helper 0.3.0 for LAN snapshots/RTSP, with additional audio/geometry workarounds. | The current unmodified package, high-level talk/door APIs, a generic local ring subscription, or all wT7 variants. |
 | Intelbras Allo wT7 `IDS94B1W` community check, 2026-11-02 | [Owner confirmation](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434): `main` `1d6d81d`, nested archive selectors, explicit pipelined download, 53,755-byte JPEG decoded at 1280x720; fixes included since 0.4.1. | Independent hardware validation of the released artifact, default-protocol JPEG, archived video on Intelbras, high-level talk/door APIs, or other firmware. |
+| Tantos LAN RTSP recovery on Raspberry Pi ARM64, 2026-11-12 | Development wheel with the recovery feature included in `0.7.0`, panel 2/low: FFmpeg decoded 12 frames directly and 12 frames each before and after closing the test TCP connection through an isolated loopback proxy. The first retry restored readiness in about 4 seconds on the same RTSP URL. LAN playback used the saved pair without cloud requests; both CLI runs exited 130 and released their ports. | The final release artifact, VLC recovery, audio recovery, a real-device video stall without TCP closure, or other hardware. |
 
 The earlier entrance-bot checks cover dependency integration, not media.
 The separate physical LAN tests cover that tested build/device only; they do not
-certify every PyPI build on ARM64. The test process blocked cloud requests
-during LAN phases, but the camera's own WAN access remained unchanged.
+certify every PyPI build on ARM64. The client-side network guard described
+above applied to the October 25 saved-key check, not all LAN tests.
+The camera's own WAN access remained unchanged.
 Installing this package does not update or deploy entrance-bot. Older artifacts
 are evidence, not replacement uploads for an already published version.
 

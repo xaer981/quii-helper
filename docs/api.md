@@ -519,7 +519,7 @@ Running this on a headless Pi does not give it access to a laptop microphone.
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
-| `serve_rtsp(host="127.0.0.1", port=8554, path="/live", audio=False)` | `CameraRtspStream` | Start a listener and one background preview producer; audio is opt-in. |
+| `serve_rtsp(host="127.0.0.1", port=8554, path="/live", audio=False, reconnect=False)` | `CameraRtspStream` | Start a listener and one background preview producer; audio and LAN recovery are opt-in. |
 
 ```python
 from quii_helper import Camera, load_config
@@ -544,6 +544,21 @@ starts no audio decoding, resampling, microphone, speaker or talk connection;
 those are explicit opt-ins through `session.start_talk()`.
 The library default remains video-only; `quii_helper.main` opts into audio.
 
+Since **0.7.0**, pass `reconnect=True` in LAN mode to recover after the first
+playable stream. This option is off by default and is not available in
+cloud/P2P mode.
+On a TCP failure or 15 seconds without video, the same RTSP listener
+stays up while the helper opens a fresh LAN preview. It tries up to three
+times per outage, with interruptible delays of 1, 2, and 4 seconds. The retry
+budget resets only after 30 seconds of steady video, not after a single
+keyframe. The listener keeps its port but does not accept viewers during
+recovery. After `LAN RTSP reconnected`, reopen the same URL if needed.
+Old viewer sessions are not resumed, and new viewers start at a keyframe.
+If recovery is exhausted or setup/play is rejected, `session.wait()` reports
+the error.
+This does not retry initial startup, refresh credentials, contact the
+cloud, or restart a conversation.
+
 RTSP paths are normalized (`"/live/"` becomes `"/live"`; `"/"` is supported).
 DESCRIBE returns a `Content-Base` matching the authority used by the viewer,
 so relative SDP track URLs work without relying on player-specific URL rules.
@@ -553,9 +568,9 @@ cannot be known before the next keyframe; timestamps remain in the RTP packets.
 With audio enabled, SDP advertises track 0 (H.264) and track 1 (PCMA/PCMU) only
 after an IDR keyframe, H.264 decoder parameters and the audio format are
 available. An early DESCRIBE can wait up to ten seconds, then return
-`503`/`Retry-After`. Unknown audio
-profiles, a codec change or invalid device timestamps fail explicitly and stop
-the producer; use `audio=False` on unsupported cameras. A joining/resuming
+`503`/`Retry-After`. Unknown audio profiles, a codec change within a camera
+session, or invalid device timestamps fail explicitly and stop the producer;
+use `audio=False` on unsupported cameras. A joining/resuming
 viewer waits for a keyframe rather than receiving undecodable P-frames.
 Source timestamps are mapped to a common device-relative A/V timeline, but
 precise lip-sync is not guaranteed across players: RTCP sender reports are not
@@ -566,7 +581,8 @@ Vimar/cloud audio and subjective sound quality remain unverified.
 | Stream handle | Meaning |
 | --- | --- |
 | `session.url` | Address, **not** a readiness check. |
-| `session.ready` | `True` once the running stream has published an H.264 IDR with SPS/PPS available and, if audio is enabled, knows its format. |
+| `session.ready` | `True` while the listener accepts viewers and the current source has provided an H.264 IDR with SPS/PPS and, if enabled, an audio format. False during recovery. |
+| `session.playback_started` | Since 0.7.0. Whether the stream has become ready at least once in the current run. Stays true during recovery; use `session.ready` to check whether viewers can connect now. |
 | `session.stats` | Current RTSP/H.264 counters and `talk_active`. |
 | `session.wait(timeout=None)` | Wait for completion; re-raise producer failure; remain responsive to `Ctrl+C`. A timeout alone does not close the stream. |
 | `session.close()` | Request cancellation and release the listener; also called by the context manager. |
@@ -575,10 +591,11 @@ Vimar/cloud audio and subjective sound quality remain unverified.
 The stream reports `RTSP stream ready` once when it first becomes ready.
 Use `status=print` as above to see the message, or enable library logging if
 you use the default status callback.
-A producer failure closes the listener;
-there is no automatic camera reconnect. An in-flight cloud/connection call can
-finish only at its own timeout during shutdown; subsequent startup stages are
-cancelled and overlapping restarts are rejected while the producer is stopping.
+A terminal producer failure closes the listener. Cloud/P2P and LAN without
+`reconnect=True` do not open a new preview after failure. An in-flight
+cloud/connection call can finish only at its own timeout during shutdown;
+subsequent startup stages are cancelled and overlapping restarts are rejected
+while the producer is stopping.
 For LAN, closing the stream also shuts down its TCP socket during setup or
 receive; a still-running connect must return at its configured timeout. Each
 restart creates a fresh session; a closed session is not reused.

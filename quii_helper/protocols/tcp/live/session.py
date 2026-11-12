@@ -36,7 +36,11 @@ COMMAND_TYPES = {0, 1, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 0xAA, 0xFE}
 PLAY_REPLY_TYPES = {1, 12, 13, 17, 0xAA}
 
 
-class LanTcpConnectError(QuiiConnectionError):
+class LanTcpTransportError(QuiiConnectionError):
+    """The LAN socket failed, independently of device rejection or parsing."""
+
+
+class LanTcpConnectError(LanTcpTransportError):
     """TCP connection could not be established."""
 
 
@@ -173,11 +177,13 @@ class LanTcpSession:
             if isinstance(
                 exc, (OSError, RuntimeError, ValueError)
             ) and not isinstance(exc, QuiiConnectionError):
-                error_type = (
-                    LanTcpConnectError
-                    if not connected and isinstance(exc, OSError)
-                    else QuiiConnectionError
-                )
+                error_type: type[QuiiConnectionError] = QuiiConnectionError
+                if isinstance(exc, OSError):
+                    error_type = (
+                        LanTcpTransportError
+                        if connected
+                        else LanTcpConnectError
+                    )
                 raise error_type(
                     "LAN TCP startup failed; no cloud fallback attempted"
                 ) from exc
@@ -228,7 +234,12 @@ class LanTcpSession:
             self.close()
             if isinstance(exc, QuiiConnectionError):
                 raise
-            raise QuiiConnectionError(
+            error_type = (
+                LanTcpTransportError
+                if isinstance(exc, OSError)
+                else QuiiConnectionError
+            )
+            raise error_type(
                 "LAN TCP receive failed; no cloud fallback attempted"
             ) from exc
 

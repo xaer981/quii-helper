@@ -5,6 +5,17 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## 0.7.0 - 2026-11-12
+
+### Added
+
+- Opt-in LAN RTSP recovery via `serve_rtsp(reconnect=True)` or
+  `quii-helper rtsp --reconnect`. Retry lost or stalled preview after startup
+  without changing the RTSP URL or contacting the cloud. Off by default.
+  After recovery, reopen the same URL if your player does not reconnect.
+- Native Linux ARM64 wheel smoke check in CI: binary dependency installation,
+  `pip check`, offline `doctor` and synthetic loopback RTSP.
+
 ## 0.6.0 - 2026-11-11
 
 ### Added

@@ -158,6 +158,10 @@ from another computer, see the [SSH tunnel setup](https://github.com/xaer981/qui
 On an older version, upgrade with `python -m pip install --upgrade quii-helper`
 or use the Python example below.
 
+Since **0.7.0**, add `--reconnect` to opt into
+[LAN RTSP recovery](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#optional-lan-rtsp-recovery).
+It is off by default and keeps the same RTSP URL after a camera connection drops.
+
 <details>
 <summary><strong>Use the Python API instead</strong></summary>
 

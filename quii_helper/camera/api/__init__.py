@@ -3773,6 +3773,7 @@ class Camera:
         port: int = 8554,
         path: str = "/live",
         audio: bool = False,
+        reconnect: bool = False,
     ) -> CameraRtspStream:
         """Start an RTSP server backed by live camera packets.
 
@@ -3797,6 +3798,9 @@ class Camera:
             path: RTSP path, for example `"/live"`.
             audio: Include native G.711 8000 Hz mono audio from the same preview
                 session. Defaults to video-only. No microphone/talkback is used.
+            reconnect: LAN only. After initial readiness, retry a lost or stalled
+                preview on the same RTSP URL. Viewers and talk are disconnected;
+                only the preview is restarted. Off by default.
 
         Returns:
             Started `CameraRtspStream` handle. The client URL is available as
@@ -3818,6 +3822,7 @@ class Camera:
             path=path,
             connection_mode=self.config.connection_mode,
             audio=audio,
+            reconnect=reconnect,
         )
         return stream.start()
 

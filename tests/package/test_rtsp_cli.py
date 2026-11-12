@@ -2,7 +2,8 @@
 
 import os
 import socket
-from unittest.mock import Mock
+from threading import Event
+from unittest.mock import MagicMock, Mock, PropertyMock, call
 
 import pytest
 
@@ -115,11 +116,17 @@ def test_rtsp_serves_saved_pair_and_closes_on_ctrl_c(
         assert value not in captured.out + captured.err
 
 
-def test_rtsp_reports_listener_error_without_connecting(monkeypatch, capsys):
+@pytest.mark.parametrize("reconnect", [False, True])
+def test_rtsp_reports_listener_error_without_connecting(
+    monkeypatch, capsys, reconnect
+):
     serve = Mock(side_effect=OSError("synthetic-private-error"))
     monkeypatch.setattr(Camera, "serve_rtsp", serve)
-    assert cli.main(["rtsp", "--port", "8555"]) == 1
-    serve.assert_called_once_with(port=8555)
+    args = ["rtsp", "--port", "8555"]
+    if reconnect:
+        args.append("--reconnect")
+    assert cli.main(args) == 1
+    serve.assert_called_once_with(port=8555, reconnect=reconnect)
     captured = capsys.readouterr()
     assert "local RTSP listener" in captured.err
     assert "synthetic-private-error" not in captured.err
@@ -137,6 +144,80 @@ def test_rtsp_reports_tcp_connect_failure(
     captured = capsys.readouterr()
     assert "Cannot connect to the camera over LAN" in captured.err
     assert "synthetic-private-error" not in captured.out + captured.err
+
+
+@pytest.mark.parametrize("first_poll_started", [True, False])
+def test_rtsp_startup_deadline_does_not_cancel_recovery_after_first_video(
+    first_poll_started, monkeypatch, capsys
+):
+    stream = MagicMock(spec=CameraRtspStream)
+    stream.__enter__.return_value = stream
+    type(stream).playback_started = PropertyMock(
+        side_effect=[first_poll_started, True]
+    )
+    stream.ready = False
+    stream.wait.side_effect = (
+        KeyboardInterrupt if first_poll_started else [None, KeyboardInterrupt]
+    )
+    monkeypatch.setattr(Camera, "serve_rtsp", Mock(return_value=stream))
+    monkeypatch.setattr(cli, "monotonic", Mock(side_effect=[0.0, 45.0]))
+
+    assert cli.main(["rtsp", "--reconnect"]) == 130
+    assert stream.wait.call_args_list == (
+        [call()] if first_poll_started else [call(timeout=0), call()]
+    )
+    captured = capsys.readouterr()
+    assert "RTSP stream ready" not in captured.out
+    assert not captured.err
+
+
+def test_rtsp_deadline_accepts_ready_media_before_announcement(
+    monkeypatch, capsys, ephemeral_rtsp_port
+):
+    send_media, before_announcement = Event(), Event()
+    real_wait = CameraRtspStream.wait
+
+    def delay_announcement(stream):
+        before_announcement.set()
+        assert stream._stop_event.wait(5)
+
+    def expire_after_media():
+        send_media.set()
+        assert before_announcement.wait(2)
+        return cli.RTSP_STARTUP_TIMEOUT_SECONDS
+
+    def wait(stream, timeout=None):
+        if timeout is not None:
+            return real_wait(stream, timeout)
+        assert stream.ready
+        with socket.create_connection(
+            ("127.0.0.1", stream.server.port), timeout=2
+        ) as viewer:
+            viewer.sendall(_rtsp_request("DESCRIBE", stream.url, 1))
+            response = _recv_until(viewer, b"a=control:trackID=0\r\n")
+            assert b"RTSP/1.0 200 OK" in response
+            assert b"sprop-parameter-sets=" in response
+        raise KeyboardInterrupt
+
+    clock = Mock()
+    clock.side_effect = lambda: (
+        0.0 if clock.call_count == 1 else expire_after_media()
+    )
+    monkeypatch.setattr(cli, "monotonic", clock)
+    monkeypatch.setattr(
+        CameraRtspStream, "_announce_ready_once", delay_announcement
+    )
+    monkeypatch.setattr(CameraRtspStream, "wait", wait)
+    with local_camera([media(_cpacket(ANNEXB))], before_media=send_media) as (
+        port,
+        closed,
+    ):
+        monkeypatch.setenv("CAMERA_STREAM_PORT", str(port))
+        assert cli.main(["rtsp", "--reconnect"]) == 130
+        assert closed.wait(2)
+    captured = capsys.readouterr()
+    assert "RTSP stream ready: rtsp://127.0.0.1:" in captured.out
+    assert not captured.err
 
 
 @pytest.mark.parametrize("phase", ["setup_status", "play_status"])
