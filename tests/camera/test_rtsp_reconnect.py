@@ -210,12 +210,14 @@ def test_keyframe_at_or_after_deadline_is_not_published(
     deadline = now[0] + rtsp.LAN_VIDEO_STALL_SECONDS
     first, _ = _source(VIDEO)
     source, sock = _source() if recovering else _source(VIDEO)
+    recv_message = Mock(wraps=source.recv_message)
+    monkeypatch.setattr(source, "recv_message", recv_message)
     read = sock.recv
     read_timeouts = []
 
     def delayed_recv(size):
         if not sock.chunks and len(read_timeouts) < 2:
-            read_timeouts.append(sock.timeout)
+            read_timeouts.append(recv_message.call_args.kwargs["timeout"])
             if len(read_timeouts) == 1:
                 now[0] = deadline - 0.25
                 raise TimeoutError
@@ -237,7 +239,7 @@ def test_keyframe_at_or_after_deadline_is_not_published(
     ) as error:
         stream.wait(0)
     assert publish.call_count == 1
-    assert read_timeouts == pytest.approx([1.0, 0.25])
+    assert read_timeouts == [1.0, 0.25]
     if recovering:
         assert "timed out waiting for video" in str(error.value.__cause__)
     assert sock.closed and stream.connector.create_lan_session.call_count == 2
