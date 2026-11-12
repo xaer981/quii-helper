@@ -195,6 +195,54 @@ def test_video_stall_retries_even_with_control_traffic(stream, stalled_read):
     assert stream.connector.create_lan_session.call_count == 2
 
 
+@pytest.mark.parametrize("recovering", [False, True])
+@pytest.mark.parametrize("late_by", [0.0, 0.125])
+def test_keyframe_at_or_after_deadline_is_not_published(
+    stream, monkeypatch, recovering, late_by
+):
+    monkeypatch.setattr(rtsp, "LAN_RECONNECT_DELAYS", (0,))
+    now = [100.0]
+    clock = SimpleNamespace(monotonic=lambda: now[0], sleep=time.sleep)
+    monkeypatch.setattr(rtsp, "time", clock)
+    monkeypatch.setattr(rtsp_server, "time", clock)
+    publish = Mock(wraps=stream.server.publish)
+    monkeypatch.setattr(stream.server, "publish", publish)
+    deadline = now[0] + rtsp.LAN_VIDEO_STALL_SECONDS
+    first, _ = _source(VIDEO)
+    source, sock = _source() if recovering else _source(VIDEO)
+    read = sock.recv
+    read_timeouts = []
+
+    def delayed_recv(size):
+        if not sock.chunks and len(read_timeouts) < 2:
+            read_timeouts.append(sock.timeout)
+            if len(read_timeouts) == 1:
+                now[0] = deadline - 0.25
+                raise TimeoutError
+            now[0] = deadline + late_by
+            sock.chunks.append(VIDEO)
+        return read(size)
+
+    sock.recv = delayed_recv
+    stream.connector.create_lan_session.side_effect = (
+        [first, source]
+        if recovering
+        else [source, LanTcpConnectError("unreachable")]
+    )
+    stream.start()
+    stream._thread.join(2)
+    assert not stream._thread.is_alive()
+    with pytest.raises(
+        LanTcpTransportError, match="attempts exhausted"
+    ) as error:
+        stream.wait(0)
+    assert publish.call_count == 1
+    assert read_timeouts == pytest.approx([1.0, 0.25])
+    if recovering:
+        assert "timed out waiting for video" in str(error.value.__cause__)
+    assert sock.closed and stream.connector.create_lan_session.call_count == 2
+
+
 def test_retries_are_bounded_and_close_listener_when_exhausted(stream):
     first, sock = _source(VIDEO)
     stream.connector.create_lan_session.side_effect = [

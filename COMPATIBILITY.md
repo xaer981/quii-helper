@@ -329,8 +329,9 @@ evidence. Playback with the camera's WAN blocked remains unverified.
 
 The earlier entrance-bot checks cover dependency integration, not media.
 The separate physical LAN tests cover that tested build/device only; they do not
-certify every PyPI build on ARM64. The test process blocked cloud requests
-during LAN phases, but the camera's own WAN access remained unchanged.
+certify every PyPI build on ARM64. The client-side network guard described
+above applied to the October 25 saved-key check, not all LAN tests.
+The camera's own WAN access remained unchanged.
 Installing this package does not update or deploy entrance-bot. Older artifacts
 are evidence, not replacement uploads for an already published version.
 

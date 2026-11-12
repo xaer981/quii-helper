@@ -498,6 +498,8 @@ class CameraRtspStream:
                 self.status("Receiving media packets")
                 recovery_deadline = time.monotonic() + LAN_VIDEO_STALL_SECONDS
                 while not self._stop_event.is_set():
+                    deadline = None
+                    read_timeout = STREAM_PACKET_TIMEOUT_SECONDS
                     if recovering or (self.reconnect and self.ready):
                         deadline = (
                             recovery_deadline
@@ -505,15 +507,19 @@ class CameraRtspStream:
                             else self.server.last_video_at
                             + LAN_VIDEO_STALL_SECONDS
                         )
-                        if time.monotonic() >= deadline:
+                        read_timeout = min(
+                            read_timeout, deadline - time.monotonic()
+                        )
+                        if read_timeout <= 0:
                             raise LanTcpTransportError(
                                 "LAN RTSP timed out waiting for video"
                             )
                     try:
-                        decoded = session.recv_message(
-                            timeout=STREAM_PACKET_TIMEOUT_SECONDS
-                        )
+                        decoded = session.recv_message(timeout=read_timeout)
                     except TimeoutError:
+                        continue
+                    if deadline is not None and time.monotonic() >= deadline:
+                        # Leave the expired deadline intact for the next iteration.
                         continue
                     self._feed_assembler_message(decoded)
                     if recovering and self._media_ready:
