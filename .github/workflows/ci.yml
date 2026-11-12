@@ -186,9 +186,45 @@ jobs:
             data/rtsp-av-soak.json
           if-no-files-found: error
 
+  arm64-smoke:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - name: Check out synthetic RTSP check
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: arm64
+
+      - name: Download checked distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: python-distributions
+          path: data/dist
+
+      - name: Verify the installed wheel on ARM64
+        run: |
+          test "$(uname -m)" = aarch64
+          python -m venv "$RUNNER_TEMP/quii-arm64"
+          bin="$RUNNER_TEMP/quii-arm64/bin"
+          "$bin/python" -m pip install --only-binary=:all: data/dist/*.whl
+          "$bin/python" -m pip check
+          cd "$(mktemp -d)"
+          CAMERA_CONNECTION_MODE=lan CAMERA_DEVICE_HOST=127.0.0.1 \
+            STREAM_KEY=KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK AUTH_CODE=synthetic-private-auth \
+            "$bin/quii-helper" doctor
+          "$bin/quii-helper" rtsp --help
+          "$bin/python" -I -B "$GITHUB_WORKSPACE/.github/scripts/check_rtsp_soak.py" --seconds 5
+
   release-gate:
     if: always()
-    needs: [secret-scan, test, build, install, rtsp-soak]
+    needs: [secret-scan, test, build, install, rtsp-soak, arm64-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Require every automated check to succeed

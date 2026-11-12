@@ -109,7 +109,9 @@ Verify these external settings without weakening them to ship a release:
 `ci.yml` runs on pushes/PRs and is reused by `publish.yml`. The aggregate gate
 requires all tests, scans, builds, install jobs, and soak checks to succeed;
 failed, cancelled, or skipped prerequisites cannot approve publication.
-Linux CI is x86_64, not ARM64. See [Compatibility](COMPATIBILITY.md#validation-scope).
+The full Linux matrix is x86_64. CI also requires a native Linux ARM64
+wheel, offline `doctor`, and synthetic RTSP smoke check on Python 3.11.
+See [Compatibility](COMPATIBILITY.md#validation-scope).
 
 Build-only CI needs no PyPI credentials. It retains the checked archives as
 `python-distributions` for seven days. The protected publishing job uses those

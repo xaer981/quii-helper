@@ -209,9 +209,26 @@ def test_synthetic_soak_runs_without_camera_or_assets(audio):
 def test_ci_release_gate_requires_all_jobs_and_reuses_checked_archives():
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
     publish = (ROOT / ".github/workflows/publish.yml").read_text()
-    assert "needs: [secret-scan, test, build, install, rtsp-soak]" in workflow
+    needs = (
+        "needs: [secret-scan, test, build, install, rtsp-soak, arm64-smoke]"
+    )
+    assert needs in workflow
     assert 'value["result"] != "success"' in workflow
     assert "--seconds 120" in workflow
     assert "--seconds 120 --audio" in workflow
     assert "uses: ./.github/workflows/ci.yml" in publish
     assert "needs: checks" in publish
+
+
+def test_ci_arm64_smoke_uses_checked_wheel_and_loopback():
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    job = workflow.split("\n  arm64-smoke:\n")[1].split("\n  release-gate:")[0]
+    assert "runs-on: ubuntu-24.04-arm" in job
+    assert "architecture: arm64" in job
+    assert "needs: build" in job
+    assert "name: python-distributions" in job
+    assert "pip install --only-binary=:all: data/dist/*.whl" in job
+    assert "pip check" in job
+    assert "CAMERA_DEVICE_HOST=127.0.0.1" in job
+    assert '"$bin/quii-helper" doctor' in job
+    assert "check_rtsp_soak.py" in job
