@@ -688,9 +688,9 @@ matches the existing LAN session. This API is distinct from the local CGI
 | `credentials.save(path, overwrite=True)` | Write minimal versioned JSON atomically; create parent directories and return its absolute `Path`. The default still replaces an existing file. With `overwrite=False`, atomically refuse an existing destination, including a racing writer. |
 | `CameraStreamCredentials.load(path)` | Read and validate that file (up to 4 KiB); perform no network request or refresh. |
 
-`overwrite=False` uses hard-link publication on the destination filesystem;
-unsupported filesystems fail rather than silently replacing a file. Both
-modes clean up their temporary file if publication fails. See the
+Since **0.8.0**, `overwrite=False` uses hard-link publication on the destination
+filesystem; unsupported filesystems fail rather than silently replacing a file.
+Both modes clean up their temporary file if publication fails. See the
 [installed bootstrap command](setup.md#cloud-bootstrap-command) for explicit
 cloud fetch/save without writing a Python script; it defaults to no overwrite.
 
