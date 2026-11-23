@@ -24,7 +24,7 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | Configure an existing application | [Environment settings](setup.md#environment-settings) and [library configuration](api.md#library-configuration). |
 | Check LAN settings without connecting | [Offline `doctor` command](setup.md#offline-lan-check). |
 | Capture an image or video | [Capture methods](api.md#capture-methods). |
-| Obtain a stream key, then play locally | [Required cloud setup](setup.md#first-run-fetch-and-save), [bootstrap CLI / Python fallback](setup.md#cloud-bootstrap-command), then [local starts](setup.md#later-runs-load-and-view-locally). |
+| Obtain a stream key, then play locally | [Required cloud setup](setup.md#first-run-fetch-and-save), [bootstrap CLI (since 0.8.0) / Python API](setup.md#cloud-bootstrap-command), then [local starts](setup.md#later-runs-load-and-view-locally). |
 | Watch a live stream in VLC | [LAN RTSP command](setup.md#lan-rtsp-from-the-command-line) or [Python RTSP API](api.md#rtsp-streaming). |
 | Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); available since 0.3.0, tested on Tantos. |
 | Send sound to an intercom | [Experimental LAN talk](api.md#lan-talk-experimental); available since 0.4.0. Shared-preview speech/reply was confirmed on Tantos panel 2 with a file-backed adapter; see [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply). |

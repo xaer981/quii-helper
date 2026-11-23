@@ -287,13 +287,17 @@ supplies the matching key/auth pair; no door command is involved.
 
 #### Cloud Bootstrap Command
 
-If `quii-helper --help` lists `bootstrap`, no checkout or Python script is
-needed. Otherwise use the [Python API alternative](#python-bootstrap-alternative)
-below. From the application directory containing the complete `.env`, run:
+Since **0.8.0**, the installed package provides `bootstrap`; no checkout or
+Python script is needed. From the application directory containing the complete
+`.env`, run:
 
 ```shell
 quii-helper bootstrap --output data/stream_credentials.json
 ```
+
+If the command is missing, upgrade with `python -m pip install --upgrade quii-helper`
+and check `quii-helper --help`. The [Python API alternative](#python-bootstrap-alternative)
+also works independently of the CLI.
 
 `--output FILE` defaults to `data/stream_credentials.json`, relative to the
 current working directory. The command explicitly selects cloud mode without
@@ -513,8 +517,10 @@ Do not paste extracted passwords, private keys, or account traffic into an issue
 
 ## Environment Settings
 
-Start from `.env.example`. Keep one `.env` per application, outside
-`site-packages` and out of version control.
+For a pip-installed application, create `.env` from the per-operation blocks
+above. In a checkout, you can copy `.env.example` and fill only the settings
+your operation needs. Keep one `.env` per application, outside `site-packages`
+and out of version control.
 
 ### Cloud And Preview
 
@@ -764,7 +770,8 @@ camera = Camera(
 
 The configuration class is **`AutonomousConfig`**, not `AnonymousConfig`;
 its equivalent option is `AutonomousConfig(tls_verify=False, ...)`.
-For examples/the discovery helper, opt in with `TLS_VERIFY=false` in `.env`.
+For installed CLI commands, examples and the discovery helper, opt in with
+`TLS_VERIFY=false` in `.env`.
 
 **Disabling verification permits interception or spoofing of server responses.**
 Keep verification enabled where possible, especially if cloud history informs
@@ -801,7 +808,7 @@ these checks do not certify every PyPI build on ARM64.
 | Missing app-specific configuration | Complete the cloud/app values, and pass `config=load_config()` if using `.env`. |
 | `connection_mode='cloud'` required | LAN is the default. Select cloud explicitly only for bootstrap, cloud queries or the existing P2P preview. |
 | Missing/invalid `STREAM_KEY` | Load a saved key/auth pair explicitly, or bootstrap it deliberately in cloud mode. LAN playback never fetches one for you. |
-| Missing `data/stream_credentials.json` | Run the bootstrap example first, or select your application's actual saved path. The LAN example never creates/renews it. |
+| Missing `data/stream_credentials.json` | Complete the [cloud setup](#first-run-fetch-and-save), then explicitly run `quii-helper bootstrap --output data/stream_credentials.json`, or select your existing saved file with `--credentials FILE`. No checkout or Python script is needed; LAN startup never creates or renews the pair. |
 | `AssetMissingError` | Check `assets_dir`, required files, and the verified vHome ABI/table profile. Do not substitute an arbitrary `.so`. |
 | `CERTIFICATE_VERIFY_FAILED` | Follow [TLS guidance](#cloud-region-and-auth-url); do not disable verification silently. |
 | Missing `CAMERA_DEVICE_HOST` / `AUTH_CODE` | Supply local settings or the loaded key/auth pair. LAN TCP requires an IP, not a hostname; CGI has separate HTTP settings. |

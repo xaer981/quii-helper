@@ -2,7 +2,9 @@
 
 import ast
 import inspect
+import os
 import re
+import shlex
 import unicodedata
 import xml.etree.ElementTree as ET
 from contextlib import nullcontext
@@ -23,6 +25,7 @@ from quii_helper import (
     CameraDeviceRecordListInfo,
     CameraStreamCredentials,
     QuiiConnectionError,
+    cli,
     load_config,
 )
 from quii_helper.cloud.config.runtime import validate_runtime_config
@@ -30,6 +33,7 @@ from quii_helper.config.validation import (
     REQUIRED_CAMERA_APP_FIELDS,
     validate_camera_app_config,
 )
+from tests.package.test_bootstrap_cli import CLOUD_ENV
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = sorted(
@@ -265,6 +269,88 @@ def test_bootstrap_cli_is_explicit_and_follows_required_settings(document):
     assert "before cloud login" in text
     assert "quii-helper --help" in text
     assert "Python API" in text
+    assert "Since **0.8.0**" in text
+    assert "If `quii-helper --help` lists `bootstrap`" not in text
+
+
+def test_missing_credentials_guidance_uses_installed_bootstrap() -> None:
+    text = (ROOT / "docs/setup.md").read_text(encoding="utf-8")
+    row = next(
+        line
+        for line in text.splitlines()
+        if line.startswith("| Missing `data/stream_credentials.json`")
+    )
+    assert "quii-helper bootstrap --output data/stream_credentials.json" in row
+    assert "--credentials FILE" in row
+    assert "#first-run-fetch-and-save" in row
+    assert "bootstrap example" not in row
+
+
+@pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])
+def test_documented_cli_bootstrap_then_lan_without_cloud(
+    document: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(os, "environ", {})
+    text = (ROOT / document).read_text(encoding="utf-8")
+    cloud_block = next(
+        block for block in ENV_BLOCK.findall(text) if "CLOUD_ACCOUNT=" in block
+    )
+    cloud_values = dotenv_values(
+        stream=StringIO(cloud_block), interpolate=False
+    )
+    assert set(cloud_values) == set(CLOUD_ENV)
+    config_file = tmp_path / ".env"
+    config_file.write_text(
+        "\n".join(f"{name}={CLOUD_ENV[name]}" for name in cloud_values) + "\n",
+        encoding="utf-8",
+    )
+    bootstrap = next(
+        line
+        for line in text.splitlines()
+        if line.startswith("quii-helper bootstrap --output ")
+    )
+    rtsp = next(
+        line
+        for line in text.splitlines()
+        if line.startswith("quii-helper rtsp --credentials ")
+    )
+    saved = CameraStreamCredentials(
+        "synthetic-device", "K" * 32, "synthetic-auth"
+    )
+    with (
+        patch.object(
+            Camera,
+            "fetch_stream_credentials",
+            autospec=True,
+            return_value=saved,
+        ) as fetch,
+        patch.object(cli, "_serve_lan_rtsp", return_value=0) as serve,
+    ):
+        assert cli.main(shlex.split(bootstrap)[1:]) == 0
+        fetch.assert_called_once()
+        assert fetch.call_args.args[0].config.connection_mode == "cloud"
+        serve.assert_not_called()
+        assert (
+            CameraStreamCredentials.load("data/stream_credentials.json")
+            == saved
+        )
+        lan_block = next(
+            block
+            for block in ENV_BLOCK.findall(text)
+            if "CAMERA_DEVICE_HOST=" in block
+        )
+        config_file.write_text(lan_block, encoding="utf-8")
+        assert cli.main(shlex.split(rtsp)[1:]) == 0
+        fetch.assert_called_once()
+    serve.assert_called_once()
+    config = serve.call_args.args[0]
+    assert config.connection_mode == "lan"
+    assert config.device_host == "192.0.2.10"
+    assert config.stream_key == saved.stream_key
+    assert config.auth_code == saved.auth_code
+    assert config.channel == 1 and config.stream == 2
+    assert not config.cloud_account and not config.cloud_password
 
 
 @pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])

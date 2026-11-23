@@ -106,8 +106,8 @@ if a vendor certificate fails.
 
 With these settings already known, bootstrap needs **no camera IP, APK
 assets, FFmpeg, `AUTH_CODE` or `STREAM_KEY`**. Discovery is a separate operation
-with its own assets. If `quii-helper --help` lists `bootstrap`, run this from
-your application directory; otherwise use the Python API below:
+with its own assets. Since **0.8.0**, run the installed bootstrap command from
+your application directory:
 
 ```shell
 quii-helper bootstrap --output data/stream_credentials.json
@@ -117,6 +117,8 @@ The command contacts cloud only when explicitly invoked. It refuses an
 existing file **before cloud login**; deliberate replacement requires
 `--overwrite`. It never starts preview or changes `.env`. See
 [bootstrap options and errors](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-bootstrap-command).
+If the command is missing, upgrade with `python -m pip install --upgrade quii-helper`
+and check `quii-helper --help`, or use the Python API below.
 
 **Python API alternative:**
 
@@ -224,7 +226,7 @@ Their lifetime is not guaranteed; timeouts do not renew credentials.
 | Operation | Network path | What it means |
 | --- | --- | --- |
 | Saved-key media and talk in LAN mode | Local device | No cloud requests. Talk is explicitly activated. |
-| `fetch_stream_credentials()` | Vendor cloud | Explicit bootstrap; saving the returned pair is a separate action. |
+| `quii-helper bootstrap` / `fetch_stream_credentials()` | Vendor cloud | Explicit key acquisition. The CLI also saves the pair; Python API callers save it separately. |
 | `get_cloud_call_events()` / `get_call_events()` | Vendor cloud | Incoming-call history, not a live ringing subscription. |
 | `watch_archive_events()` / `list_record_files()` | Local CGI | New archive pictures/videos; no preview or stream key is needed by the metadata API. |
 | Local CGI inspection and `open_door()` | Local device | The opening command is active. Auto mode may first look up an unknown capability in explicit cloud mode; LAN mode requires it already known. |
