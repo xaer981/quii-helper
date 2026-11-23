@@ -90,7 +90,7 @@ def check_install(directory: Path, *, soak_seconds: float = 0) -> None:
             cli = executable.with_name(
                 "quii-helper.exe" if sys.platform == "win32" else "quii-helper"
             )
-            for command in ("doctor", "rtsp"):
+            for command in ("doctor", "rtsp", "bootstrap"):
                 subprocess.run(
                     [str(cli), command, "--help"], cwd=root, check=True
                 )

@@ -220,6 +220,7 @@ jobs:
             STREAM_KEY=KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK AUTH_CODE=synthetic-private-auth \
             "$bin/quii-helper" doctor
           "$bin/quii-helper" rtsp --help
+          "$bin/quii-helper" bootstrap --help
           "$bin/python" -I -B "$GITHUB_WORKSPACE/.github/scripts/check_rtsp_soak.py" --seconds 5
 
   release-gate:

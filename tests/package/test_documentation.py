@@ -253,6 +253,21 @@ def test_first_run_documents_all_required_cloud_settings(
 
 
 @pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])
+def test_bootstrap_cli_is_explicit_and_follows_required_settings(document):
+    text = (ROOT / document).read_text(encoding="utf-8")
+    command = "quii-helper bootstrap --output data/stream_credentials.json"
+    block = next(
+        block for block in ENV_BLOCK.findall(text) if "CLOUD_ACCOUNT=" in block
+    )
+    assert command in text
+    assert text.index(block) < text.index(command)
+    assert "--overwrite" in text
+    assert "before cloud login" in text
+    assert "quii-helper --help" in text
+    assert "Python API" in text
+
+
+@pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])
 def test_later_run_documents_only_local_settings(
     document: str, tmp_path: Path
 ) -> None:

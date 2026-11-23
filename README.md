@@ -106,7 +106,19 @@ if a vendor certificate fails.
 
 With these settings already known, bootstrap needs **no camera IP, APK
 assets, FFmpeg, `AUTH_CODE` or `STREAM_KEY`**. Discovery is a separate operation
-with its own assets. Run this once from your application directory:
+with its own assets. If `quii-helper --help` lists `bootstrap`, run this from
+your application directory; otherwise use the Python API below:
+
+```shell
+quii-helper bootstrap --output data/stream_credentials.json
+```
+
+The command contacts cloud only when explicitly invoked. It refuses an
+existing file **before cloud login**; deliberate replacement requires
+`--overwrite`. It never starts preview or changes `.env`. See
+[bootstrap options and errors](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-bootstrap-command).
+
+**Python API alternative:**
 
 ```python
 from quii_helper import Camera, load_config
@@ -116,7 +128,7 @@ credentials = cloud_camera.fetch_stream_credentials()
 credentials.save("data/stream_credentials.json")
 ```
 
-Resolve any failure before proceeding. Re-running this code contacts cloud
+Resolve any failure before proceeding. Re-running this Python code contacts cloud
 again and replaces the file; it does not edit `.env`, start preview or open a
 door. Keep this code out of normal LAN startup. The saved file is private.
 

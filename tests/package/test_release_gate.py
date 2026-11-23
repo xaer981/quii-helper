@@ -150,7 +150,7 @@ def test_installed_checks_use_both_archives_and_isolated_imports(
     check.check_install(tmp_path, soak_seconds=3)
     commands = [call.args[0] for call in run.call_args_list]
     assert len([cmd for cmd in commands if "--smoke" in cmd]) == 2
-    for command in ("doctor", "rtsp"):
+    for command in ("doctor", "rtsp", "bootstrap"):
         assert (
             sum(
                 Path(cmd[0]).stem == "quii-helper"
@@ -260,4 +260,5 @@ def test_ci_arm64_smoke_uses_checked_wheel_and_loopback():
     assert "pip check" in job
     assert "CAMERA_DEVICE_HOST=127.0.0.1" in job
     assert '"$bin/quii-helper" doctor' in job
+    assert '"$bin/quii-helper" bootstrap --help' in job
     assert "check_rtsp_soak.py" in job

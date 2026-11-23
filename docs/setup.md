@@ -14,6 +14,7 @@ to inspect.
 - [Watch LAN RTSP from the command line](#lan-rtsp-from-the-command-line).
 - [Choose the inputs for your operation](#what-your-operation-needs).
 - [Get a stream key and reuse it locally](#stream-key-bootstrap-and-local-reuse).
+- [Fetch/save a key from the CLI](#cloud-bootstrap-command), as an explicit cloud operation.
 - [Extract assets](#required-assets) and [find APK constants](#finding-apk-constants).
 - [Fill environment settings](#environment-settings) and [discover cloud values](#discovering-cloud-values).
 - [Run a first check](#first-read-only-check) and [install FFmpeg](#media-prerequisites).
@@ -240,7 +241,7 @@ Run the snippets below from the application directory containing `.env`;
 
 **All 10 variables below are required for cloud key acquisition.** The camera's
 IP, channel and stream alone are not sufficient. Put these in `.env`, replacing
-every `<...>` placeholder before running the Python snippet:
+every `<...>` placeholder before requesting the key:
 
 ```dotenv
 CLOUD_ACCOUNT="<mobile-app-login>"
@@ -284,6 +285,58 @@ this operation does not send a discovery query. Discovery itself needs the
 `AUTH_CODE`, `STREAM_KEY`, `UNLOCK_PASSWORD`, or FFmpeg. The cloud response
 supplies the matching key/auth pair; no door command is involved.
 
+#### Cloud Bootstrap Command
+
+If `quii-helper --help` lists `bootstrap`, no checkout or Python script is
+needed. Otherwise use the [Python API alternative](#python-bootstrap-alternative)
+below. From the application directory containing the complete `.env`, run:
+
+```shell
+quii-helper bootstrap --output data/stream_credentials.json
+```
+
+`--output FILE` defaults to `data/stream_credentials.json`, relative to the
+current working directory. The command explicitly selects cloud mode without
+editing `CAMERA_CONNECTION_MODE`. It uses the existing login/device-token API,
+does not discover services or contact the camera, and never starts preview,
+talk or door control. It parses the full `.env`, including unused LAN fields;
+keep unused numeric/boolean settings blank rather than using placeholders.
+
+An existing destination stops the command **before cloud login**. To deliberately
+fetch again and replace it, use:
+
+```shell
+quii-helper bootstrap --output data/stream_credentials.json --overwrite
+```
+
+Without `--overwrite`, publication also atomically refuses a file created by
+another process during the cloud request. There is no automatic retry or
+overwrite fallback. Symlink/directory targets and `.env` output filenames are
+rejected before cloud login, including Windows aliases with trailing dots/spaces
+or NTFS stream suffixes. `.env` and process settings are never rewritten. Missing
+parent directories are created after configuration validation.
+
+The command honors `TLS_VERIFY` (true by default), warns when it is explicitly
+disabled, and never retries a failed certificate with verification disabled.
+It reports setting names/sources or a safe cloud/save error, not secret values,
+raw exceptions or the output path. Use the file selected by `--output` in later
+`doctor --credentials FILE` and `rtsp --credentials FILE` commands.
+
+Exit codes are `0` for saved credentials, `1` for configuration/cloud/save
+failure, `2` for invalid command arguments and `130` for Ctrl+C. A successful
+fetch is not a live-camera test. A save failure can happen after cloud login;
+inspect the destination before fetching again. See
+[TLS troubleshooting](#cloud-region-and-auth-url) for certificate failures.
+
+The plaintext JSON has owner-only file permissions on Unix; on Windows,
+protect the destination directory's ACL. Atomic no-overwrite publication
+requires hard-link support on the destination filesystem. Unsupported
+filesystems fail without falling back to unsafe replacement; choose another
+private destination. Do not commit, share or attach the JSON to an issue.
+
+#### Python Bootstrap Alternative
+
+The existing library API works independently of CLI command availability.
 Put this code in `app.py` in your application directory and run `python app.py`:
 
 ```python
@@ -296,8 +349,9 @@ print(saved_path)
 ```
 
 This honors `TLS_VERIFY`, saves the matching pair without starting a preview,
-and does not edit `.env` or open a door. Re-running it fetches again and replaces
-the file; reuse the saved file for normal playback. If fetching or saving fails,
+and does not edit `.env` or open a door. Its `save()` default still replaces
+the file when re-run; `save(path, overwrite=False)` opts into atomic refusal
+instead. Reuse the saved file for normal playback. If fetching or saving fails,
 resolve that error before proceeding to the LAN-only step.
 
 ### Later Runs: Load And View Locally
