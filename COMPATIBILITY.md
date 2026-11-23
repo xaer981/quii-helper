@@ -286,9 +286,13 @@ Local CGI uses HTTP port `80` by default; do not substitute native port `34567`.
 ## Python Platforms
 
 The package declares Python **3.10 or newer**. CI exercises Windows x86_64 and
-Linux x86_64 on Python **3.10 and 3.11**, including wheel/sdist installation.
+Linux x86_64 on each CPython version from **3.10 through 3.15**, including the
+full offline suite, lint/type checks and isolated wheel/sdist installation.
 A separate Linux ARM64 job on Python **3.11** checks the built wheel, offline
 `doctor` and synthetic RTSP over loopback. It does not run the full matrix.
+These checks use standard GIL-enabled builds; free-threaded Python and PyPy
+are not included. Python 3.10 compatibility is retained, but use a maintained
+[Python version](https://devguide.python.org/versions/) for new installations.
 
 `cryptography>=50.0.0` is a runtime dependency. Upstream version 49 removed
 wheels for 32-bit Windows and Intel (`x86_64`) macOS; do not assume a binary
@@ -311,7 +315,7 @@ evidence. Playback with the camera's WAN blocked remains unverified.
 
 | Check | Evidence | Does not establish |
 | --- | --- | --- |
-| Windows/Linux CI | Offline tests and isolated wheel/sdist installation on Python 3.10/3.11. | Live camera/cloud compatibility. |
+| Windows/Linux CI | Offline tests, static checks and isolated wheel/sdist installation on CPython 3.10-3.15. | Live camera/cloud compatibility, free-threaded Python, or PyPy. |
 | Linux ARM64 CI smoke | Built wheel and binary dependencies, `pip check`, offline `doctor`, and synthetic loopback RTSP on Python 3.11. | ARM64 sdist installation, optional audio devices, or live camera/cloud behavior. |
 | RTSP release soak | Two-minute synthetic loopback test of sending, backpressure, shutdown, and retained Python allocations. | Real UDP delivery, camera quality, codec correctness, ARM64 behavior, or process RSS bounds. |
 | Linux ARM64 under QEMU, 2026-10-20 | Installation and `pip check` in two entrance-bot Python 3.11 images; 11 mocked integration tests per image. | Native-speed performance or live media. |

@@ -21,6 +21,9 @@ python -m pre_commit install
 On Linux/macOS, use `source .venv/bin/activate` for activation. Run all commands
 below with that environment active, or use its full interpreter path.
 Git and Go are also needed for the release/secret-scanning tools.
+CI runs source and installed-package checks on standard CPython 3.10 through
+3.15 on Windows/Linux x86_64. Prefer a maintained Python version for new
+development environments; the minimum package version remains 3.10.
 
 Offline tests do not need your `.env`, APK assets, or a camera. Keep extracted
 material and generated output in ignored `assets/` / `data/` directories.

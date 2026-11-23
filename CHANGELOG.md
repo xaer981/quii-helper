@@ -5,6 +5,14 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Changed
+
+- Extend Windows/Linux x86_64 CI to CPython 3.10-3.15 for source checks and
+  isolated wheel/sdist installation and tests. Retain the Python 3.10 minimum,
+  existing dependency pins and separate Python 3.11 ARM64 smoke check.
+
 ## 0.7.0 - 2026-11-12
 
 ### Added
