@@ -11,6 +11,19 @@ from dataclasses import replace
 
 from quii_helper import CameraStreamCredentials, load_config
 from quii_helper.protocols.tcp.probes.talk import diagnose_lan_talk
+from quii_helper.protocols.tcp.talk.packets import (
+    talk_channel as normalize_talk_channel,
+)
+
+
+def _talk_channel(value: str) -> int:
+    """Validate a native selector before reading settings or credentials."""
+    try:
+        return normalize_talk_channel(int(value))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "use an integer from 0 to 65535; 0 means generic 65535"
+        ) from None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -21,6 +34,16 @@ def main(argv: list[str] | None = None) -> None:
         choices=("current", "vhome", "veye"),
         default="current",
         help="identity fields only; run each comparison explicitly",
+    )
+    parser.add_argument(
+        "--talk-channel",
+        type=_talk_channel,
+        default=65535,
+        metavar="N",
+        help=(
+            "talk selector 0-65535 (default: 65535; 0 means 65535); "
+            "does not change the preview channel"
+        ),
     )
     args = parser.parse_args(argv)
     saved = CameraStreamCredentials.load("data/stream_credentials.json")
@@ -34,7 +57,7 @@ def main(argv: list[str] | None = None) -> None:
         report = diagnose_lan_talk(
             config,
             duration_seconds=10,
-            talk_channel=65535,
+            talk_channel=args.talk_channel,
             profile=args.profile,
         )
     except KeyboardInterrupt:

@@ -5,6 +5,15 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Explicit `--talk-channel` for the receive-only LAN talk diagnostic. Preserve
+  generic `65535` by default and native alias `0`; validate before loading
+  settings/credentials. Channel selection is independent of the preview panel
+  and identity profiles, with no automatic retry or production API changes.
+
 ## 0.4.0 - 2026-10-29
 
 ### Added

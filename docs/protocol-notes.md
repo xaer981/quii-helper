@@ -306,6 +306,16 @@ validate body lengths/SHA/padding and prove the current default byte-identical.
 Preview-only OEM/client-ID variants already failed to restore Vimar audio;
 the combined preview/talk identity comparison is not hardware-verified.
 
+The diagnostic CLI also accepts an independent `--talk-channel` selector,
+defaulting to `65535`; it does not change the preview channel or identity
+profile. A read-only GhidraMCP recheck on 2026-11-23 confirmed both native
+`ParseURL` implementations above preserve explicit positive selectors and
+map `0` to `65535`. CLI validation reuses the existing packet-level validator
+before loading settings/credentials; no wire layout or production policy changes.
+Both Java clients also have generic/per-channel talk selection and separate
+preview/talk listening paths. These are diagnostic comparisons, not proof that
+a particular selector fixes Vimar audio. No channel retry or guessing is added.
+
 One preview reader and the calling talk reader each own a separate CFrame
 packer. A diagnostic-only observer sees validated talk messages during Open
 as well as after ready, once per wire message; dequeuing early media does

@@ -429,33 +429,116 @@ def test_audio_metadata_validation_and_buckets_are_bounded(monkeypatch):
 
 
 @pytest.mark.parametrize("profile", ["current", "vhome", "veye"])
+@pytest.mark.parametrize("selector", [None, 0, 1, 65535])
 def test_example_uses_saved_key_for_lan_only_without_microphone(
-    monkeypatch, capsys, profile
+    sockets, monkeypatch, capsys, profile, selector
 ):
     from examples import diagnose_lan_talk as example
 
-    saved = Mock(stream_key="saved-key", auth_code="saved-auth")
+    saved = Mock(stream_key=config().stream_key, auth_code="saved-auth")
     monkeypatch.setattr(
         example.CameraStreamCredentials, "load", Mock(return_value=saved)
     )
     monkeypatch.setattr(
-        example, "load_config", lambda: config(connection_mode="cloud")
+        example,
+        "load_config",
+        lambda: config(
+            connection_mode="cloud",
+            channel=2,
+            stream=3,
+            oem="synthetic,oem",
+        ),
     )
-    diagnostic = Mock(return_value={"status": "completed"})
+    factory, pair = sockets()
+
+    def diagnose(used_config, *, duration_seconds, talk_channel, profile):
+        assert duration_seconds == 10
+        return probe.diagnose_lan_talk(
+            used_config,
+            duration_seconds=0.02,
+            talk_channel=talk_channel,
+            profile=profile,
+            transport_factory=factory,
+        )
+
+    diagnostic = Mock(side_effect=diagnose)
     monkeypatch.setattr(example, "diagnose_lan_talk", diagnostic)
-    example.main([] if profile == "current" else ["--profile", profile])
+    args = [] if profile == "current" else ["--profile", profile]
+    if selector is not None:
+        args += ["--talk-channel", str(selector)]
+    example.main(args)
+    expected = 65535 if selector in (None, 0) else selector
     used_config = diagnostic.call_args.args[0]
     assert used_config.connection_mode == "lan"
     assert (
-        used_config.stream_key == "saved-key"
+        used_config.stream_key == saved.stream_key
         and used_config.auth_code == "saved-auth"
     )
+    assert used_config.channel == 2 and used_config.stream == 3
     assert diagnostic.call_args.kwargs == {
         "duration_seconds": 10,
-        "talk_channel": 65535,
+        "talk_channel": expected,
         "profile": profile,
     }
-    assert json.loads(capsys.readouterr().out) == {"status": "completed"}
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "completed" and not report["errors"]
+    assert report["talk_channel"] == expected
+    assert report["preview_channel"] == 2 and report["preview_stream"] == 3
+    assert not report["microphone_used"] and not report["audio_transmitted"]
+    preview = decrypt(pair[0].sent[1][:32])
+    assert struct.unpack_from("<H", preview, 13)[0] == 2
+    assert preview[16] == 2
+    headers = [decrypt(wire[:32]) for wire in pair[1].sent[1:]]
+    assert [header[0] for header in headers] == [0x0B, 0x0C, 0x0D]
+    assert struct.unpack_from("<H", headers[0], 13)[0] == expected
+    assert all(
+        struct.unpack_from("<H", h, 11)[0] == expected for h in headers[1:]
+    )
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--talk-channel", "-1"],
+        ["--talk-channel", "65536"],
+        ["--talk-channel", "1.5"],
+        ["--talk-channel", "invalid"],
+        ["--talk-channel", ""],
+        ["--talk-channel", "true"],
+        ["--talk-channel"],
+    ],
+)
+def test_example_rejects_invalid_selector_before_loading_settings(
+    monkeypatch, args
+):
+    from examples import diagnose_lan_talk as example
+
+    saved, settings, diagnostic = Mock(), Mock(), Mock()
+    monkeypatch.setattr(example.CameraStreamCredentials, "load", saved)
+    monkeypatch.setattr(example, "load_config", settings)
+    monkeypatch.setattr(example, "diagnose_lan_talk", diagnostic)
+    with pytest.raises(SystemExit) as exc:
+        example.main(args)
+    assert exc.value.code == 2
+    saved.assert_not_called()
+    settings.assert_not_called()
+    diagnostic.assert_not_called()
+
+
+def test_example_help_describes_selector_without_loading_settings(
+    monkeypatch, capsys
+):
+    from examples import diagnose_lan_talk as example
+
+    saved, settings = Mock(), Mock()
+    monkeypatch.setattr(example.CameraStreamCredentials, "load", saved)
+    monkeypatch.setattr(example, "load_config", settings)
+    with pytest.raises(SystemExit) as exc:
+        example.main(["--help"])
+    assert exc.value.code == 0
+    assert "--talk-channel" in capsys.readouterr().out
+    saved.assert_not_called()
+    settings.assert_not_called()
 
 
 def test_example_rejects_unknown_profile_before_loading_credentials(

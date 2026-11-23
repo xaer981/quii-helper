@@ -421,12 +421,29 @@ The JSON report separates the two connections:
 | `codec` / `full_packet` | Negotiated outgoing G.711 codec (`4` A-law, `5` mu-law) and packet layout. An unsupported codec mask is reported before startup fails; no codec guessing or sending follows. |
 | `preview` / `talk` | Separate media packet types, E3 audio counts, codec/rate/channels, first-audio delay, video dimensions and CFrame assembly counters, including early talk media. No raw audio or video is included. |
 | `talk_startup_completed` | The native D-ready reply arrived. This alone does not prove incoming audio or audible outgoing talk. |
+| `preview_channel` / `preview_stream` / `talk_channel` | The configured preview panel/stream and the normalized talk selector actually used. Selecting a talk channel does not change the preview channel. |
 | `status` / `errors` | Probe completion or a sanitized failure stage/type; partial statistics survive failure. `completed` with zero audio is a useful diagnostic result, not confirmed talk support. |
 
 Observation lasts ten seconds **after talk readiness**, in addition to
 connection startup deadlines. Ctrl+C closes both connections. Diagnostic
 memory/media budgets are bounded; see [protocol notes](protocol-notes.md#receive-only-talk-diagnostics).
 The production `talk()` / `start_talk()` readiness policy is unchanged.
+
+The default talk selector is `65535`. To compare it with an explicit channel,
+keep the same preview settings and identity profile and run sequentially:
+
+```shell
+python -m examples.diagnose_lan_talk --talk-channel 65535 > talk-generic.json
+python -m examples.diagnose_lan_talk --talk-channel 1 > talk-channel-1.json
+```
+
+`1` is an example, not a universal device requirement: select a known available,
+talk-capable channel, not a disabled one. `--talk-channel` is independent of
+`CAMERA_CHANNEL` and `--profile`. It accepts integers `0` through `65535`;
+native alias `0` means generic `65535`, **not** a disabled talk connection.
+Invalid values stop before reading settings/credentials or connecting. There
+is no automatic channel search or fallback. The report still counts both audio
+sources separately; selecting a channel does not itself prove a working route.
 
 To compare the native identity fields, run each profile explicitly and
 sequentially, with other viewing/talk clients closed:
@@ -449,9 +466,10 @@ comparison. Other profiles reject a nonempty `client_id` before connecting.
 The report adds `identity_profile` and `identity` presence/shared flags,
 **never identifier values**. Compare audio counts and C/D statuses in all
 three reports; `completed` alone does not demonstrate sound. These are
-identity-field profiles, not full app emulation: they retain Setup, panel,
-stream, generic talk 65535 and C1/D1, without FastPlay, `uhid`, `inner`,
-`newcn`, cloud discovery or automatic profile fallback. Previous preview-only
+identity-field profiles, not full app emulation. They retain Setup, the
+preview panel/stream, the selected talk channel (default `65535`) and C1/D1.
+They do not add FastPlay, `uhid`, `inner`, `newcn`, cloud discovery or automatic
+profile fallback. Previous preview-only
 OEM comparisons did not fix Vimar audio; matching identities across both
 connections remains an unverified diagnostic hypothesis.
 
