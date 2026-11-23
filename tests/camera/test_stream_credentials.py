@@ -214,6 +214,69 @@ def test_save_replaces_existing_key_and_tightens_unix_permissions(tmp_path):
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+def test_save_without_overwrite_is_atomic_and_keeps_existing_file(tmp_path):
+    path = credentials().save(tmp_path / "credentials.json", overwrite=False)
+    original = path.read_bytes()
+    assert CameraStreamCredentials.load(path) == credentials()
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    with pytest.raises(FileExistsError):
+        CameraStreamCredentials("new-device", "N" * 32, AUTH).save(
+            path, overwrite=False
+        )
+    assert path.read_bytes() == original
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_no_overwrite_publication_handles_a_racing_writer(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "credentials.json"
+    link = os.link
+
+    def publish(source, target):
+        path.write_bytes(b"concurrent-file")
+        link(source, target)
+
+    monkeypatch.setattr(
+        "quii_helper.camera.connection.credentials.os.link", publish
+    )
+    with pytest.raises(FileExistsError):
+        credentials().save(path, overwrite=False)
+    assert path.read_bytes() == b"concurrent-file"
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_no_overwrite_publication_failure_has_no_unsafe_fallback(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "credentials.json"
+    replace = Mock(side_effect=AssertionError("unsafe overwrite fallback"))
+    monkeypatch.setattr(
+        "quii_helper.camera.connection.credentials.os.replace", replace
+    )
+    monkeypatch.setattr(
+        "quii_helper.camera.connection.credentials.os.link",
+        Mock(side_effect=OSError("filesystem does not support hard links")),
+    )
+    with pytest.raises(OSError):
+        credentials().save(path, overwrite=False)
+    replace.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("overwrite", [None, 0, 1, "false", []])
+def test_save_rejects_nonboolean_overwrite_before_creating_files(
+    overwrite, tmp_path
+):
+    target = tmp_path / "missing" / "credentials.json"
+    with pytest.raises(
+        ConfigurationError, match="overwrite must be a boolean"
+    ):
+        credentials().save(target, overwrite=overwrite)
+    assert not target.parent.exists()
+
+
 def test_write_error_preserves_previous_file_and_removes_temporary(
     tmp_path, monkeypatch
 ):

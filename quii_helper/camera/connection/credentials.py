@@ -35,25 +35,34 @@ class CameraStreamCredentials:
             raise ConfigurationError("stream credentials require a device_id")
         validate_stream_credentials(self.stream_key, self.auth_code)
 
-    def save(self, path: str | Path) -> Path:
-        """Atomically save minimal plaintext JSON, replacing an existing file.
+    def save(self, path: str | Path, *, overwrite: bool = True) -> Path:
+        """Atomically save minimal plaintext JSON, optionally without replacement.
 
         Args:
             path: Application-owned destination; prefer an ignored private
                 directory such as `data/`. Relative paths use the current cwd.
+            overwrite: Replace an existing file by default, preserving the
+                original API behavior. False atomically refuses an existing
+                destination, including one created while writing.
 
         Returns:
             Absolute path to the saved file. Parent directories are created.
 
         Raises:
-            ConfigurationError: Serialized credentials exceed the file limit.
+            ConfigurationError: Serialized credentials exceed the file limit
+                or overwrite is not a boolean.
+            FileExistsError: overwrite is False and the destination exists.
             OSError: Writing or replacing the destination failed. The previous
                 file is preserved if publication fails.
 
         The temporary file has owner-only permissions on Unix; Windows uses
         the directory's ACL. This is not encryption or an OS credential vault.
         Cloud passwords, sessions and raw responses are never serialized.
+        Non-replacement publication requires filesystem hard-link support;
+        unsupported filesystems fail without an unsafe overwrite fallback.
         """
+        if not isinstance(overwrite, bool):
+            raise ConfigurationError("overwrite must be a boolean")
         data = (
             json.dumps(
                 {
@@ -87,7 +96,10 @@ class CameraStreamCredentials:
                 output.write(data)
                 output.flush()
                 os.fsync(output.fileno())
-            os.replace(temporary, target)
+            if overwrite:
+                os.replace(temporary, target)
+            else:
+                os.link(temporary, target)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)

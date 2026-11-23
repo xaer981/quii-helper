@@ -7,6 +7,19 @@ being stabilized.
 
 ## Unreleased
 
+### Added
+
+- Installed `quii-helper bootstrap` command for explicit cloud login/key
+  acquisition and private JSON persistence, without preview or device calls.
+  Refuse an existing destination before contacting cloud unless `--overwrite`
+  is supplied; atomic publication also prevents a racing writer from being
+  overwritten. Honor configured TLS, warn if verification is disabled, and
+  report failures without printing credentials or raw exceptions.
+  Reject `.env` output paths, including Windows filename/NTFS stream aliases,
+  before loading settings or contacting cloud, even with `--overwrite`.
+- Optional `CameraStreamCredentials.save(path, overwrite=False)` for atomic
+  non-replacement saving. The existing default continues to replace files.
+
 ### Changed
 
 - Extend Windows/Linux x86_64 CI to CPython 3.10-3.15 for source checks and
