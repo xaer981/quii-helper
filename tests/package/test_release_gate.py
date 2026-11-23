@@ -1,5 +1,7 @@
+import ast
 import importlib.util
 import json
+import re
 import subprocess
 from pathlib import Path
 from unittest.mock import Mock
@@ -218,6 +220,33 @@ def test_ci_release_gate_requires_all_jobs_and_reuses_checked_archives():
     assert "--seconds 120 --audio" in workflow
     assert "uses: ./.github/workflows/ci.yml" in publish
     assert "needs: checks" in publish
+
+
+@pytest.mark.parametrize(
+    "name,next_job", [("test", "build"), ("install", "rtsp-soak")]
+)
+def test_ci_checks_supported_python_versions_on_both_platforms(name, next_job):
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    job = workflow.split(f"\n  {name}:\n")[1].split(f"\n  {next_job}:\n")[0]
+    versions = re.search(r"python-version: (\[.*\])", job)
+    assert versions is not None
+    assert ast.literal_eval(versions[1]) == [
+        "3.10",
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14",
+        "3.15",
+    ]
+    assert "os: [windows-latest, ubuntu-latest]" in job
+    assert "fail-fast: false" in job
+
+
+def test_package_metadata_lists_all_ci_python_versions():
+    metadata = (ROOT / "pyproject.toml").read_text()
+    assert 'requires-python = ">=3.10"' in metadata
+    for minor in range(10, 16):
+        assert f'"Programming Language :: Python :: 3.{minor}"' in metadata
 
 
 def test_ci_arm64_smoke_uses_checked_wheel_and_loopback():

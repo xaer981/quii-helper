@@ -116,7 +116,9 @@ Verify these external settings without weakening them to ship a release:
 `ci.yml` runs on pushes/PRs and is reused by `publish.yml`. The aggregate gate
 requires all tests, scans, builds, install jobs, and soak checks to succeed;
 failed, cancelled, or skipped prerequisites cannot approve publication.
-The full Linux matrix is x86_64. CI also requires a native Linux ARM64
+The Windows/Linux x86_64 matrix covers CPython 3.10 through 3.15, including
+source tests and isolated installation/tests of both checked archives. CI also
+requires a native Linux ARM64
 wheel, offline `doctor`, and synthetic RTSP smoke check on Python 3.11.
 See [Compatibility](COMPATIBILITY.md#validation-scope).
 
