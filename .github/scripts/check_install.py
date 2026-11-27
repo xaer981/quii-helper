@@ -90,9 +90,15 @@ def check_install(directory: Path, *, soak_seconds: float = 0) -> None:
             cli = executable.with_name(
                 "quii-helper.exe" if sys.platform == "win32" else "quii-helper"
             )
-            for command in ("doctor", "rtsp", "bootstrap"):
+            for command in (
+                ["doctor"],
+                ["rtsp"],
+                ["bootstrap"],
+                ["archive"],
+                ["archive", "list"],
+            ):
                 subprocess.run(
-                    [str(cli), command, "--help"], cwd=root, check=True
+                    [str(cli), *command, "--help"], cwd=root, check=True
                 )
             # Test the installed artifact, not an editable checkout.
             subprocess.run(

@@ -5,6 +5,21 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Installed `quii-helper archive list` command for local CGI archive metadata
+  listing and optional private JSON export, without cloud access, preview,
+  downloads or device control. Accept device-local time bounds, configured or
+  explicit channel and native archive filters; logical `all` combines video
+  and picture searches. Require complete results, preserve native selectors,
+  exclude raw responses/URLs/credentials, and never overwrite an output file.
+  No stream key is needed; an existing key/auth JSON can be passed explicitly
+  for its auth code. Extend offline and installed-package checks.
+  Reject invalid Windows output filenames and parent folder names before
+  loading settings or querying the camera.
+
 ## 0.8.0 - 2026-11-23
 
 ### Added

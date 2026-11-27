@@ -30,6 +30,8 @@ or echo cancellation is provided; use headphones.
 
 **Observe and integrate.** Archive JPEG/MP4 downloads, new archive entries,
 device inspection, LAN discovery, cloud call history and explicit door control.
+The development version also provides [local archive listing and JSON export](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md)
+from the CLI; this command is not included in PyPI 0.8.0.
 
 **LAN is the default.** A valid saved key/auth pair is reused without cloud
 login, renewal or fallback. Loading JSON or constructing `Camera` performs no

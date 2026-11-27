@@ -733,6 +733,10 @@ and `manual` was also returned for a manual monitor recording. Photo-mode
 timing is not yet tested. Errors stop observation rather than indicating no
 event; see [API bounds and limitations](api.md#local-archive-observations).
 
+For a one-time local archive listing instead of observation, see the
+[archive CLI guide](archive-cli.md). The development command exports metadata
+without a stream key, preview or cloud access; it is not in PyPI 0.8.0.
+
 ## Media Prerequisites
 
 JPEG/MP4 rendering invokes the external **FFmpeg executable**. Install a build
