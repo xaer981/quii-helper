@@ -762,6 +762,6 @@ def test_documented_list_commands_work_with_only_local_cgi_settings(
         "picture",
     ]
     assert "quii-helper archive --help" in text
-    assert "](archive-cli.md)" in (
-        root / "docs/README.md"
-    ).read_text(encoding="utf-8")
+    assert "](archive-cli.md)" in (root / "docs/README.md").read_text(
+        encoding="utf-8"
+    )
