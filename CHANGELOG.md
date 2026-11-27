@@ -22,6 +22,8 @@ being stabilized.
 
 ### Fixed
 
+- Resolve the nested alarm-schedule model annotation on Python 3.10, without
+  changing parsed data or protocol behavior.
 - Make `Camera.list_record_files()` search whole calendar days and filter
   returned metadata to the requested inclusive device-local interval. This
   avoids empty Tantos results for upper bounds near midnight without changing
@@ -37,6 +39,16 @@ being stabilized.
   failed/incomplete subquery. Preserve per-search statuses, session ids and pages
   in the new optional `searches` result field; explicit types keep a single
   native session. The page cap is per type, with no retry or silent fallback.
+
+### Changed
+
+- Discover public docstring contracts automatically from package exports,
+  public methods/properties and returned sessions. Check model field and
+  Camera argument descriptions plus fully resolved nested annotations.
+- Document public model fields, native units/missing values and sensitive raw
+  data. Type RTSP connectors and RTSP/H.264 statistics without changing their
+  ordinary dictionary layout; add explicit constructor return annotations.
+  Add offline consumer typing and statistics compatibility regressions.
 
 ## 0.8.0 - 2026-11-23
 

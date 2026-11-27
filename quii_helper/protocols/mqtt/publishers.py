@@ -13,7 +13,9 @@ from quii_helper.protocols.ust.messages import (
 class MqttBootstrapPublisher:
     """Publishes MQTT bootstrap commands for a configured camera session."""
 
-    def __init__(self, *, config: AutonomousConfig, client: mqtt.Client):
+    def __init__(
+        self, *, config: AutonomousConfig, client: mqtt.Client
+    ) -> None:
         self.config = config
         self._client = client
 

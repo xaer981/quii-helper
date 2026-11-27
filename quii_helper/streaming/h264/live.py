@@ -1,7 +1,7 @@
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypedDict
 
 from quii_helper.media.audio import CameraAudioFrame
 from quii_helper.media.frames.assembler_state import (
@@ -14,6 +14,22 @@ from quii_helper.media.frames.parsing import QuiiCFramePack
 from quii_helper.models.capture import MediaFrameSummary
 
 AccessUnitSink = Callable[[bytes], None]
+
+
+class H264LiveStats(TypedDict):
+    """Snapshot of counters for the current media assembler.
+
+    Attributes:
+        frames: Complete CPacket frames processed after keyframe gating.
+        access_units: Produced H.264 access units.
+        audio_frames: Audio frames passed to the optional audio sink.
+        cframe_pack: Copy of framing counters, including buffered byte counts.
+    """
+
+    frames: int
+    access_units: int
+    audio_frames: int
+    cframe_pack: dict[str, int]
 
 
 @dataclass
@@ -68,7 +84,8 @@ class H264LiveAssembler:
         return access_units
 
     @property
-    def stats(self) -> dict[str, Any]:
+    def stats(self) -> H264LiveStats:
+        """Return independent counter dictionaries for the current assembler."""
         return {
             "frames": self.frame_count,
             "access_units": self.access_unit_count,

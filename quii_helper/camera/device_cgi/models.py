@@ -233,6 +233,26 @@ class CameraDeviceStreamProfile:
 
     This combines channel metadata from `get.encode` with one concrete stream
     block such as `mainstream` or `substream`.
+
+    Optional fields are None when missing or unparseable, not proof that the
+    feature is disabled. Values describe configured encoding, not a measured
+    preview, and are meaningful only after checking the source query status.
+
+    Attributes:
+        channel_id: Native channel identifier, without index conversion.
+        channel_name: Device-reported channel name.
+        stream_name: Native stream block name, such as mainstream/substream.
+        enabled: Whether the stream is configured as enabled, if reported.
+        compression: Native codec/compression token.
+        resolution: Configured resolution token, not decoded frame dimensions.
+        bitrate: Native configured bitrate; no unit conversion is performed.
+        bitrate_control: Native rate-control token, such as CBR/VBR.
+        fps: Configured frames per second, not measured receive FPS.
+        gop: Native GOP/keyframe-interval setting.
+        quality: Native encoder quality, not the live high/low stream selector.
+        audio_enabled: Whether audio encoding is configured as enabled.
+        h264plus_enabled: Native H.264+ encoding flag, if reported.
+        raw: Unredacted original stream fields, retaining vendor-specific data.
     """
 
     channel_id: str
@@ -278,6 +298,27 @@ class CameraDeviceProfile:
     The profile keeps every individual typed response and adds command-level
     status lists so callers can distinguish supported, unsupported, and failed
     firmware commands without manually inspecting `error` fields.
+
+    An individual response can fail even when another succeeds. Check its
+    error or command_statuses before treating empty/default values as facts.
+    This object performs no queries itself; None inside a response means that
+    the value was absent or unparseable, not necessarily unsupported.
+
+    Attributes:
+        all_info: Broad local get.device.status response.
+        product: Installed firmware and product-identity response.
+        time: Device-local clock and timezone response.
+        storage: Native storage capacities and disk/card entries.
+        network: Local network configuration response.
+        general: General system configuration response.
+        capabilities: Advertised native capability values, not hardware proof.
+        video_config: Configured channel/stream encoding profiles.
+        wifi: Local Wi-Fi scan/list response.
+        screen_flip: Native mirror/rotation response.
+        video_switch: Native video-enable response.
+        time_title: Native timestamp-overlay configuration response.
+        command_statuses: Individual query outcomes, including unsupported and
+            failed commands; an empty tuple means no outcomes were supplied.
     """
 
     all_info: CameraDeviceAllInfo

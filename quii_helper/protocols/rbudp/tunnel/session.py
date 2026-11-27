@@ -111,7 +111,7 @@ class RbUdpQuiiTunnel(
         peer_addr: tuple[str, int] | None = None,
         transport_peer_addr: tuple[str, int] | None = None,
         p2p_session_flag: str | None = None,
-    ):
+    ) -> None:
         self.config = config
         self.response = response
         self.test_response = test_response

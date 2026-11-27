@@ -5,8 +5,9 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
+from quii_helper.camera.connection.session import CameraConnector
 from quii_helper.camera.streaming.conversation import CameraConversationSession
 from quii_helper.camera.streaming.talk import CameraTalkSession
 from quii_helper.models.packets import DecodedQuiiMessage
@@ -22,7 +23,7 @@ from quii_helper.protocols.tcp.live.session import (
     LanTcpSession,
     LanTcpTransportError,
 )
-from quii_helper.streaming.h264 import H264LiveAssembler
+from quii_helper.streaming.h264.live import H264LiveAssembler, H264LiveStats
 from quii_helper.streaming.rtsp import RtspH264Server
 from quii_helper.support.errors import ConfigurationError, QuiiConnectionError
 
@@ -38,6 +39,20 @@ LIVE_PREVIEW_PLAY_SEQ = 1
 LIVE_PREVIEW_SETUP_TIMEOUT_SECONDS = 3.0
 EmitCallback = Callable[[object], None]
 StatusCallback = Callable[[str], None]
+
+
+class CameraRtspStreamStats(TypedDict):
+    """Snapshot of RTSP clients, current preview counters and talk state.
+
+    Attributes:
+        rtsp_clients: Current registered RTSP client count, not only PLAY clients.
+        h264: Counters for the current assembler; reset when preview restarts.
+        talk_active: Whether explicit computer microphone/playback is active.
+    """
+
+    rtsp_clients: int
+    h264: H264LiveStats
+    talk_active: bool
 
 
 @dataclass
@@ -59,9 +74,12 @@ class CameraRtspStream:
         path: RTSP path exposed by the server.
         connection_mode: Explicit source selection; LAN never fetches credentials.
         reconnect: Retry a lost LAN source after the stream first becomes ready.
+        audio: Include supported preview audio in RTSP; False is video-only.
+        server: Owned RTSP server; ordinary callers use url, ready and close().
+        assembler: Current media assembler, replaced when the source restarts.
     """
 
-    connector: Any
+    connector: CameraConnector
     preview_settings: PreviewCaptureSettings
     data_dir: Path
     emit: EmitCallback
@@ -144,7 +162,7 @@ class CameraRtspStream:
         )
 
     @property
-    def stats(self) -> dict[str, object]:
+    def stats(self) -> CameraRtspStreamStats:
         """Runtime stream statistics for diagnostics."""
         return {
             "rtsp_clients": self.server.client_count,
