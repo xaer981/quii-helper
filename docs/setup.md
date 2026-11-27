@@ -701,6 +701,11 @@ a narrow window from five minutes before that value to four minutes after it;
 enter it promptly. The first complete poll batch becomes the baseline. Wait for
 **Archive baseline ready**, then test; Ctrl+C stops. Polling is every five
 seconds for three minutes, with no downloads, preview or door commands.
+The library searches whole calendar days internally and filters back to this
+fixed inclusive window, also across midnight. Do not round your requested end
+to the end of the day. The page cap applies to each type's expanded day window.
+The watcher delegates `file_type="all"` to `Camera.list_record_files()`, which
+reads video then pictures and requires both searches to succeed and complete.
 Invalid input prints a format hint and asks again; Ctrl+C also cancels the prompt.
 The readiness message is an INFO log; use `LOG_LEVEL=info` (or `debug`) to
 see it. The example uses local HTTP port 80, like `list_record_files()`.

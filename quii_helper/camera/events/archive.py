@@ -9,6 +9,7 @@ from time import monotonic, sleep
 
 from loguru import logger
 
+from quii_helper.camera.device_cgi.archive import archive_record_key
 from quii_helper.camera.events.models import CameraArchiveEvent
 from quii_helper.device.cgi.models import (
     DeviceRecordFileInfo,
@@ -62,23 +63,6 @@ def _positive_seconds(value: float, name: str) -> float:
     return seconds
 
 
-def _record_key(record: DeviceRecordFileInfo) -> tuple[str, ...]:
-    key = (
-        record.file_type,
-        record.channel_id,
-        record.file_name,
-        record.picture_index,
-        record.start_time,
-    )
-    if any(not isinstance(value, str) for value in key) or not (
-        record.file_name.strip()
-    ):
-        raise QuiiConnectionError(
-            "archive entry has no usable filename or identity fields"
-        )
-    return key
-
-
 def _observe(
     read_records: Callable[[], DeviceRecordListInfo],
     interval: float,
@@ -110,13 +94,13 @@ def _observe(
             )
         if not result.completed:
             raise QuiiConnectionError(
-                "archive query incomplete; narrow the time range or "
+                "archive query incomplete; narrow the calendar-day range or "
                 "increase max_pages"
             )
         observed_at = datetime.now(timezone.utc)
         pending: dict[tuple[str, ...], DeviceRecordFileInfo] = {}
         for record in result.records:
-            key = _record_key(record)
+            key = archive_record_key(record)
             if key not in seen:
                 pending.setdefault(key, record)
                 if len(seen) + len(pending) > max_seen_records:

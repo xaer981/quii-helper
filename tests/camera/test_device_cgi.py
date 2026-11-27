@@ -1118,7 +1118,14 @@ class CameraDeviceCgiTests:
             return CameraDeviceRecordListInfo(
                 error=0,
                 session_id="archive-session-1",
-                records=[CameraDeviceRecordFileInfo(file_name="record.mp4")],
+                records=[
+                    CameraDeviceRecordFileInfo(
+                        file_name="record.mp4",
+                        file_type="video",
+                        start_time="2026-06-24T12:00:00",
+                        end_time="2026-06-24T12:01:00",
+                    )
+                ],
                 completed=True,
             )
 
@@ -1433,8 +1440,8 @@ class CameraDeviceCgiTests:
             (
                 "record-list",
                 expected_endpoint,
-                "2026-06-24T00:00:00",
-                "2026-06-24T23:59:59",
+                "2026-06-24t00:00:00z",
+                "2026-06-24t23:59:59z",
                 2,
                 "video",
                 "standard",

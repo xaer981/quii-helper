@@ -73,7 +73,7 @@ def watcher(monkeypatch):
     )
     camera.connector = Mock()
     read = Mock(return_value=page())
-    monkeypatch.setattr(camera, "list_record_files", read)
+    monkeypatch.setattr(api, "fetch_record_list_info", read)
     monkeypatch.setattr(
         api, "fetch_call_events", Mock(side_effect=AssertionError("no cloud"))
     )
@@ -87,7 +87,10 @@ def test_baseline_photos_videos_and_deduplication(watcher) -> None:
     picture = replace(video, file_type="picture", picture_index="0007")
     next_picture = replace(picture, picture_index="0008")
     changed = replace(
-        video, end_time="later", file_size=999, occur_type="event"
+        video,
+        end_time="2026-11-10 12:08:00",
+        file_size=999,
+        occur_type="event",
     )
     read.side_effect = [
         page(baseline),
@@ -111,18 +114,15 @@ def test_baseline_photos_videos_and_deduplication(watcher) -> None:
     assert camera.connector.mock_calls == []
     for index, call in enumerate(read.call_args_list):
         assert call.kwargs == dict(
-            **CGI_WINDOW,
+            start_time="2026-11-10t00:00:00z",
+            end_time="2026-11-10t23:59:59z",
             channel_id=1,
             file_type="video" if index % 2 == 0 else "picture",
             occur_type="all",
             stream="all",
             max_pages=32,
-            port=80,
-            scheme="http",
-            auth_code=None,
-            verify_tls=None,
-            debug=False,
         )
+        assert call.args[0].host == "192.0.2.10"
 
 
 def test_empty_baseline_and_lazy_start_and_close(watcher) -> None:
@@ -223,7 +223,7 @@ def test_all_query_budget_covers_the_complete_batch(
     camera, read, clock = watcher
     actual = []
 
-    def query(**kwargs):
+    def query(*args, **kwargs):
         actual.append((kwargs["file_type"], clock.now))
         clock.now += 4
         return page()
@@ -237,19 +237,60 @@ def test_all_query_budget_covers_the_complete_batch(
     assert clock.sleeps == sleeps
 
 
-def test_direct_archive_all_remains_one_native_search(
+def test_direct_archive_all_uses_two_explicit_searches(
     watcher, monkeypatch
 ) -> None:
     camera, _, _ = watcher
-    monkeypatch.delattr(camera, "list_record_files")
     result = page()
     fetch = Mock(return_value=result)
     monkeypatch.setattr(api, "fetch_record_list_info", fetch)
-    assert camera.list_record_files(**CGI_WINDOW, file_type="all") is result
-    fetch.assert_called_once()
-    assert fetch.call_args.kwargs["file_type"] == "all"
-    assert fetch.call_args.kwargs["start_time"] == CGI_WINDOW["start_time"]
-    assert fetch.call_args.kwargs["end_time"] == CGI_WINDOW["end_time"]
+    combined = camera.list_record_files(**CGI_WINDOW)
+    assert combined.completed and combined.records == []
+    assert combined.searches == {"video": result, "picture": result}
+    assert [call.kwargs["file_type"] for call in fetch.call_args_list] == [
+        "video",
+        "picture",
+    ]
+    assert fetch.call_args.kwargs["start_time"] == "2026-11-10t00:00:00z"
+    assert fetch.call_args.kwargs["end_time"] == "2026-11-10t23:59:59z"
+
+
+def test_watcher_delegates_all_once_per_poll(watcher, monkeypatch):
+    camera, native, _ = watcher
+    public = Mock(wraps=camera.list_record_files)
+    monkeypatch.setattr(camera, "list_record_files", public)
+    assert (
+        list(camera.watch_archive_events(**WINDOW, duration_seconds=6)) == []
+    )
+    assert public.call_count == 2
+    assert all(
+        call.kwargs["file_type"] == "all" for call in public.call_args_list
+    )
+    assert native.call_count == 4  # Two native searches, not four, per poll.
+
+
+def test_watcher_filters_expanded_days_across_midnight(watcher, monkeypatch):
+    camera, _, _ = watcher
+    outside = replace(record("outside"), start_time="2027-01-01t00:04:00z")
+    overlap = replace(
+        record("overlap"),
+        start_time="2026-12-31t23:58:00z",
+        end_time="2027-01-01t00:01:00z",
+    )
+    fetch = Mock(side_effect=[page(outside), page(outside, overlap)])
+    monkeypatch.setattr(api, "fetch_record_list_info", fetch)
+    events = list(
+        camera.watch_archive_events(
+            start_time="2026-12-31 23:59:00",
+            end_time="2027-01-01 00:03:00",
+            file_type="video",
+            duration_seconds=6,
+        )
+    )
+    assert [event.record for event in events] == [overlap]
+    assert fetch.call_count == 2
+    assert fetch.call_args.kwargs["start_time"] == "2026-12-31t00:00:00z"
+    assert fetch.call_args.kwargs["end_time"] == "2027-01-01t23:59:59z"
 
 
 @pytest.mark.parametrize("phase", ["baseline", "later"])
@@ -381,7 +422,7 @@ def test_query_budget_no_overlap_or_catchup(
     camera, read, clock = watcher
     actual = []
 
-    def query(**kwargs):
+    def query(*args, **kwargs):
         actual.append(clock.now)
         clock.now += query_seconds
         return page()
@@ -419,7 +460,9 @@ def test_fresh_session_and_native_completion_on_every_poll(
     watcher, monkeypatch
 ) -> None:
     camera, _, _ = watcher
-    monkeypatch.delattr(camera, "list_record_files")
+    monkeypatch.setattr(
+        api, "fetch_record_list_info", cgi.fetch_record_list_info
+    )
     session = Mock(
         side_effect=[
             DeviceRecordSessionInfo(error=0, session_id=str(number))
@@ -445,7 +488,6 @@ def test_each_poll_reuses_existing_local_cgi_path(
     watcher, monkeypatch
 ) -> None:
     camera, read, clock = watcher
-    monkeypatch.delattr(camera, "list_record_files")
     fetch = Mock(return_value=page())
     monkeypatch.setattr(api, "fetch_record_list_info", fetch)
     assert (
@@ -478,7 +520,8 @@ def test_each_poll_reuses_existing_local_cgi_path(
         )
         assert endpoint.verify_tls is True
         assert call.kwargs == dict(
-            **CGI_WINDOW,
+            start_time="2026-11-10t00:00:00z",
+            end_time="2026-11-10t23:59:59z",
             channel_id=2,
             file_type="picture",
             occur_type="manual",
@@ -498,31 +541,31 @@ def test_each_poll_reuses_existing_local_cgi_path(
 @pytest.mark.parametrize(
     "window, native_start, native_end",
     [
-        (WINDOW, "2026-11-10t12:00:00z", "2026-11-10t12:10:00z"),
+        (WINDOW, "2026-11-10t00:00:00z", "2026-11-10t23:59:59z"),
         (
             dict(
                 start_time="2026-12-31 23:59:00",
                 end_time="2027-01-01 00:03:00",
             ),
-            "2026-12-31t23:59:00z",
-            "2027-01-01t00:03:00z",
+            "2026-12-31t00:00:00z",
+            "2027-01-01t23:59:59z",
         ),
         (
             dict(
                 start_time="2028-02-29 03:04:05",
                 end_time="2028-02-29 03:09:10",
             ),
-            "2028-02-29t03:04:05z",
-            "2028-02-29t03:09:10z",
+            "2028-02-29t00:00:00z",
+            "2028-02-29t23:59:59z",
         ),
         (
             dict(start_time="2026-1-2 3:4:5", end_time="2026-1-2 3:9:10"),
-            "2026-01-02t03:04:05z",
-            "2026-01-02t03:09:10z",
+            "2026-01-02t00:00:00z",
+            "2026-01-02t23:59:59z",
         ),
     ],
 )
-def test_watcher_serializes_native_cgi_times_without_utc_conversion(
+def test_watcher_searches_whole_days_without_utc_conversion(
     watcher,
     monkeypatch,
     window,
@@ -532,7 +575,9 @@ def test_watcher_serializes_native_cgi_times_without_utc_conversion(
     native_types,
 ) -> None:
     camera, _, _ = watcher
-    monkeypatch.delattr(camera, "list_record_files")
+    monkeypatch.setattr(
+        api, "fetch_record_list_info", cgi.fetch_record_list_info
+    )
     searches = []
 
     def respond(request, **kwargs):

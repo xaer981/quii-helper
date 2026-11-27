@@ -14,7 +14,7 @@ from typing import TypedDict
 from urllib.parse import urlsplit
 
 from quii_helper import Camera, CameraStreamCredentials
-from quii_helper.camera.events.archive import _record_key
+from quii_helper.camera.device_cgi.archive import archive_record_key
 from quii_helper.cli.configuration import (
     _load_cli_config,
     _PreflightError,
@@ -383,43 +383,39 @@ def list_archive(args: argparse.Namespace) -> int:
     )
     records: list[ArchiveRecord] = []
     seen: set[tuple[str, ...]] = set()
-    file_types = (
-        ("video", "picture") if args.file_type == "all" else (args.file_type,)
-    )
     try:
         camera = Camera(
             config=config, connection_mode="lan", status=lambda _: None
         )
-        for file_type in file_types:
-            result = camera.list_record_files(
-                start_time=args.start.replace(" ", "t") + "z",
-                end_time=args.end.replace(" ", "t") + "z",
-                channel_id=channel,
-                file_type=file_type,
-                occur_type=args.occur_type,
-                stream=args.stream,
-                max_pages=args.max_pages,
-                scheme=args.scheme,
-                port=port,
-                debug=False,
+        result = camera.list_record_files(
+            start_time=args.start.replace(" ", "t") + "z",
+            end_time=args.end.replace(" ", "t") + "z",
+            channel_id=channel,
+            file_type=args.file_type,
+            occur_type=args.occur_type,
+            stream=args.stream,
+            max_pages=args.max_pages,
+            scheme=args.scheme,
+            port=port,
+            debug=False,
+        )
+        if result.error != 0 or not result.completed:
+            print(
+                "Archive query failed or is incomplete; no list was emitted. Narrow the calendar-day range or check --max-pages and device support.",
+                file=sys.stderr,
             )
-            if result.error != 0 or not result.completed:
-                print(
-                    "Archive query failed or is incomplete; no list was emitted. Narrow --from/--to or check --max-pages and device support.",
-                    file=sys.stderr,
-                )
-                return 1
-            for record in result.records:
-                key = _record_key(record)
-                if key not in seen:
-                    if len(seen) >= MAX_RECORDS:
-                        print(
-                            "Archive exceeds the 10000-record limit; narrow --from/--to.",
-                            file=sys.stderr,
-                        )
-                        return 1
-                    seen.add(key)
-                    records.append(_metadata(record))
+            return 1
+        for record in result.records:
+            key = archive_record_key(record)
+            if key not in seen:
+                if len(seen) >= MAX_RECORDS:
+                    print(
+                        "Archive exceeds the 10000-record limit; narrow --from/--to.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                seen.add(key)
+                records.append(_metadata(record))
         snapshot = ArchiveList(
             version=1,
             device={"host": config.device_host, "device_id": config.device_id},

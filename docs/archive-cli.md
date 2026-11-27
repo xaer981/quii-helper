@@ -55,6 +55,13 @@ quii-helper archive list --from "2026-11-27 00:00:00" --to "2026-11-27 23:59:59"
 Replace the dates with your interval. Bounds must use
 `YYYY-MM-DD HH:MM:SS`, with `--from` strictly before `--to`. The CLI generates
 the native lowercase `t`/`z` form internally, without a UTC conversion.
+Both bounds are inclusive; an end at midnight is valid. The library searches
+whole calendar days, then returns only records overlapping your original
+interval. Pictures use their start time; videos can start before the interval
+and still overlap it. Do not manually change `--to` to `23:59:59` unless you
+actually want the whole day. Firmware can omit recordings that began before
+the searched calendar days. Unusable/ambiguous record times fail the query
+rather than silently dropping entries.
 
 The table shows a one-based index, type, channel, start/end times, occurrence,
 size in **KiB** (or `?`), and filename. Times and identifiers come from the
@@ -74,11 +81,11 @@ Warnings and status go to stderr, not into JSON stdout.
 
 | Option | Meaning |
 | --- | --- |
-| `--type all`, `video`, `picture` | Default `all` combines two explicit searches, video then picture. Both must complete successfully. Select one type if the other is unsupported. |
+| `--type all`, `video`, `picture` | Passed to `Camera.list_record_files()`: default `all` combines video then picture, with both searches required to complete. The CLI delegates once, not twice. Select one type if the other is unsupported. |
 | `--channel N` | Defaults to `CAMERA_CHANNEL` (including its existing aliases), or 1 if unset. The flag overrides it. Channel mappings depend on firmware. |
 | `--occur-type VALUE` | Native occurrence filter; default `all`, examples `manual` and `event`. Firmware-specific values are passed through, not interpreted as confirmed calls. |
 | `--stream all`, `main`, `sub` | Archive stream filter; default `all`. This is not the live-quality setting `CAMERA_STREAM`. |
-| `--max-pages N` | Positive page cap per search/type; default 32. If the result is incomplete, no successful list is emitted. Narrow the interval or deliberately increase the cap. |
+| `--max-pages N` | Positive page cap per native whole-day search/type; default 32. A narrow interval can still need multiple pages. If the result is incomplete, no successful list is emitted; deliberately increase the cap if appropriate. |
 | `--scheme http`, `https` | Default HTTP uses port 80; HTTPS uses 443. `--cgi-port N` overrides that port, separately from `CAMERA_STREAM_PORT`. |
 | `--credentials FILE` | Explicit existing key/auth JSON, used only for CGI auth and device identity. No automatic lookup or fallback. |
 

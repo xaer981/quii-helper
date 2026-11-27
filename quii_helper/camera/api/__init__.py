@@ -123,6 +123,11 @@ from quii_helper.camera.device_cgi import (
     resolve_device_cgi_endpoint,
     stream_profiles_from_video_config,
 )
+from quii_helper.camera.device_cgi.archive import (
+    combine_archive_searches,
+    filter_archive_interval,
+    parse_archive_interval,
+)
 from quii_helper.camera.device_json_cgi import (
     CameraDeviceAlarmDetailChannelInfo,
     CameraDeviceAlarmDetailInfo,
@@ -2721,21 +2726,29 @@ class Camera:
         verify_tls: bool | None = None,
         debug: bool = False,
     ) -> CameraDeviceRecordListInfo:
-        """Fetch archive file entries using the native CGI paging sequence.
+        """List archive entries overlapping an inclusive device-local interval.
 
         This is a convenience wrapper around `get.record.session` followed by
         repeated `get.record.message` requests. It mirrors the original app's
-        archive-list flow, but stops after `max_pages` pages if firmware never
-        reports native completion.
+        archive-list flow, but searches whole calendar days to avoid firmware
+        time-of-day filtering, then filters records to the requested bounds.
+        One native search per selected type is used, not one per day. Logical
+        "all" reads video then pictures; both must succeed and complete.
+        Stops at the first failed/incomplete search without returning a partial
+        aggregate. Each search stops after `max_pages` native pages.
 
         Args:
-            start_time: CGI archive search start time string.
-            end_time: CGI archive search end time string.
+            start_time: Inclusive device-local lower bound, as
+                YYYY-MM-DD HH:MM:SS or YYYY-MM-DDtHH:MM:SSz. Legacy T-separated
+                forms are also accepted; no UTC conversion is performed.
+            end_time: Inclusive upper bound in the same format, after start_time.
+                Midnight is valid; no caller-side adjustment is needed.
             channel_id: Device channel id sent in the native `<channel>` field.
-            file_type: Native CGI file type string, usually `"all"`.
+            file_type: "all" combines explicit "video" and "picture" searches.
+                Any other selector performs one native search unchanged.
             occur_type: Native CGI occurrence type string, usually `"all"`.
             stream: Native CGI stream selector: `"main"`, `"sub"`, or `"all"`.
-            max_pages: Safety cap for repeated `get.record.message` requests.
+            max_pages: Native page cap per selected type in the expanded window.
             port: Camera CGI HTTP(S) port.
             scheme: URL scheme, usually `"http"` for LAN CGI access.
             auth_code: Optional explicit device auth code. When omitted,
@@ -2745,26 +2758,56 @@ class Camera:
             debug: Enable debug logging for the raw CGI exchange.
 
         Returns:
-            `CameraDeviceRecordListInfo` with the archive session id, fetched
-            pages, records, and completion status.
+            `CameraDeviceRecordListInfo` with filtered records and native pages.
+            Logical "all" deduplicates the combined list in video-then-picture
+            order. Its searches maps each attempted type to its own result;
+            session_id is empty and session is None because there is no single
+            native session. Failed/incomplete aggregates have no records. Explicit
+            selectors keep their native session/error/completion fields and empty
+            searches. Check error and completed before use.
+
+        Raises:
+            ConfigurationError: Invalid bounds or local CGI settings.
+            QuiiConnectionError: Timestamps cannot be filtered reliably, or a
+                combined entry has no usable identity.
+
+        Pictures are points at start_time; videos include returned entries that
+        overlap either boundary. An absent video end is sufficient only when its
+        known start proves inclusion or exclusion. Low-level session/message
+        methods remain available for unmodified native searches. Firmware may
+        omit records that began before the searched calendar days.
         """
 
-        return fetch_record_list_info(
-            self._resolve_local_cgi_endpoint(
-                port=port,
-                scheme=scheme,
-                auth_code=auth_code,
-                verify_tls=verify_tls,
-                debug=debug,
-            ),
-            start_time=start_time,
-            end_time=end_time,
-            channel_id=channel_id,
-            file_type=file_type,
-            occur_type=occur_type,
-            stream=stream,
-            max_pages=max_pages,
+        start, end = parse_archive_interval(start_time, end_time)
+        endpoint = self._resolve_local_cgi_endpoint(
+            port=port,
+            scheme=scheme,
+            auth_code=auth_code,
+            verify_tls=verify_tls,
+            debug=debug,
         )
+        searches = {}
+        for native_type in (
+            ("video", "picture") if file_type == "all" else (file_type,)
+        ):
+            result = fetch_record_list_info(
+                endpoint,
+                start_time=start.date().isoformat() + "t00:00:00z",
+                end_time=end.date().isoformat() + "t23:59:59z",
+                channel_id=channel_id,
+                file_type=native_type,
+                occur_type=occur_type,
+                stream=stream,
+                max_pages=max_pages,
+            )
+            if file_type != "all":
+                return filter_archive_interval(result, start, end)
+            if result.error == 0 and result.completed:
+                result = filter_archive_interval(result, start, end)
+            searches[native_type] = result
+            if result.error != 0 or not result.completed:
+                break
+        return combine_archive_searches(searches)
 
     def watch_archive_events(
         self,
@@ -2792,6 +2835,8 @@ class Camera:
             end_time: Fixed upper bound in the same format. Include the whole
                 observation window. CGI uses literal t/z separators; the
                 device-local clock is preserved without timezone conversion.
+                list_record_files() searches whole days internally and filters
+                back to these bounds, including windows that cross midnight.
             channel_id: Native CGI channel selector; firmware may alias it.
             file_type: "all" combines explicit video and picture searches;
                 other selectors perform one native search.
@@ -2823,8 +2868,8 @@ class Camera:
             QuiiConnectionError: A read fails, is incomplete, lacks a usable
                 record identity, or exceeds max_seen_records. No automatic retry.
 
-        Uses a fresh list_record_files() session per requested type each poll.
-        The "all" batch reads video then pictures; either failure stops the
+        Calls list_record_files() once per poll. The "all" batch opens a fresh
+        native session for video then pictures; either failure stops the
         watcher without emitting a partial batch. No native "all" retry is
         attempted. Results retain query order, not a global time sort.
         Requires automatic picture/video saving on the device for call-related
@@ -2844,30 +2889,19 @@ class Camera:
             native_end = datetime.strptime(
                 end_time, "%Y-%m-%d %H:%M:%S"
             ).strftime("%Y-%m-%dt%H:%M:%Sz")
-            file_types = (
-                ("video", "picture") if file_type == "all" else (file_type,)
-            )
-            records: list[CameraDeviceRecordFileInfo] = []
-            for native_type in file_types:
-                result = read_records(
-                    start_time=native_start,
-                    end_time=native_end,
-                    channel_id=channel_id,
-                    file_type=native_type,
-                    occur_type=occur_type,
-                    stream=stream,
-                    max_pages=max_pages,
-                    port=port,
-                    scheme=scheme,
-                    auth_code=auth_code,
-                    verify_tls=verify_tls,
-                    debug=debug,
-                )
-                if result.error != 0 or not result.completed:
-                    return result
-                records.extend(result.records)
-            return CameraDeviceRecordListInfo(
-                error=0, records=records, completed=True
+            return read_records(
+                start_time=native_start,
+                end_time=native_end,
+                channel_id=channel_id,
+                file_type=file_type,
+                occur_type=occur_type,
+                stream=stream,
+                max_pages=max_pages,
+                port=port,
+                scheme=scheme,
+                auth_code=auth_code,
+                verify_tls=verify_tls,
+                debug=debug,
             )
 
         return watch_archive_events(

@@ -21,6 +21,7 @@ from quii_helper import (
     CameraStreamCredentials,
     cli,
 )
+from quii_helper.camera import api
 from quii_helper.cli import archive
 from quii_helper.device.http import transport
 
@@ -172,18 +173,17 @@ def test_lists_without_stream_key_cloud_or_assets_and_preserves_config(
     assert dict(os.environ) == before and not list(Path.cwd().iterdir())
 
 
-def test_all_combines_two_explicit_searches_deduplicates_and_preserves_indices(
+def test_all_delegates_once_and_preserves_deduplication_and_indices(
     read, capsys
 ):
     video = record("a", file_size=42)
     photo = replace(video, file_type="picture", picture_index="0007")
-    read.side_effect = [page(video, video), page(photo, photo)]
+    read.return_value = page(video, video, photo, photo)
     assert cli.main(ARGS + ["--json"]) == 0
     captured = capsys.readouterr()
     result = json.loads(captured.out)
     assert [call.kwargs["file_type"] for call in read.call_args_list] == [
-        "video",
-        "picture",
+        "all",
     ]
     assert [r["file_type"] for r in result["records"]] == ["video", "picture"]
     assert result["records"][1]["picture_index"] == "0007"
@@ -196,7 +196,7 @@ def test_all_combines_two_explicit_searches_deduplicates_and_preserves_indices(
 @pytest.mark.parametrize("position", [0, 1])
 @pytest.mark.parametrize("status", ["error", "incomplete", "exception"])
 def test_either_search_failure_never_emits_or_saves_partial_success(
-    read, capsys, position, status
+    monkeypatch, capsys, position, status
 ):
     responses = [page(record("video")), page(record("picture"))]
     responses[position] = {
@@ -204,7 +204,8 @@ def test_either_search_failure_never_emits_or_saves_partial_success(
         "incomplete": CameraDeviceRecordListInfo(error=0, completed=False),
         "exception": OSError("synthetic-private-error"),
     }[status]
-    read.side_effect = responses
+    read = Mock(side_effect=responses)
+    monkeypatch.setattr(api, "fetch_record_list_info", read)
     assert cli.main(ARGS + ["--json", "--output", "lists/records.json"]) == 1
     captured = capsys.readouterr()
     assert not captured.out and "synthetic-private" not in captured.err
@@ -227,6 +228,12 @@ def test_export_whitelists_metadata_and_does_not_serialize_secrets_raw_or_url(
                 "xml": "private-xml",
                 "auth": AUTH,
             },
+        )
+    )
+    read.return_value.searches["video"] = page(
+        record(
+            "private-subquery",
+            url="https://private.example/?auth=private-token",
         )
     )
     assert (
@@ -575,8 +582,9 @@ def test_invalid_configured_channel_stops_before_queries_but_flag_can_override(
 
 
 @pytest.mark.parametrize("reply_page", [0, 1])
+@pytest.mark.parametrize("end", ["2026-11-27 23:59:59", "2026-11-28 00:00:00"])
 def test_cli_builds_real_cgi_xml_and_parses_nested_archive_metadata(
-    monkeypatch, capsys, reply_page
+    monkeypatch, capsys, reply_page, end
 ):
     searches = []
     commands = []
@@ -631,6 +639,7 @@ def test_cli_builds_real_cgi_xml_and_parses_nested_archive_metadata(
         "--output",
         "records.json",
     ]
+    args[args.index("--to") + 1] = end
     assert cli.main(args) == (0 if reply_page == 0 else 1)
     captured = capsys.readouterr()
     assert searches == [
@@ -639,7 +648,7 @@ def test_cli_builds_real_cgi_xml_and_parses_nested_archive_metadata(
             "occurtype": "manual",
             "channel": "2",
             "starttime": "2026-11-27t00:00:00z",
-            "endtime": "2026-11-27t23:59:59z",
+            "endtime": end[:10] + "t23:59:59z",
             "stream": "sub",
         }
         for file_type in (
@@ -651,6 +660,7 @@ def test_cli_builds_real_cgi_xml_and_parses_nested_archive_metadata(
     )
     if reply_page == 0:
         result = json.loads(captured.out)
+        assert result["query"]["end_time"] == end
         assert len(result["records"]) == 2
         for row in result["records"]:
             assert row["picture_index"] == "0007"
