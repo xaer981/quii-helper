@@ -2,15 +2,15 @@
 
 [Documentation](README.md) | [Setup](setup.md) | [Archive Python API](api.md#archive-queries)
 
-Available since **0.9.0**. In your virtual environment, run:
+In your virtual environment, run:
 
 ```shell
-python -m pip install --upgrade "quii-helper>=0.9.0"
+python -m pip install --upgrade quii-helper
 quii-helper archive --help
 ```
 
 For styled tables and status messages, install the optional extra with
-`python -m pip install --upgrade "quii-helper[cli]>=0.9.0"`. The commands and
+`python -m pip install --upgrade "quii-helper[cli]"`. The commands and
 prompts also work without it. Redirected output stays plain; set `NO_COLOR`
 to disable terminal colors.
 
@@ -189,8 +189,8 @@ For `list`, `--output` requires a new `.json` path. Neither command replaces an 
 including symlinks. `.env` paths and unsafe Windows filenames (including
 parent folder names) are rejected before reading from the camera when
 provided on the command line, or before transfer when entered at the prompt.
-Missing parent directories are created only
-after successful queries. A private temporary file is atomically linked into
+Missing parent directories are created when saving the result, after the
+search or download succeeds. A private temporary file is atomically linked into
 place, protecting against another writer creating the same target. The target
 filesystem must support hard links; there is no unsafe overwrite fallback.
 On POSIX the file is owner-only; on Windows check the parent directory's ACL.

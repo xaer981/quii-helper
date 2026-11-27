@@ -8,35 +8,23 @@
   <a href="https://github.com/xaer981/quii-helper/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-61746c?style=flat-square" alt="MIT license"></a>
   <a href="https://boosty.to/xaer981"><img src="https://img.shields.io/badge/Boosty-support-c97932?style=flat-square" alt="Support on Boosty"></a>
 </p>
-<p align="center"><a href="https://github.com/xaer981/quii-helper#get-started">Get started</a> &nbsp; / &nbsp; <a href="https://github.com/xaer981/quii-helper#choose-the-source">Cloud or LAN?</a> &nbsp; / &nbsp; <a href="https://github.com/xaer981/quii-helper/blob/main/docs/README.md">Documentation</a> &nbsp; / &nbsp; <a href="https://github.com/xaer981/quii-helper/issues">Community</a></p>
+<p align="center"><a href="https://github.com/xaer981/quii-helper#get-started">Get started</a> &nbsp; / &nbsp; <a href="https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md">Archive CLI</a> &nbsp; / &nbsp; <a href="https://github.com/xaer981/quii-helper/blob/main/COMPATIBILITY.md">Compatibility</a> &nbsp; / &nbsp; <a href="https://github.com/xaer981/quii-helper/blob/main/docs/README.md">Documentation</a></p>
 
-A Python library for QUII / Qualvision cameras and video intercoms, without
-running the original mobile app. Start with the task, not a wall of settings.
-Use local media by default; opt into cloud services only when you need them.
+A Python library and command-line tool for QUII / Qualvision cameras and
+video intercoms. View and save media on your LAN without running the original
+mobile app. Contact the vendor cloud explicitly to obtain a key or read call history.
 
 <a id="features-"></a>
 
 ## One Camera, Several Possibilities
 
-**Watch and capture.** Local H.264 video, JPEG snapshots, MP4 recording and
-RTSP for players such as VLC. RTSP audio is opt-in with `audio=True`;
-MP4 includes supported G.711 audio as AAC, otherwise it stays video-only.
-
-**Listen and talk.** Receive encoded audio or explicitly start two-way
-conversation while video continues. `session.start_talk()` / `stop_talk()`
-share the RTSP preview. Computer microphone/headphones use the optional
-`audio` extra; caller-supplied PCM does not need it. No RTSP backchannel
-or echo cancellation is provided; use headphones.
-
-**Observe and integrate.** Archive JPEG/MP4 downloads, new archive entries,
-device inspection, LAN discovery, cloud call history and explicit door control.
-Since **0.9.0**, the CLI can [list and download saved archive media](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md)
-over LAN, with terminal selection or JSON for scripts.
-
-**LAN is the default.** A valid saved key/auth pair is reused without cloud
-login, renewal or fallback. Loading JSON or constructing `Camera` performs no
-cloud request. LAN-only describes this client's traffic, not the device's own
-Internet access. Experimental APIs and feature coverage depend on firmware.
+- **Watch and capture:** RTSP for VLC, JPEG snapshots and MP4 recording.
+  RTSP audio is opt-in; MP4 includes audio when the stream supplies supported G.711.
+- **Listen and talk:** receive audio or start a two-way conversation on the
+  same preview with the [Python API](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental).
+- **Browse and integrate:** list or download archived JPEG/MP4 in the terminal
+  or from a script. The API also provides archive observation, device inspection,
+  LAN discovery, cloud call history and explicit door control.
 
 <a id="quick-start-"></a>
 
@@ -47,29 +35,21 @@ Internet access. Experimental APIs and feature coverage depend on firmware.
 Use Python **3.10 or newer**, preferably in a virtual environment:
 
 ```shell
-python -m pip install quii-helper
+python -m pip install --upgrade quii-helper
 ```
 
-Upgrade with `python -m pip install --upgrade quii-helper`.
-RTSP needs no FFmpeg; snapshot/MP4 rendering does.
-See [installation and media prerequisites](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-an-installed-package).
-Since **0.6.0**, the installed command provides an [offline LAN check](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#offline-lan-check)
-and [LAN RTSP command](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#lan-rtsp-from-the-command-line).
+Run `quii-helper --help` to see the installed commands. RTSP does not need
+FFmpeg; JPEG snapshots and MP4 rendering do. See
+[installation and optional dependencies](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#using-an-installed-package).
 
 ### 2 / Choose Your Scenario
 
-- **Local video, snapshots or clips:** reuse your saved pair in step 3.
-  If you need a pair first, complete the explicit cloud bootstrap below.
-- **Incoming-call history:** use [cloud history setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history).
-  Each query contacts cloud; no stream key or camera LAN IP is required.
-- **Saved archive media:** use the [archive CLI](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md).
-  Listing needs only local CGI access. Downloading also uses the saved key/auth pair.
-- **New local archive pictures/videos:** use [local archive setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#local-archive-observations).
-  The metadata API needs a LAN host and auth code, not a stream key or cloud login.
-
-The media setup below is not a prerequisite for cloud history or archive metadata.
-For an existing application, pass configuration explicitly; see
-[all constructor options](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#constructor).
+| Goal | Start here |
+| --- | --- |
+| Watch live video or capture a clip | [Start a local stream](https://github.com/xaer981/quii-helper#3--start-a-local-stream) with a saved key/auth pair. If you need a pair, open the cloud bootstrap below. |
+| Browse or download saved files | [Archive CLI](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md). Listing needs local CGI auth; downloads also need the stream key. |
+| Read incoming-call history | [Cloud history setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history). No camera IP or stream key is needed. |
+| Observe new archive entries | [Local archive setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#local-archive-observations). This is not a live call notification. |
 
 <a id="3-first-run-cloud-setup-and-key-save"></a>
 
@@ -110,7 +90,7 @@ if a vendor certificate fails.
 
 With these settings already known, bootstrap needs **no camera IP, APK
 assets, FFmpeg, `AUTH_CODE` or `STREAM_KEY`**. Discovery is a separate operation
-with its own assets. Since **0.8.0**, run the installed bootstrap command from
+with its own assets. Run the installed bootstrap command from
 your application directory:
 
 ```shell
@@ -121,8 +101,6 @@ The command contacts cloud only when explicitly invoked. It refuses an
 existing file **before cloud login**; deliberate replacement requires
 `--overwrite`. It never starts preview or changes `.env`. See
 [bootstrap options and errors](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-bootstrap-command).
-If the command is missing, upgrade with `python -m pip install --upgrade quii-helper`
-and check `quii-helper --help`, or use the Python API below.
 
 **Python API alternative:**
 
@@ -156,29 +134,20 @@ CAMERA_CHANNEL=1
 CAMERA_STREAM=low
 ```
 
-Choose the panel with `CAMERA_CHANNEL`. Use `CAMERA_STREAM=high` (`1`) for
-the main stream or `low` (`2`) for lower bandwidth; exact resolution and
-other ids depend on firmware. Explicit `Camera(..., stream_quality="high")`
-overrides the configured choice. These are separate from advanced protocol
-compatibility options; see [stream settings](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#what-your-operation-needs).
-
-With **0.6.0 or newer**, run this from your application directory (the one
-with `.env`):
+Choose the panel with `CAMERA_CHANNEL` and quality with `CAMERA_STREAM`:
+`high` selects the main stream (`1`), and `low` uses less bandwidth (`2`).
+Actual resolution depends on firmware. From the same directory as `.env`:
 
 ```shell
+quii-helper doctor --credentials data/stream_credentials.json
 quii-helper rtsp --credentials data/stream_credentials.json
 ```
 
-Open the URL printed after `RTSP stream ready` in VLC. Press Ctrl+C to stop.
-The command uses LAN only and never fetches or renews the saved key. For viewing
-from another computer, see the [SSH tunnel setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#watch-from-another-computer).
-
-On an older version, upgrade with `python -m pip install --upgrade quii-helper`
-or use the Python example below.
-
-Since **0.7.0**, add `--reconnect` to opt into
-[LAN RTSP recovery](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#optional-lan-rtsp-recovery).
-It is off by default and keeps the same RTSP URL after a camera connection drops.
+`doctor` checks configuration offline. Open the URL printed after
+`RTSP stream ready` in VLC, then press Ctrl+C to stop. For another computer,
+use an [SSH tunnel](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#watch-from-another-computer).
+Add `--reconnect` to opt into
+[recovery on the same RTSP URL](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#optional-lan-rtsp-recovery).
 
 <details>
 <summary><strong>Use the Python API instead</strong></summary>
@@ -219,56 +188,35 @@ for timeouts and rendering overhead.
 </details>
 
 RTSP has **no authentication or TLS**: never expose the port publicly.
-Saved keys may stop working: check connectivity and settings, then explicitly
-repeat bootstrap if needed.
-Their lifetime is not guaranteed; timeouts do not renew credentials.
+LAN playback never logs in to cloud or renews the saved key. If the key stops
+working, check connectivity and settings before repeating bootstrap.
 
 ## Choose The Source
 
-**Cloud and LAN are different tools, not automatic fallbacks.**
+- **LAN:** live media, talk and archive downloads reuse a saved key/auth pair.
+  Archive listing and observation use local CGI auth and do not need the key.
+- **Vendor cloud:** explicitly use bootstrap to obtain a pair or the cloud
+  API to read call history. Nothing switches to cloud automatically.
+- **Door control:** the open command goes to the local device. To select
+  the password format in auto mode, see the [capability requirements](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#door-control).
 
-| Operation | Network path | What it means |
-| --- | --- | --- |
-| Saved-key media and talk in LAN mode | Local device | No cloud requests. Talk is explicitly activated. |
-| `quii-helper bootstrap` / `fetch_stream_credentials()` | Vendor cloud | Explicit key acquisition. The CLI also saves the pair; Python API callers save it separately. |
-| `get_cloud_call_events()` / `get_call_events()` | Vendor cloud | Incoming-call history, not a live ringing subscription. |
-| `watch_archive_events()` / `list_record_files()` | Local CGI | New archive pictures/videos; no preview or stream key is needed by the metadata API. |
-| Local CGI inspection and `open_door()` | Local device | The opening command is active. Auto mode may first look up an unknown capability in explicit cloud mode; LAN mode requires it already known. |
-
-Archive time bounds use the device's clock, without UTC conversion. The list
-API searches whole days internally and filters back to your inclusive interval;
-an end at midnight needs no manual adjustment. See [archive interval details](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries).
-The default `file_type="all"` combines explicit video and picture searches in
-the common API; Python, CLI and watcher use the same policy. Both searches must
-succeed and complete; select an explicit type if the other is unsupported.
-
-`connection_mode="cloud"` permits cloud methods and selects cloud/P2P media;
-it **does not reroute local CGI requests through cloud**. Cloud/P2P media
-does not require a manually supplied LAN IP; local CGI does.
+`connection_mode="cloud"` selects cloud/P2P preview; it does not reroute
+local CGI through cloud. LAN-only describes this client's traffic, not the
+device's Internet access.
 
 ### Cloud Call History
 
-Since **0.5.0**, `get_cloud_call_events()` is the explicit cloud name;
-`get_call_events()` remains the same method for backward compatibility.
-Each query authenticates; tokenless alarm login may create an isolated reader
-session, without push registration or marking records read.
-See [cloud setup and limits](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history).
-The polling example checks the first 15 rows every five seconds for three
-minutes. It remembers the first successful page, then prints unseen rows;
-delayed history and bursts can be missed or detected late.
+`get_cloud_call_events()` reads incoming-call history from the vendor cloud.
+It does not subscribe to live calls, register push notifications or mark
+records read. See [setup, polling example and limits](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history).
 
 ### Local Archive Observations
 
-Use **0.5.1 or newer** for archive observation fixes. Upgrade with
-`python -m pip install --upgrade "quii-helper>=0.5.1"`.
-
-`watch_archive_events()` polls metadata every five seconds for three minutes
-by default. The default `file_type="all"` combines
-fresh `video` and `picture` searches each poll; either failing or incomplete
-search stops observation. The first complete batch is the baseline; later
-identities are deduplicated. Errors are not empty results.
-The bundled example reuses the RTSP credential JSON and asks for the monitor's
-current time; invalid input can be retried and Ctrl+C cancels the prompt.
+`watch_archive_events()` polls local metadata and emits new entries after its
+first complete scan. Archival time bounds use the device's clock. See
+[setup and limits](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#local-archive-observations)
+or the [archive CLI](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md)
+for one-time searches and downloads.
 
 > Archive entries are **not confirmed calls**. Coverage depends on the device's
 > picture/video-on-call setting and usable storage. `manual` can describe
@@ -276,24 +224,21 @@ current time; invalid input can be retried and Ctrl+C cancels the prompt.
 > after recording ended; photo-on-call latency has not been tested.
 > Do not open a door automatically based on archive entries alone.
 
-See [local setup, direct-auth usage and bounds](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#local-archive-observations).
-No cloud key refresh, preview, downloads or door commands are started by this
-watcher. The time budget stops new polls, not an in-flight poll batch.
-
 ## Start With An Example
 
-Examples require a configured checkout or source distribution; the wheel
-installs the library, not `examples/`. Run them from the checkout root.
+The quick-start commands above work from the installed wheel. To run these
+Python examples, use a configured checkout or extracted source distribution:
 
-| Goal | Command / guide |
-| --- | --- |
-| Fetch/save a pair, then view locally | `python -m examples.cloud_key_rtsp` (contacts cloud first on every run) |
-| View with a saved pair, without cloud | `python -m examples.lan_rtsp` |
-| Read one cloud history page | `python -m examples.call_events` |
-| Poll cloud history | `python -m examples.watch_call_events` |
-| Observe local archive additions | `python -m examples.watch_archive_events` |
-| Talk while watching video | [Shared-preview conversation](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental) |
-| Download archived pictures or video | [Archive API and protocol variants](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries) |
+- **LAN playback:** `python -m examples.lan_rtsp` reuses a saved pair.
+- **Cloud bootstrap + playback:** `python -m examples.cloud_key_rtsp` contacts
+  cloud first on every run.
+- **Call history:** `python -m examples.call_events` reads one cloud page;
+  `python -m examples.watch_call_events` polls for updates.
+- **Local archive additions:** `python -m examples.watch_archive_events`.
+
+See [all examples](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#application-entry-point),
+including [shared-preview conversation](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#computer-conversation-experimental)
+and [archive downloads from Python](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries).
 
 <a id="compatibility-"></a>
 

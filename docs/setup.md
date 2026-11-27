@@ -1,6 +1,7 @@
 # Setup And APK Extraction
 
-[Documentation](README.md) | [API Reference](api.md) | [Compatibility](../COMPATIBILITY.md)
+[Documentation](README.md) | [Archive CLI](archive-cli.md) | [API Reference](api.md) |
+[Compatibility](../COMPATIBILITY.md)
 
 LAN playback needs the camera IP and a saved stream key/auth pair. To acquire
 that pair through cloud, you also need account/app settings from your device
@@ -43,7 +44,7 @@ Use `python -m pip install --upgrade quii-helper` to upgrade an existing
 installation; no `--pre` is needed for final releases.
 
 For explicit computer microphone/headphones conversation, install the optional
-audio dependency (available since 0.4.0):
+audio dependency:
 
 ```shell
 python -m pip install "quii-helper[audio]"
@@ -65,7 +66,7 @@ Do not edit `site-packages`.
 
 ## Offline LAN Check
 
-Since 0.6.0, the package installs the `quii-helper` command. From your
+The package installs the `quii-helper` command. From your
 application directory, run `doctor` to validate the LAN preview configuration
 without starting a preview:
 
@@ -139,7 +140,7 @@ and `130` means interrupted with Ctrl+C.
 
 ### Optional LAN RTSP Recovery
 
-Since **0.7.0**, add `--reconnect` to the command above to retry a lost or
+Add `--reconnect` to the command above to retry a lost or
 stalled LAN preview after initial playback. It is off by default and never
 renews the saved key.
 Wait for `LAN RTSP reconnected`, then reopen the same URL if your player did
@@ -196,9 +197,9 @@ key acquisition and cloud/P2P preview require `connection_mode="cloud"`.
 | Operation | Inputs and prerequisites |
 | --- | --- |
 | LAN snapshot, MP4, RTSP (default) | Reachable `CAMERA_DEVICE_HOST`, TCP port `CAMERA_STREAM_PORT` (default `34567`), saved key/auth pair from JSON or `STREAM_KEY` / `AUTH_CODE`, and channel/stream. JPEG/MP4 also needs FFmpeg. |
-| Experimental LAN `talk()` (since 0.4.0) | Same local IP/port/key/auth pair and preview panel/stream. Opens preview first, waits for audio, then opens generic talk 65535. Both require supported G.711; no assets, cloud or FFmpeg. Outgoing PCM must be 8000 Hz mono signed PCM16 LE. This is an active operation. |
-| Computer conversation (since 0.4.0) | LAN preview settings plus the optional `audio` extra, a microphone, headphones and OS audio permissions. Use `session.start_talk()` / `stop_talk()` on the handle from `serve_rtsp()` to share preview and keep video running after talk stops. No cloud or FFmpeg. See [computer conversation](api.md#computer-conversation-experimental). |
-| Experimental archive downloads (since 0.4.0) | Same LAN IP/port/key/auth pair plus an entry from local archive queries. JPEG needs no FFmpeg; H.264 MP4 export requires FFmpeg and a writable private `data_dir`. No live preview or cloud access. |
+| Experimental LAN `talk()` | Same local IP/port/key/auth pair and preview panel/stream. Opens preview first, waits for audio, then opens generic talk 65535. Both require supported G.711; no assets, cloud or FFmpeg. Outgoing PCM must be 8000 Hz mono signed PCM16 LE. This is an active operation. |
+| Computer conversation | LAN preview settings plus the optional `audio` extra, a microphone, headphones and OS audio permissions. Use `session.start_talk()` / `stop_talk()` on the handle from `serve_rtsp()` to share preview and keep video running after talk stops. No cloud or FFmpeg. See [computer conversation](api.md#computer-conversation-experimental). |
+| Experimental archive downloads | Same LAN IP/port/key/auth pair plus an entry from local archive queries. JPEG needs no FFmpeg; H.264 MP4 export requires FFmpeg and a writable private `data_dir`. No live preview or cloud access. |
 | Explicit cloud stream-key bootstrap | Cloud account, device id, app/region settings and auth URL. Shared validation also requires the service URL, but no discovery, P2P assets, FFmpeg or device connection is used. |
 | Cloud/P2P snapshot, MP4, RTSP | Explicit cloud mode, cloud/app settings, device id, native assets, and a working preview connection. JPEG/MP4 also needs FFmpeg. |
 | `get_device_info()` | Explicit cloud mode, cloud account/device and app settings. It does not start a media session or discover the LAN host. |
@@ -287,17 +288,16 @@ supplies the matching key/auth pair; no door command is involved.
 
 #### Cloud Bootstrap Command
 
-Since **0.8.0**, the installed package provides `bootstrap`; no checkout or
-Python script is needed. From the application directory containing the complete
+The installed `bootstrap` command needs no checkout or Python script.
+From the application directory containing the complete
 `.env`, run:
 
 ```shell
 quii-helper bootstrap --output data/stream_credentials.json
 ```
 
-If the command is missing, upgrade with `python -m pip install --upgrade quii-helper`
-and check `quii-helper --help`. The [Python API alternative](#python-bootstrap-alternative)
-also works independently of the CLI.
+Use `quii-helper --help` to list the installed commands. The
+[Python API alternative](#python-bootstrap-alternative) works independently of the CLI.
 
 `--output FILE` defaults to `data/stream_credentials.json`, relative to the
 current working directory. The command explicitly selects cloud mode without
@@ -631,7 +631,7 @@ a **real opening command** and must never be used as a read-only smoke test.
 
 ## Cloud Call History
 
-Since 0.5.0, `get_cloud_call_events()` is the explicit cloud name.
+`get_cloud_call_events()` reads the vendor cloud journal.
 `get_call_events()` remains the same method for backward compatibility.
 Neither reads local events.
 
@@ -672,9 +672,6 @@ commands, media downloads, push registration or read-state changes are sent.
 See [API details and limits](api.md#incoming-call-history-experimental).
 
 ## Local Archive Observations
-
-Use **0.5.1 or newer** for archive observation fixes:
-`python -m pip install --upgrade "quii-helper>=0.5.1"`.
 
 This separate, read-only path watches new archive pictures/videos, not a
 confirmed list of calls. It reads local `/tdkcgi` metadata with a LAN host and
@@ -739,7 +736,7 @@ timing is not yet tested. Errors stop observation rather than indicating no
 event; see [API bounds and limitations](api.md#local-archive-observations).
 
 For a one-time local listing or a single-record download, use the
-[archive CLI (since 0.9.0)](archive-cli.md). It supports interactive selection
+[archive CLI](archive-cli.md). It supports interactive selection
 and JSON for scripts. Listing exports metadata without a stream key;
 downloading requires a saved key/auth pair. Neither starts preview or contacts
 cloud.
