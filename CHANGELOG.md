@@ -5,7 +5,7 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
-## Unreleased
+## 0.9.0 - 2026-11-27
 
 ### Added
 
@@ -43,8 +43,9 @@ being stabilized.
   caller intent or converting timezones. The same fix covers archive CLI and
   watcher queries. Retain overlapping videos, treat pictures as points, preserve
   native error/completion status and raw pages, and reject ambiguous record
-  timestamps rather than silently discarding them. Keep low-level CGI searches
-  unchanged. The page cap applies to the expanded whole-day window.
+  timestamps rather than silently discarding them. The low-level CGI helpers
+  still send caller-supplied time bounds as-is. The page cap applies to the
+  expanded whole-day window.
 - Make the default `Camera.list_record_files(file_type="all")` combine explicit
   video and picture searches instead of a native `all` filter, which returned
   false-empty results on tested Tantos firmware. Share this policy with CLI and

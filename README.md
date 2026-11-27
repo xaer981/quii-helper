@@ -30,8 +30,8 @@ or echo cancellation is provided; use headphones.
 
 **Observe and integrate.** Archive JPEG/MP4 downloads, new archive entries,
 device inspection, LAN discovery, cloud call history and explicit door control.
-The development version also provides [local archive listing and interactive downloads](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md)
-from the CLI; these commands are not included in PyPI 0.8.0.
+Since **0.9.0**, the CLI can [list and download saved archive media](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md)
+over LAN, with terminal selection or JSON for scripts.
 
 **LAN is the default.** A valid saved key/auth pair is reused without cloud
 login, renewal or fallback. Loading JSON or constructing `Camera` performs no
@@ -62,10 +62,12 @@ and [LAN RTSP command](https://github.com/xaer981/quii-helper/blob/main/docs/set
   If you need a pair first, complete the explicit cloud bootstrap below.
 - **Incoming-call history:** use [cloud history setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#cloud-call-history).
   Each query contacts cloud; no stream key or camera LAN IP is required.
+- **Saved archive media:** use the [archive CLI](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md).
+  Listing needs only local CGI access. Downloading also uses the saved key/auth pair.
 - **New local archive pictures/videos:** use [local archive setup](https://github.com/xaer981/quii-helper/blob/main/docs/setup.md#local-archive-observations).
   The metadata API needs a LAN host and auth code, not a stream key or cloud login.
 
-The media setup below is not a prerequisite for the other two scenarios.
+The media setup below is not a prerequisite for cloud history or archive metadata.
 For an existing application, pass configuration explicitly; see
 [all constructor options](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#constructor).
 

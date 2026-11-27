@@ -33,7 +33,7 @@ LAN-only is the default; cloud operations require explicit opt-in. Use the
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
 | Read or poll incoming-call history | [Setup and examples](setup.md#cloud-call-history), [API and limits](api.md#incoming-call-history-experimental); cloud-based, not a live subscription. |
 | Watch local archive additions | [Local archive observations](api.md#local-archive-observations); pictures/videos, dependent on recording settings, not confirmed calls. |
-| List or download saved archive files from a terminal | [Archive CLI](archive-cli.md): pick a JPEG/MP4 by number or use JSON in scripts. Development version, not included in PyPI 0.8.0. |
+| List or download saved archive files from a terminal | [Archive CLI (since 0.9.0)](archive-cli.md): pick a JPEG/MP4 by number or use JSON in scripts. |
 | Open a connected door | [Door control](api.md#door-control); these calls have physical effects. |
 | Diagnose a failure | [Troubleshooting](setup.md#troubleshooting) and [error handling](api.md#error-codes). |
 

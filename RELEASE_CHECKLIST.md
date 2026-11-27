@@ -38,7 +38,7 @@ separate actions. None is implied by a local validation run.
 Use Python 3.10 or 3.11, Git, and Go on `PATH`:
 
 ```shell
-python -m pip install -e ".[dev]" build twine
+python -m pip install -e ".[dev,cli]" build twine
 python .github/scripts/release_gate.py
 ```
 

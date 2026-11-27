@@ -2,16 +2,17 @@
 
 [Documentation](README.md) | [Setup](setup.md) | [Archive Python API](api.md#archive-queries)
 
-**Development version:** The archive CLI is not included in PyPI
-version 0.8.0. For now, install from the development checkout in your virtual
-environment with `python -m pip install .`, then check
-`quii-helper archive --help`. See [development setup](../CONTRIBUTING.md).
-A release version has not been assigned.
+Available since **0.9.0**. In your virtual environment, run:
 
-For styled tables and status messages in a terminal, install the optional
-`cli` extra from the development checkout: `python -m pip install ".[cli]"`.
-The commands and prompts also work without it. Redirected output stays plain;
-set `NO_COLOR` if you prefer not to see colors in the terminal.
+```shell
+python -m pip install --upgrade "quii-helper>=0.9.0"
+quii-helper archive --help
+```
+
+For styled tables and status messages, install the optional extra with
+`python -m pip install --upgrade "quii-helper[cli]>=0.9.0"`. The commands and
+prompts also work without it. Redirected output stays plain; set `NO_COLOR`
+to disable terminal colors.
 
 ## What It Does
 
