@@ -5,6 +5,39 @@ All notable changes will be documented in this file.
 This project follows a pre-`1.0` release model while the public API is still
 being stabilized.
 
+## Unreleased
+
+### Added
+
+- Installed `quii-helper archive list` command for local CGI archive metadata
+  listing and optional private JSON export, without cloud access, preview,
+  downloads or device control. Accept device-local time bounds, configured or
+  explicit channel and native archive filters; logical `all` combines video
+  and picture searches. Require complete results, preserve native selectors,
+  exclude raw responses/URLs/credentials, and never overwrite an output file.
+  No stream key is needed; an existing key/auth JSON can be passed explicitly
+  for its auth code. Extend offline and installed-package checks.
+  Reject invalid Windows output filenames and parent folder names before
+  loading settings or querying the camera.
+
+### Fixed
+
+- Make `Camera.list_record_files()` search whole calendar days and filter
+  returned metadata to the requested inclusive device-local interval. This
+  avoids empty Tantos results for upper bounds near midnight without changing
+  caller intent or converting timezones. The same fix covers archive CLI and
+  watcher queries. Retain overlapping videos, treat pictures as points, preserve
+  native error/completion status and raw pages, and reject ambiguous record
+  timestamps rather than silently discarding them. Keep low-level CGI searches
+  unchanged. The page cap applies to the expanded whole-day window.
+- Make the default `Camera.list_record_files(file_type="all")` combine explicit
+  video and picture searches instead of a native `all` filter, which returned
+  false-empty results on tested Tantos firmware. Share this policy with CLI and
+  watcher, deduplicate in query order, and expose no partial aggregate on a
+  failed/incomplete subquery. Preserve per-search statuses, session ids and pages
+  in the new optional `searches` result field; explicit types keep a single
+  native session. The page cap is per type, with no retry or silent fallback.
+
 ## 0.8.0 - 2026-11-23
 
 ### Added

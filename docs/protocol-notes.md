@@ -440,14 +440,19 @@ implied; delayed history and rows outside that page remain limitations. See
 
 `Camera.get_cloud_call_events()` is a naming alias of the existing
 `get_call_events()` cloud journal method; it changes no request or login.
-`Camera.watch_archive_events()` instead repeats the existing local CGI
+`Camera.list_record_files(file_type="all")` uses the existing local CGI
 `get.record.session` / `get.record.message` sequence with a fresh session per
-selected type each poll. Its logical `file_type="all"` combines explicit
+selected type. The watcher repeats this method each poll.
+Logical `file_type="all"` combines explicit
 `video` and `picture` searches, accepting only complete successful batches.
 Both vHome and exact vEye Pro `IQVCGIVDP::MediaSearch` and
 `IQVCGIVSU::MediaSearch` encode these two explicit selectors. The union is a
-Python wrapper policy, not a claim that native always performs both searches;
-the direct `list_record_files()` API still sends its requested selector.
+Python wrapper policy, not a claim that native always performs both searches.
+It is shared by direct Python calls, CLI and watcher, which delegates once per
+poll to the list API. Either failed/incomplete search prevents partial aggregate
+delivery; an empty completed subquery is valid. Other explicit selectors and
+low-level session/message helpers retain native selector behavior. Per-search
+results are exposed in `searches`; a logical aggregate has no single session id.
 No wire command or packet layout changes.
 The Python wrapper adds baseline, bounded deduplication and scheduling, and
 serializes its validated `YYYY-MM-DD HH:MM:SS` bounds to native CGI
@@ -455,6 +460,17 @@ serializes its validated `YYYY-MM-DD HH:MM:SS` bounds to native CGI
 `DeviceRequestHelp.getRecordSession()` use `QvDateTime.parseXml()` to construct
 that format, also used by both native `IQVCGIConfig::GetStringTime()` functions.
 Its lowercase `t`/`z` are literals; device-local wall time is unchanged.
+The high-level list API subsequently expands the search to whole calendar
+days, then filters returned records to the original inclusive interval.
+This is Python query policy, not a new command or a change to wire encoding.
+Bounded Tantos LAN tests on 2026-11-27 found that ending at 00:00:00 or
+00:00:01 returned no rows, whereas the same future end date at 23:59:59
+returned four. Broad month/year searches also returned rows with end-of-day
+bounds; raw XML counts matched the parser. This is consistent with separate
+date/time-of-day filtering on that firmware, not proof of universal semantics.
+The inspected vEye Pro archive UI also builds day-scoped bounds, but uses
+00:00:05/23:59:55; Python does not copy those margins and discard edge seconds.
+Native session/message helpers retain their original pass-through behavior.
 It reads archive metadata; it does not subscribe to command 23 or infer a call
 from HANG_UP(0). The latter is a generic disconnect, not a safe ring signal.
 On Tantos, both ring-triggered and manual monitor recordings had type `manual`;

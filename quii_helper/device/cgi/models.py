@@ -244,6 +244,11 @@ class DeviceRecordListInfo:
     The original app first opens a `get.record.session` search and then keeps
     requesting `get.record.message` pages until the native paging `result`
     becomes `0`.
+
+    A high-level logical all result has no single session: session_id is empty
+    and session is None. Its searches maps attempted video/picture searches to
+    their individual results; pages is their native, unfiltered concatenation.
+    A failed/incomplete combined result exposes no partial aggregate records.
     """
 
     error: int
@@ -252,6 +257,7 @@ class DeviceRecordListInfo:
     pages: list[DeviceRecordMessageInfo] = field(default_factory=list)
     completed: bool = False
     session: DeviceRecordSessionInfo | None = None
+    searches: "dict[str, DeviceRecordListInfo]" = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

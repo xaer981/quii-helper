@@ -13,12 +13,14 @@ from urllib.error import URLError
 
 from quii_helper import Camera
 from quii_helper.camera.connection.credentials import CameraStreamCredentials
-from quii_helper.config import AutonomousConfig
-from quii_helper.config.settings_loader import (
-    CHANNEL_SETTINGS,
-    STREAM_SETTINGS,
-    SettingsLoader,
+from quii_helper.cli.archive import add_archive_parser, list_archive
+from quii_helper.cli.configuration import (
+    _load_cli_config,
+    _PreflightError,
+    _setting_problem,
 )
+from quii_helper.config import AutonomousConfig
+from quii_helper.config.settings_loader import SettingsLoader as SettingsLoader
 from quii_helper.config.validation import (
     REQUIRED_CAMERA_APP_FIELDS,
     is_missing_config_value,
@@ -31,55 +33,6 @@ from quii_helper.protocols.tcp.live.session import (
 from quii_helper.support.errors import ConfigurationError
 
 RTSP_STARTUP_TIMEOUT_SECONDS = 45.0
-
-
-class _PreflightError(ValueError):
-    """An error whose message is safe to display on the CLI."""
-
-
-def _setting_problem(
-    loader: SettingsLoader, error: ConfigurationError, *, scope: str = "LAN"
-) -> str:
-    if not error.setting or not error.hint:
-        return f"Check {scope} settings in .env and the process environment."
-    names = {
-        CHANNEL_SETTINGS[0]: CHANNEL_SETTINGS,
-        STREAM_SETTINGS[0]: STREAM_SETTINGS,
-        "CLOUD_ACCOUNT": ("CLOUD_ACCOUNT", "CLOUD_USERNAME"),
-        "CAMERA_OEM": ("CAMERA_OEM", "CLOUD_OEM"),
-        "CAMERA_APP_ID": ("CAMERA_APP_ID", "CLOUD_APP_ID"),
-        "CAMERA_CLIENT_TYPE": ("CAMERA_CLIENT_TYPE", "CLOUD_CLIENT_TYPE"),
-    }.get(error.setting, (error.setting,))
-    name, source = loader.setting_origin(*names)
-    if source == "not set":
-        for alias in names[1:]:
-            alias_name, alias_source = loader.setting_origin(alias)
-            if alias_source != "not set":
-                name, source = alias_name, alias_source
-                break
-    return f"{name} ({source}): {error.hint}"
-
-
-def _load_cli_config(
-    *, scope: str = "LAN"
-) -> tuple[AutonomousConfig, SettingsLoader]:
-    try:
-        loader = SettingsLoader()
-    except (OSError, ValueError):
-        raise _PreflightError(
-            "Cannot resolve the application directory."
-        ) from None
-    try:
-        config = AutonomousConfig.from_settings(loader.load())
-    except ConfigurationError as exc:
-        raise _PreflightError(
-            _setting_problem(loader, exc, scope=scope)
-        ) from None
-    except (OSError, ValueError):
-        raise _PreflightError(
-            "Cannot load configuration. Check that .env is readable UTF-8."
-        ) from None
-    return config, loader
 
 
 def _load_lan_config(credentials: Path | None) -> AutonomousConfig:
@@ -314,9 +267,10 @@ def _report_doctor(problem: str | None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run offline checks, explicit cloud bootstrap, or LAN-only RTSP."""
+    """Run offline checks, cloud bootstrap, LAN RTSP or local archive listing."""
     parser = argparse.ArgumentParser(prog="quii-helper")
     commands = parser.add_subparsers(dest="command", required=True)
+    add_archive_parser(commands)
     bootstrap = commands.add_parser(
         "bootstrap",
         help="explicitly fetch and save a key/auth pair through cloud",
@@ -354,6 +308,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             help="saved key/auth JSON",
         )
     args = parser.parse_args(argv)
+
+    if args.command == "archive":
+        if args.start >= args.end:
+            parser.error("--from must be before --to (device-local time)")
+        return list_archive(args)
 
     if args.command == "bootstrap":
         return _bootstrap(args.output, overwrite=args.overwrite)

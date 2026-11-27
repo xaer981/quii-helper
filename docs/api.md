@@ -983,7 +983,7 @@ Interactive archive playback/seek is not exposed.
 | `get_record_config_info(channel_id=1)` | `CameraDeviceRecordConfigInfo` | Recording mode, stream, and schedule. |
 | `get_record_session_info(start_time=..., end_time=...)` | `CameraDeviceRecordSessionInfo` | Open a read-only archive search session. |
 | `get_record_message_info(session_id=...)` | `CameraDeviceRecordMessageInfo` | Read one page for the returned search-session id. |
-| `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Search and collect pages up to a safety cap. |
+| `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Collect archive entries overlapping an inclusive device-local interval, up to a page cap. |
 | `watch_archive_events(start_time=..., end_time=...)` | `Iterator[CameraArchiveEvent]` | Since 0.5.0: poll local archive metadata, suppress the baseline and duplicates. Not confirmed calls. |
 | `get_record_alarm_info(timestamp=...)` | `CameraDeviceRecordAlarmInfo` | Read archive entries associated with an alarm timestamp. |
 | `download_record(entry, timeout=30.0, max_bytes=16777216, protocol="default")` | `bytes` | Download an archived JPEG or H.264 MP4 over LAN TCP, without live preview. |
@@ -996,8 +996,49 @@ The alarm query additionally accepts `alarm_type=None` and `alarm_id=None`.
 Preserve the device's timestamp convention; archive strings and cloud-history
 time bounds are different interfaces and must not be assumed interchangeable.
 
-The list result exposes `records`, fetched `pages`, session/status fields, and
-completion information. A page cap is not proof of a complete archive search.
+`list_record_files()` accepts `YYYY-MM-DD HH:MM:SS`, native
+`YYYY-MM-DDtHH:MM:SSz`, and legacy `YYYY-MM-DDTHH:MM:SS` (also with a trailing
+literal `Z`). These are **device-local wall times**, not UTC timestamps;
+offsets/fractions are not accepted, and start must be strictly before end.
+Both bounds are inclusive, including an end exactly at midnight.
+
+Internally it searches from `00:00:00` on the first date to `23:59:59` on the
+last date in **one native search per selected type**, not one per day, then
+filters the returned records back to the requested interval.
+This avoids observed Tantos CGI time-of-day filtering;
+callers must not replace their own end time with the end of the day. Pictures
+are points at their start time; returned videos are retained when their time
+span overlaps the interval, even when they start before its lower bound.
+Firmware may omit recordings that began before the searched calendar days.
+An absent video end is acceptable when the known start proves inclusion or
+exclusion; an earlier video with no end cannot be classified reliably.
+Unusable or ambiguous timestamps raise `QuiiConnectionError`, not a false
+successful empty list.
+
+The default `file_type="all"` is a **logical union of explicit `video` then
+`picture` searches**, not a native `all` filter or a retry after an empty reply.
+Both must succeed and complete. Either failure stops the sequence and returns
+no aggregate `records`; transport/metadata exceptions propagate. An empty
+successful subquery is valid. Duplicates are removed by type, channel, filename,
+picture index and start time, retaining video-then-picture server order, not a
+global timestamp sort. These are two sequential snapshots, not an atomic view.
+Use an explicit type to reduce traffic or if the other type is unsupported;
+custom native selectors still perform one search unchanged.
+
+The list result exposes filtered `records`, fetched native **unfiltered**
+`pages`, and completion information. For logical `all`, `searches["video"]`
+and `searches["picture"]` preserve each attempted search's result, including its
+real session id and pages. If the first search fails, the second is not attempted
+and its key is absent. The aggregate has `session_id=""` and `session=None`:
+there is no single native session. Its `pages` concatenate the attempted native
+pages. Explicit types retain their native session fields and empty `searches`.
+These diagnostics contain private metadata; do not post them unredacted.
+
+Check both `error` and `completed` before using records. `max_pages` caps each
+type's expanded whole-day search, so a narrow requested interval can still
+require multiple pages. A page cap is not proof of a complete archive search.
+For unchanged native bounds and record metadata, use
+`get_record_session_info()` / `get_record_message_info()` directly.
 Calendar/day/month queries are not exposed by this API.
 
 ### Local Archive Observations
@@ -1038,8 +1079,10 @@ for event in camera.watch_archive_events(
 The watcher serializes these human-readable bounds as
 `YYYY-MM-DDtHH:MM:SSz` for CGI, matching both original clients. The lowercase
 `t` and `z` are literal separators, not a request to convert local time to UTC.
-Direct `list_record_files()` calls keep their existing native-string behavior.
-Their `file_type="all"` also remains a single native search, unlike this watcher.
+`list_record_files()` then searches whole days and filters to the original
+inclusive interval, including when it crosses midnight. Its
+`file_type="all"` uses the same two-search policy for direct Python calls,
+the watcher and CLI. The watcher delegates once per poll to this common method.
 
 With the watcher's `"all"`, both searches must succeed and complete before the
 baseline or any later batch is accepted. There is no partial delivery, native
@@ -1081,8 +1124,9 @@ Stopping iteration starts no further work, and Ctrl+C interrupts normal polling.
 on the device itself if using this as an observation aid. Both picture and
 video metadata are supported, but native file selectors depend on firmware.
 On tested Tantos, a native `"all"` query returned no entries where `"video"`
-returned two. The watcher avoids that filter by querying both types explicitly;
-the direct archive API is unchanged. An empty result is still not proof that
+returned two. `list_record_files()` now avoids that filter for all callers by
+querying both types explicitly. Low-level session/message methods retain native
+selector behavior. An empty result is still not proof that
 no call occurred. Disabled saving, missing/full storage or recording failure
 may also produce no entry. A video can appear
 only after it finishes; pictures might appear earlier, but photo-mode latency
@@ -1212,9 +1256,9 @@ for entry in pictures.records:
 
 Replace the bounds with a narrow interval in the device's local clock. The
 literal lowercase `t`/`z` match both vHome and vEye Pro; they do not convert
-the clock to UTC. Unlike the watcher, direct `list_record_files()` passes
-these strings unchanged. Check both `error` and `completed` before using
-`records`: failed or incomplete searches can still contain partial entries.
+the clock to UTC. The list method uses the whole-day CGI search and exact
+interval filtering described above. Check both `error` and `completed` before
+using `records`: failed or incomplete searches can still contain partial entries.
 A successful complete empty search simply downloads nothing.
 For videos, query with `file_type="video"`, then pass a returned entry to the
 same method, for example `camera.download_record(entry, timeout=120, max_bytes=67108864)`.

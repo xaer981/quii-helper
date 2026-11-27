@@ -30,6 +30,8 @@ or echo cancellation is provided; use headphones.
 
 **Observe and integrate.** Archive JPEG/MP4 downloads, new archive entries,
 device inspection, LAN discovery, cloud call history and explicit door control.
+The development version also provides [local archive listing and JSON export](https://github.com/xaer981/quii-helper/blob/main/docs/archive-cli.md)
+from the CLI; this command is not included in PyPI 0.8.0.
 
 **LAN is the default.** A valid saved key/auth pair is reused without cloud
 login, renewal or fallback. Loading JSON or constructing `Camera` performs no
@@ -230,6 +232,13 @@ Their lifetime is not guaranteed; timeouts do not renew credentials.
 | `get_cloud_call_events()` / `get_call_events()` | Vendor cloud | Incoming-call history, not a live ringing subscription. |
 | `watch_archive_events()` / `list_record_files()` | Local CGI | New archive pictures/videos; no preview or stream key is needed by the metadata API. |
 | Local CGI inspection and `open_door()` | Local device | The opening command is active. Auto mode may first look up an unknown capability in explicit cloud mode; LAN mode requires it already known. |
+
+Archive time bounds use the device's clock, without UTC conversion. The list
+API searches whole days internally and filters back to your inclusive interval;
+an end at midnight needs no manual adjustment. See [archive interval details](https://github.com/xaer981/quii-helper/blob/main/docs/api.md#archive-queries).
+The default `file_type="all"` combines explicit video and picture searches in
+the common API; Python, CLI and watcher use the same policy. Both searches must
+succeed and complete; select an explicit type if the other is unsupported.
 
 `connection_mode="cloud"` permits cloud methods and selects cloud/P2P media;
 it **does not reroute local CGI requests through cloud**. Cloud/P2P media
