@@ -257,7 +257,7 @@ class DeviceRecordListInfo:
     pages: list[DeviceRecordMessageInfo] = field(default_factory=list)
     completed: bool = False
     session: DeviceRecordSessionInfo | None = None
-    searches: dict[str, "DeviceRecordListInfo"] = field(default_factory=dict)
+    searches: "dict[str, DeviceRecordListInfo]" = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
