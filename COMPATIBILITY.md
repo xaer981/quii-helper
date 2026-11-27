@@ -197,6 +197,13 @@ The MP4 export kept equal native timestamps to within a container tick, without
 stretching video to a requested duration. Both calls used the saved key/auth
 pair over LAN, without cloud requests, door commands or service changes.
 
+On 2026-11-27, the installed archive CLI also downloaded a panel-2 recording
+on Raspberry Pi (ARM64) using a freshly obtained saved pair. FFprobe reported
+H.264 at 1888x1080 and AAC in the 61.8-second MP4; FFmpeg decoded both tracks
+without errors. The download itself used only LAN. An earlier attempt with
+an older saved pair reset after archive Open; this does not establish a key
+lifetime or the reason for the reset.
+
 The device returned empty archived-picture lists for both channel queries, so
 JPEG downloading remains unverified. These archive tests do not establish
 other firmware support, exact A/V sync, or concurrent
