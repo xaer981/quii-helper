@@ -210,7 +210,10 @@ def test_readme_quick_start_works_without_repository_examples() -> None:
     quick_start = text.split("## Get Started", 1)[1].split(
         "## Choose The Source", 1
     )[0]
-    assert "python -m pip install quii-helper" in quick_start
+    assert "python -m pip install --upgrade quii-helper" in quick_start
+    assert "quii-helper doctor --credentials data/stream_credentials.json" in (
+        quick_start
+    )
     assert "fetch_stream_credentials()" in quick_start
     assert "CameraStreamCredentials.load(" in quick_start
     assert quick_start.index(
@@ -223,6 +226,20 @@ def test_readme_quick_start_works_without_repository_examples() -> None:
     ].split('<a id="3-first-run', 1)[0]
     assert "docs/setup.md#cloud-call-history" in operation_choice
     assert "docs/setup.md#local-archive-observations" in operation_choice
+    assert "docs/archive-cli.md" in operation_choice
+
+
+@pytest.mark.parametrize(
+    "document", [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]
+)
+def test_current_guides_do_not_use_feature_release_markers(document: Path):
+    text = document.read_text(encoding="utf-8")
+    assert not re.search(
+        r"\b(?:since|added in|released in) [*`v]*0\.\d+\.\d+"
+        r"|\bquii-helper(?:\[[\w,-]+\])?>=0\.\d+\.\d+",
+        text,
+        re.IGNORECASE,
+    )
 
 
 @pytest.mark.parametrize("document", ["README.md", "docs/setup.md"])
@@ -269,7 +286,6 @@ def test_bootstrap_cli_is_explicit_and_follows_required_settings(document):
     assert "before cloud login" in text
     assert "quii-helper --help" in text
     assert "Python API" in text
-    assert "Since **0.8.0**" in text
     assert "If `quii-helper --help` lists `bootstrap`" not in text
 
 

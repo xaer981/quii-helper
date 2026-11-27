@@ -294,7 +294,7 @@ in its result; it can still raise configuration, connection, or decoder errors.
 
 ## Receive-Only Audio (Experimental)
 
-This API is available since **0.3.0**. Tantos G.711 A-law reception
+Tantos G.711 A-law reception
 was tested on a physical Pi; Vimar audio remains unverified. It reads E3 frames from a LAN preview
 using the same saved key/auth pair as video. It never fetches or renews keys,
 contacts cloud, opens a talk connection or activates a microphone/speaker.
@@ -347,7 +347,7 @@ includes supported audio as described in [MP4 Audio](#mp4-audio).
 
 ## LAN Talk (Experimental)
 
-**Available since 0.4.0.** The selected-panel preview / generic talk `65535` profile has
+The selected-panel preview / generic talk `65535` profile has
 native/offline coverage. On 2026-10-29 the owner confirmed intelligible speech
 and a recorded reply on Tantos panel 2 through the shared-preview
 `session.start_talk()` API, using a file-backed audio adapter on a Pi. This
@@ -422,7 +422,7 @@ video or receive-only audio stream proves outgoing talk support.
 
 ## Computer Conversation (Experimental)
 
-**Available since 0.4.0.** Start preview normally with `serve_rtsp()`,
+Start preview normally with `serve_rtsp()`,
 then explicitly enable conversation through its returned session. Video and
 incoming sound share **one preview, one reader and one CFrame packer**; only
 generic talk `65535` is added for sending microphone audio. No WAV, FFmpeg,
@@ -561,14 +561,14 @@ Open the URL in VLC after `RTSP stream ready`. The helper forwards
 the QUII H.264 preview; it does not enable native RTSP on the camera or require
 FFmpeg. Each call opens its own preview session.
 
-Since 0.3.0, pass **`audio=True`** for H.264 plus G.711
+Pass **`audio=True`** for H.264 plus G.711
 A-law/mu-law, 8000 Hz mono. Both tracks use **the same camera connection and
 CFrame assembler**; do not open `listen_audio()` as well. `serve_rtsp()` alone
 starts no audio decoding, resampling, microphone, speaker or talk connection;
 those are explicit opt-ins through `session.start_talk()`.
 The library default remains video-only; `quii_helper.main` opts into audio.
 
-Since **0.7.0**, pass `reconnect=True` in LAN mode to recover after the first
+Pass `reconnect=True` in LAN mode to recover after the first
 playable stream. This option is off by default and is not available in
 cloud/P2P mode.
 On a TCP failure or 15 seconds without video, the same RTSP listener
@@ -606,7 +606,7 @@ Vimar/cloud audio and subjective sound quality remain unverified.
 | --- | --- |
 | `session.url` | Address, **not** a readiness check. |
 | `session.ready` | `True` while the listener accepts viewers and the current source has provided an H.264 IDR with SPS/PPS and, if enabled, an audio format. False during recovery. |
-| `session.playback_started` | Since 0.7.0. Whether the stream has become ready at least once in the current run. Stays true during recovery; use `session.ready` to check whether viewers can connect now. |
+| `session.playback_started` | Whether the stream has become ready at least once in the current run. Stays true during recovery; use `session.ready` to check whether viewers can connect now. |
 | `session.stats` | Current RTSP/H.264 counters and `talk_active`. |
 | `session.wait(timeout=None)` | Wait for completion; re-raise producer failure; remain responsive to `Ctrl+C`. A timeout alone does not close the stream. |
 | `session.close()` | Request cancellation and release the listener; also called by the context manager. |
@@ -682,7 +682,7 @@ They do not open a preview or send opening commands.
 | `get_device_shadow_info()` | `CameraDeviceShadowInfo` | Cloud shadow/device state where supported. |
 | `get_iot_command_support()` | `CameraIotCommandSupportInfo` | Command-support metadata, not command execution. |
 | `get_call_events(...)` | `CameraCallEventPage` | Experimental incoming-call journal history. |
-| `get_cloud_call_events(...)` | `CameraCallEventPage` | Explicit cloud name since 0.5.0; identical signature and behavior. |
+| `get_cloud_call_events(...)` | `CameraCallEventPage` | Explicit cloud name for the same operation as `get_call_events()`. |
 | `fetch_stream_credentials()` | `CameraStreamCredentials` | Fresh cloud login + device-token query; return a minimal key/auth pair for explicit LAN playback. |
 
 Sparse fields in `CameraDeviceInfo` do not necessarily mean parsing failed.
@@ -722,7 +722,7 @@ matches the existing LAN session. This API is distinct from the local CGI
 | `credentials.save(path, overwrite=True)` | Write minimal versioned JSON atomically; create parent directories and return its absolute `Path`. The default still replaces an existing file. With `overwrite=False`, atomically refuse an existing destination, including a racing writer. |
 | `CameraStreamCredentials.load(path)` | Read and validate that file (up to 4 KiB); perform no network request or refresh. |
 
-Since **0.8.0**, `overwrite=False` uses hard-link publication on the destination
+`overwrite=False` uses hard-link publication on the destination
 filesystem; unsupported filesystems fail rather than silently replacing a file.
 Both modes clean up their temporary file if publication fails. See the
 [installed bootstrap command](setup.md#cloud-bootstrap-command) for explicit
@@ -999,18 +999,18 @@ These are queries, not firmware-update commands.
 
 The archive queries are local CGI methods with the same common arguments and
 credentials as [local inspection](#local-device-read-only-methods). They list
-archive metadata. Since 0.4.0, the package additionally exposes a separate,
-experimental LAN TCP method to download an archived picture or video as bytes.
+archive metadata. Use the separate experimental LAN TCP method
+`download_record()` to retrieve an archived picture or video as bytes.
 Archived H.264 + G.711 video downloads were verified on Tantos/Pi; the owner
 also confirmed correct image and sound in a downloaded MP4. Archived JPEG
 downloads are community verified on Intelbras Allo wT7 `IDS94B1W` using
 `main` commit `1d6d81d` and the explicit `pipelined` variant described below.
-That variant and the nested-selector fix are available since 0.4.1.
 See [Tantos archive tests](../COMPATIBILITY.md#tantos-archive-downloads) and
 [Intelbras reports](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports)
 for the distinct validation scopes; other model/firmware combinations are
 unverified.
-Interactive archive playback/seek is not exposed.
+For terminal selection and scripted downloads with the default protocol, see
+the [archive CLI](archive-cli.md). Interactive archive playback/seek is not exposed.
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
@@ -1018,7 +1018,7 @@ Interactive archive playback/seek is not exposed.
 | `get_record_session_info(start_time=..., end_time=...)` | `CameraDeviceRecordSessionInfo` | Open a read-only archive search session. |
 | `get_record_message_info(session_id=...)` | `CameraDeviceRecordMessageInfo` | Read one page for the returned search-session id. |
 | `list_record_files(start_time=..., end_time=..., max_pages=32)` | `CameraDeviceRecordListInfo` | Collect archive entries overlapping an inclusive device-local interval, up to a page cap. |
-| `watch_archive_events(start_time=..., end_time=...)` | `Iterator[CameraArchiveEvent]` | Since 0.5.0: poll local archive metadata, suppress the baseline and duplicates. Not confirmed calls. |
+| `watch_archive_events(start_time=..., end_time=...)` | `Iterator[CameraArchiveEvent]` | Poll local archive metadata, suppressing the baseline and duplicates. Not confirmed calls. |
 | `get_record_alarm_info(timestamp=...)` | `CameraDeviceRecordAlarmInfo` | Read archive entries associated with an alarm timestamp. |
 | `download_record(entry, timeout=30.0, max_bytes=16777216, protocol="default")` | `bytes` | Download an archived JPEG or H.264 MP4 over LAN TCP, without live preview. |
 
@@ -1082,8 +1082,7 @@ Calendar/day/month queries are not exposed by this API.
 ### Local Archive Observations
 
 `watch_archive_events()` is a synchronous, LAN-only iterator over **new archive
-entries**, not a live ringing subscription. Use **0.5.1 or newer** for archive
-observation fixes. It uses the existing local CGI
+entries**, not a live ringing subscription. It uses the local CGI
 `list_record_files()` path, opening a **fresh search session per selected type
 each poll**; an old search session may be a fixed snapshot. It never starts
 preview, downloads, cloud authentication, device-setting changes or door commands.
@@ -1214,7 +1213,7 @@ Only LAN-live AES-256/SHA256 is supported, without separately encrypted media.
 Integrity checks cover complete CPacket framing and JPEG SOI/EOI markers,
 **not full JPEG decoding**. The transport is closed on success and failure.
 
-**Available since 0.4.1:** `protocol="pipelined"` is an
+`protocol="pipelined"` is an
 explicit alternative for firmware such as the Intelbras Allo wT7; it is not
 selected automatically. It requires the same LAN
 key/auth pair, plus the device's cloud `dynamic_password` and original-app
@@ -1225,14 +1224,6 @@ does not persist it. Use `AutonomousConfig(..., dynamic_password=...)` or
 `load_config(dynamic_password=...)` with credentials obtained by your cloud
 integration, retaining the configured LAN key/auth pair and OEM. Then call
 `camera.download_record(entry, protocol="pipelined")`.
-
-Install or upgrade the package in your configured virtual environment:
-
-```shell
-python -m pip install --upgrade "quii-helper>=0.4.1"
-```
-
-See [setup](setup.md#using-an-installed-package) for a fresh environment.
 
 This variant sends Open/Seek/Playback/`07` before reading replies and uses the
 `adminapp` dynamic-password/OEM authentication form. JPEG transfers may end at

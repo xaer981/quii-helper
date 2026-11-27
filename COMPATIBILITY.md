@@ -14,8 +14,8 @@ distinguished below.
 | --- | --- | --- | --- |
 | Tantos Marilyn Wi-Fi s | vHome 2.2 | Maintainer tested | Snapshots, MP4 capture, RTSP, receive-only audio, shared-preview speech/reply, archived video with sound, explicit door opening in `auto` mode, and cloud call history. Per-feature tests and limits are described below; archived JPEG remains unverified on Tantos. |
 | Vimar K40955, firmware `V401R001B002` | vEye Pro 1.9.4.0.2 | Community verified, partial | Saved-key LAN RTSP through `lan_rtsp`, [reported by luigi-pi](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080). Video was observed at 352x288 / about 20 FPS; audio remains unresolved. |
-| Intelbras Allo wT7, reported model `IDS9478AW` | Allo Plus | Community verified through an integration | LAN snapshots and RTSP via quii-helper in [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7). The integration pins quii-helper 0.3.0 and applies its own compatibility workarounds; see the scope below. |
-| Intelbras Allo wT7, reported model `IDS94B1W` | Allo Plus | Community verified | LAN live capture, HTTPS archive listing, and complete 1280x720 archive JPEG download with `protocol="pipelined"`, [confirmed by ricfwolff on 2026-11-02](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434) using `main` commit `1d6d81d`. This variant is available since 0.4.1. |
+| Intelbras Allo wT7, reported model `IDS9478AW` | Allo Plus | Community verified through an integration | LAN snapshots and RTSP via quii-helper in [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7). The reviewed integration applies its own compatibility workarounds; see the scope below. |
+| Intelbras Allo wT7, reported model `IDS94B1W` | Allo Plus | Community verified | LAN live capture, HTTPS archive listing, and complete 1280x720 archive JPEG download with `protocol="pipelined"`, [confirmed by ricfwolff on 2026-11-02](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434) using `main` commit `1d6d81d`. |
 
 Community verified means a device owner or integration author reported the
 listed operation working; it is not an independent maintainer hardware test
@@ -79,10 +79,9 @@ cloud/P2P asset profile described below remains unchanged.
 
 [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7)
 reports working live video, snapshots, receive audio, talk-back, door control,
-and ring detection on `IDS9478AW`. Its reviewed 0.6.0
-[manifest](https://github.com/fdaneluzzi/homeassistant-allo-wt7/blob/1fd8dbd0e794977387e469dd397415dfca089498/custom_components/allo_wt7/manifest.json)
-pins quii-helper 0.3.0. The
-[video bridge](https://github.com/fdaneluzzi/homeassistant-allo-wt7/blob/1fd8dbd0e794977387e469dd397415dfca089498/custom_components/allo_wt7/video.py)
+and ring detection on `IDS9478AW`. The reviewed revision
+[pins the dependency](https://github.com/fdaneluzzi/homeassistant-allo-wt7/blob/1fd8dbd0e794977387e469dd397415dfca089498/custom_components/allo_wt7/manifest.json).
+Its [video bridge](https://github.com/fdaneluzzi/homeassistant-allo-wt7/blob/1fd8dbd0e794977387e469dd397415dfca089498/custom_components/allo_wt7/video.py)
 uses `Camera.snapshot()` and `Camera.serve_rtsp()` with explicit LAN credentials.
 Cloud credentials are obtained by that integration's own client.
 
@@ -121,7 +120,6 @@ is not the auth code or account password and is not saved in the stream-key
 JSON. See [archive setup](docs/api.md#archive-queries) for the explicit variant.
 It makes no cloud requests during download and does not open live preview.
 
-The nested-selector and pipelined fixes are available since 0.4.1.
 Archived-video download, default-protocol JPEG, current high-level
 talk, and door control on `IDS94B1W` remain unverified. No maintainer hardware
 test or camera-WAN-isolation test is implied by this report.
@@ -129,7 +127,7 @@ test or camera-WAN-isolation test is implied by this report.
 ### Tantos LAN Talk: Speech And Reply
 
 On 2026-10-29, the owner confirmed intelligible speech in both directions on
-panel 2 using the `session.start_talk()` / `stop_talk()` API, released in 0.4.0, from
+panel 2 using the `session.start_talk()` / `stop_talk()` API from
 PR #19, commit `679ef71`. The physical Raspberry Pi ran the existing RTSP
 preview; a clocked file-backed PCM adapter replaced the computer audio device.
 It transmitted about 13 seconds of recorded speech, then recorded the owner's
@@ -160,8 +158,8 @@ echo cancellation, long-run stability, or every codec/packet profile.
 
 ### Tantos Receive-Only Audio And Recording
 
-The `Camera.listen_audio()` API and `serve_rtsp(audio=True)`, available since
-0.3.0, were tested on Tantos via a Raspberry Pi on 2026-10-26. A 15-second receive probe
+The `Camera.listen_audio()` API and `serve_rtsp(audio=True)` were tested on
+Tantos via a Raspberry Pi on 2026-10-26. A 15-second receive probe
 collected 298 G.711 A-law frames, 8000 Hz mono, decoded in memory. FFprobe
 identified H.264 960x576 and `pcm_alaw` audio in the combined RTSP stream;
 FFmpeg decoded both tracks over TCP and UDP to a null output without errors
@@ -207,7 +205,7 @@ lifetime or the reason for the reset.
 The device returned empty archived-picture lists for both channel queries, so
 JPEG downloading remains unverified. These archive tests do not establish
 other firmware support, exact A/V sync, or concurrent
-archive/live availability. This experimental API is available since 0.4.0.
+archive/live availability.
 
 ### Tantos Archive Observations
 
@@ -220,13 +218,11 @@ start timestamps; this is a measured observation, not a delivery guarantee.
 
 Archive mode was set to save video on calls. The queried JPEG history was
 empty; photo-on-call mode and its latency have **not** been tested. These facts
-must not be generalized to other firmware. The `watch_archive_events()`
-wrapper is available since 0.5.0; use **0.5.1 or newer** for the date/filter
-corrections validated below.
-It reports archive additions, not confirmed calls; see
+must not be generalized to other firmware. `watch_archive_events()` reports
+archive additions, not confirmed calls; see
 [API limits](docs/api.md#local-archive-observations).
 
-The time-serialization fix included in 0.5.1 was checked on physical Pi on
+The time-serialization behavior was checked on physical Pi on
 2026-11-10. For the same 16:20-16:50 device-local interval, space-separated
 CGI bounds returned no entries; native lowercase t/z bounds returned the two
 owner-identified videos at 16:28:21 and 16:43:35. Both original Java clients
@@ -247,9 +243,9 @@ door commands or service changes were performed.
 
 In the same narrow interval, a direct native `file_type="all"` search returned
 zero entries while `"video"` returned both. Both original clients support
-explicit video/picture selectors. The watcher in 0.5.1 therefore defines its
-`"all"` as two explicit searches, leaving the direct archive API
-unchanged. This is not a retry after an empty native `"all"` response.
+explicit video/picture selectors. The high-level list API, CLI and watcher
+use two explicit searches for `"all"`. They do not retry after an empty
+native `"all"` response; low-level session queries still send native selectors.
 
 The combined watcher was then checked from a separately installed candidate
 wheel on Pi: three polls over that fixed interval each returned two videos and
@@ -327,16 +323,15 @@ evidence. Playback with the camera's WAN blocked remains unverified.
 | RTSP release soak | Two-minute synthetic loopback test of sending, backpressure, shutdown, and retained Python allocations. | Real UDP delivery, camera quality, codec correctness, ARM64 behavior, or process RSS bounds. |
 | Linux ARM64 under QEMU, 2026-10-20 | Installation and `pip check` in two entrance-bot Python 3.11 images; 11 mocked integration tests per image. | Native-speed performance or live media. |
 | Physical Raspberry Pi ARM64, 2026-10-21 | Earlier local wheel in entrance-bot; 140 isolated tests with fake door openers and networking disabled. | A fresh installation of every later PyPI release or live ARM64 preview/RTSP. |
-| PyPI consumer check, 2026-10-22 | Published `0.1.0rc6` with entrance-bot commit `40680ee`: 140 tests in a fresh Windows Python 3.11 environment, `pip check`, no private settings/non-loopback access. | Deployment, physical door behavior, or ARM64 installation of that artifact. |
-| Published `0.1.0`, 2026-10-22 | Fresh Windows Python 3.11 wheel/sdist installs and default pip resolution; dependency/import/configuration/logging smoke checks. | A new live-device test. |
+| Release candidate consumer check, 2026-11-27 | The candidate wheel passed 141 entrance-bot tests on Windows with non-loopback I/O blocked. | A consumer upgrade or deployment, physical door behavior, or live tests for that integration. |
 | LAN API on physical Raspberry Pi ARM64, 2026-10-23 | Isolated local wheel: saved-key capture/RTSP, cloud bootstrap/save/load, then independent LAN reconnect. Four samples decoded at 960x576 / 20 fps without errors; RTP checks found no sequence gaps and contexts closed. | Visual scene quality, long-run soak, maximum key lifetime, reboot/rotation persistence, camera-WAN isolation, LAN JPEG rendering on this device, or other hardware. |
 | Tantos saved-key recheck on physical Pi, 2026-10-25 | The original saved key still worked after 55 h 13 m without renewal. A 10-second LAN TCP capture yielded 141 H.264 frames at 960x576 / 20 fps; FFmpeg decoded them without errors. The process guard allowed only camera TCP and blocked cloud/HTTP and external DNS. | An indefinite key lifetime, reboot/rotation persistence, camera-WAN isolation, or Vimar key lifetime. |
 | Tantos key replacement, 2026-10-29 | A fresh key restored LAN video/audio while the original key still failed; encoded authCode was unchanged. Independent saved-key RTSP reconnect succeeded without client cloud requests. | A fixed TTL, reason for the key change, reboot persistence, or camera-WAN isolation. |
 | Tantos shared-preview talk on physical Pi, 2026-10-29 | PR #19 `679ef71`: file-backed speech source and reply recorder; owner confirmed intelligibility both ways on panel 2. No incoming talk-queue drops; video continued after talk stop, then workers/sockets closed. | A physical PC microphone/headphones backend, overlapping-speech quality, echo cancellation, long-run soak, or Vimar talk. |
 | Vimar K40955 community report, 2026-10-25 | The owner confirmed `lan_rtsp` video in [issue #5](https://github.com/xaer981/quii-helper/issues/5#issuecomment-6397243080), after troubleshooting cloud bootstrap. | Independent maintainer testing, strict cloud TLS validation, JPEG/MP4, door control, call history, two-way audio, or other firmware. |
-| Intelbras Allo wT7 `IDS9478AW` community integration, reviewed 2026-11-02 | [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7) uses quii-helper 0.3.0 for LAN snapshots/RTSP, with additional audio/geometry workarounds. | The current unmodified package, high-level talk/door APIs, a generic local ring subscription, or all wT7 variants. |
-| Intelbras Allo wT7 `IDS94B1W` community check, 2026-11-02 | [Owner confirmation](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434): `main` `1d6d81d`, nested archive selectors, explicit pipelined download, 53,755-byte JPEG decoded at 1280x720; fixes included since 0.4.1. | Independent hardware validation of the released artifact, default-protocol JPEG, archived video on Intelbras, high-level talk/door APIs, or other firmware. |
-| Tantos LAN RTSP recovery on Raspberry Pi ARM64, 2026-11-12 | Development wheel with the recovery feature included in `0.7.0`, panel 2/low: FFmpeg decoded 12 frames directly and 12 frames each before and after closing the test TCP connection through an isolated loopback proxy. The first retry restored readiness in about 4 seconds on the same RTSP URL. LAN playback used the saved pair without cloud requests; both CLI runs exited 130 and released their ports. | The final release artifact, VLC recovery, audio recovery, a real-device video stall without TCP closure, or other hardware. |
+| Intelbras Allo wT7 `IDS9478AW` community integration, reviewed 2026-11-02 | [homeassistant-allo-wt7](https://github.com/fdaneluzzi/homeassistant-allo-wt7) uses quii-helper for LAN snapshots/RTSP, with additional audio/geometry workarounds. | The current unmodified package, high-level talk/door APIs, a generic local ring subscription, or all wT7 variants. |
+| Intelbras Allo wT7 `IDS94B1W` community check, 2026-11-02 | [Owner confirmation](https://github.com/xaer981/quii-helper/issues/20#issuecomment-6577888434): `main` `1d6d81d`, nested archive selectors, explicit pipelined download, 53,755-byte JPEG decoded at 1280x720. | Independent hardware validation of the released artifact, default-protocol JPEG, archived video on Intelbras, high-level talk/door APIs, or other firmware. |
+| Tantos LAN RTSP recovery on Raspberry Pi ARM64, 2026-11-12 | Development wheel, panel 2/low: FFmpeg decoded 12 frames directly and 12 frames each before and after closing the test TCP connection through an isolated loopback proxy. The first retry restored readiness in about 4 seconds on the same RTSP URL. LAN playback used the saved pair without cloud requests; both CLI runs exited 130 and released their ports. | The final release artifact, VLC recovery, audio recovery, a real-device video stall without TCP closure, or other hardware. |
 
 The earlier entrance-bot checks cover dependency integration, not media.
 The separate physical LAN tests cover that tested build/device only; they do not

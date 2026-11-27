@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: quii-helper version or commit
-      placeholder: "0.1.0 or commit SHA"
+      placeholder: "Installed package version or commit SHA"
     validations:
       required: true
   - type: input

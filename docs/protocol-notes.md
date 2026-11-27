@@ -155,7 +155,7 @@ If a video duration is correct but the image contains repeated or corrupted fram
 
 ## Receive-Only Audio
 
-`Camera.listen_audio()` is an experimental LAN-only API, added in 0.3.0, over the
+`Camera.listen_audio()` is an experimental LAN-only API over the
 unchanged TCP preview handshake/play. It extracts E3 CPacket audio with the
 existing CFrame assembler. It does not use a talk session, change audio
 settings, request microphone transmission, or add audio to MP4. The raw
@@ -810,7 +810,6 @@ were populated automatically, and `download_record(..., protocol="pipelined")`
 returned a 53,755-byte JPEG that opened and decoded as 1280x720 baseline MJPEG
 without errors. This is community hardware evidence for that model/profile,
 not a maintainer test or proof of Intelbras video/default-protocol downloads.
-The variant and nested-selector fixes are included since 0.4.1.
 
 Only pipelined JPEG downloads may finish without EOF `08`. Their incremental
 marker parser skips length-delimited APP/COM segments, handles entropy byte

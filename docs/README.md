@@ -1,39 +1,39 @@
 # Documentation
 
-[Project Overview](../README.md) | [Setup](setup.md) | [API](api.md) |
+[Project Overview](../README.md) | [Setup](setup.md) | [Archive CLI](archive-cli.md) | [API](api.md) |
 [Compatibility](../COMPATIBILITY.md) | [Contributing](../CONTRIBUTING.md)
 
 ## Start Here
 
-Start with [Setup](setup.md) and choose the inputs for your operation.
-For LAN media without a saved key, first complete the
-[10 required cloud settings and save a key](setup.md#first-run-fetch-and-save).
-Already have that key file? Skip cloud setup and use the
-[local settings and saved-file example](setup.md#later-runs-load-and-view-locally).
-Only need call history? Use the separate [cloud history setup](setup.md#cloud-call-history);
-no stream key is needed.
-Want to observe new pictures/videos without cloud access? Use
-[local archive observation](setup.md#local-archive-observations) with a LAN
-host and local auth code. This reports archive additions, not confirmed calls.
-LAN-only is the default; cloud operations require explicit opt-in. Use the
-[API Reference](api.md) for individual methods.
+Start with [installation](setup.md#using-an-installed-package), then choose
+your task below. LAN-only is the default; cloud operations require explicit opt-in.
+
+### Setup And Live Media
 
 | Your goal | Guide |
 | --- | --- |
-| First installation | [Install from PyPI](setup.md#using-an-installed-package) and [choose operation prerequisites](setup.md#what-your-operation-needs). |
 | Configure an existing application | [Environment settings](setup.md#environment-settings) and [library configuration](api.md#library-configuration). |
 | Check LAN settings without connecting | [Offline `doctor` command](setup.md#offline-lan-check). |
 | Capture an image or video | [Capture methods](api.md#capture-methods). |
-| Obtain a stream key, then play locally | [Required cloud setup](setup.md#first-run-fetch-and-save), [bootstrap CLI (since 0.8.0) / Python API](setup.md#cloud-bootstrap-command), then [local starts](setup.md#later-runs-load-and-view-locally). |
-| Watch a live stream in VLC | [LAN RTSP command](setup.md#lan-rtsp-from-the-command-line) or [Python RTSP API](api.md#rtsp-streaming). |
-| Inspect received audio frames | [Experimental receive-only LAN audio](api.md#receive-only-audio-experimental); available since 0.3.0, tested on Tantos. |
-| Send sound to an intercom | [Experimental LAN talk](api.md#lan-talk-experimental); available since 0.4.0. Shared-preview speech/reply was confirmed on Tantos panel 2 with a file-backed adapter; see [hardware coverage](../COMPATIBILITY.md#tantos-lan-talk-speech-and-reply). |
-| Watch and talk from a computer | [Computer conversation](api.md#computer-conversation-experimental); available since 0.4.0, `session.start_talk()` / `stop_talk()` share the RTSP preview. Optional audio extra, microphone and headphones. |
-| Download an archived picture or video | [Archive queries and downloads](api.md#archive-queries); Tantos video image/sound confirmed. Intelbras archive JPEG is community verified with `pipelined`, available since 0.4.1; see [device reports](../COMPATIBILITY.md#intelbras-allo-wt7-community-reports). |
+| Get a key for LAN media | [Cloud setup and bootstrap](setup.md#first-run-fetch-and-save). Skip this step if you already have a saved key/auth pair. |
+| Watch a live stream in VLC | [LAN settings and saved-file example](setup.md#later-runs-load-and-view-locally) or [Python RTSP API](api.md#rtsp-streaming). |
+| Inspect audio frames or send PCM | [Receive-only audio](api.md#receive-only-audio-experimental) and [LAN talk](api.md#lan-talk-experimental). |
+| Watch and talk from a computer | [Computer conversation](api.md#computer-conversation-experimental). Uses the same preview plus the optional audio extra, microphone and headphones. |
+
+### Archive And Events
+
+| Your goal | Guide |
+| --- | --- |
+| List or download saved files from a terminal | [Archive CLI](archive-cli.md): choose a JPEG/MP4 by number or use a JSON list in scripts. |
+| Download an archived picture or video from Python | [Archive API and protocol variants](api.md#archive-queries). See [device coverage](../COMPATIBILITY.md) for tested formats and firmware. |
+| Read incoming-call history | [Cloud history setup](setup.md#cloud-call-history). No stream key needed; not a live subscription. |
+| Watch local archive additions | [Local archive observation](setup.md#local-archive-observations). Requires a LAN host and CGI auth; additions are not confirmed calls. |
+
+### Device And Integration
+
+| Your goal | Guide |
+| --- | --- |
 | Read device information | [Cloud methods](api.md#cloud-read-only-methods) or [local methods](api.md#local-device-read-only-methods). |
-| Read or poll incoming-call history | [Setup and examples](setup.md#cloud-call-history), [API and limits](api.md#incoming-call-history-experimental); cloud-based, not a live subscription. |
-| Watch local archive additions | [Local archive observations](api.md#local-archive-observations); pictures/videos, dependent on recording settings, not confirmed calls. |
-| List or download saved archive files from a terminal | [Archive CLI (since 0.9.0)](archive-cli.md): pick a JPEG/MP4 by number or use JSON in scripts. |
 | Open a connected door | [Door control](api.md#door-control); these calls have physical effects. |
 | Diagnose a failure | [Troubleshooting](setup.md#troubleshooting) and [error handling](api.md#error-codes). |
 
