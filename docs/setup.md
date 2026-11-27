@@ -738,9 +738,11 @@ and `manual` was also returned for a manual monitor recording. Photo-mode
 timing is not yet tested. Errors stop observation rather than indicating no
 event; see [API bounds and limitations](api.md#local-archive-observations).
 
-For a one-time local archive listing instead of observation, see the
-[archive CLI guide](archive-cli.md). The development command exports metadata
-without a stream key, preview or cloud access; it is not in PyPI 0.8.0.
+For a one-time local listing or a single-record download, see the
+[archive CLI guide](archive-cli.md), including interactive selection and JSON
+for scripts. Listing exports metadata without a stream
+key; downloading requires a saved key/auth pair. Neither starts preview or
+contacts cloud. These development commands are not in PyPI 0.8.0.
 
 ## Media Prerequisites
 

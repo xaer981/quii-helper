@@ -331,7 +331,11 @@ def test_real_cgi_path_avoids_daily_filter_and_discards_unrequested_hours(
             ).encode()
         )
 
-    monkeypatch.setattr(transport.urllib.request, "urlopen", respond)
+    monkeypatch.setattr(
+        transport.urllib.request.OpenerDirector,
+        "open",
+        Mock(side_effect=respond),
+    )
     result = camera.list_record_files(
         start_time="2026-11-27t00:00:00z",
         end_time="2026-11-28t00:00:00z",

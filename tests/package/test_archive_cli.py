@@ -360,7 +360,14 @@ def test_windows_valid_output_preserves_absolute_and_parent_relative_paths(
     read, monkeypatch, name
 ):
     monkeypatch.setattr(
-        archive, "sys", SimpleNamespace(platform="win32", stderr=sys.stderr)
+        archive,
+        "sys",
+        SimpleNamespace(
+            platform="win32",
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        ),
     )
     Path("nested").mkdir()
     for target in (Path(name), Path("absolute.json").absolute()):
@@ -625,7 +632,9 @@ def test_cli_builds_real_cgi_xml_and_parses_nested_archive_metadata(
         )
 
     network = Mock(side_effect=respond)
-    monkeypatch.setattr(transport.urllib.request, "urlopen", network)
+    monkeypatch.setattr(
+        transport.urllib.request.OpenerDirector, "open", network
+    )
     args = ARGS + [
         "--json",
         "--channel",

@@ -2,11 +2,16 @@
 
 [Documentation](README.md) | [Setup](setup.md) | [Archive Python API](api.md#archive-queries)
 
-**Development version:** `quii-helper archive list` is not included in PyPI
+**Development version:** The archive CLI is not included in PyPI
 version 0.8.0. For now, install from the development checkout in your virtual
 environment with `python -m pip install .`, then check
-`quii-helper archive list --help`. See [development setup](../CONTRIBUTING.md).
+`quii-helper archive --help`. See [development setup](../CONTRIBUTING.md).
 A release version has not been assigned.
+
+For styled tables and status messages in a terminal, install the optional
+`cli` extra from the development checkout: `python -m pip install ".[cli]"`.
+The commands and prompts also work without it. Redirected output stays plain;
+set `NO_COLOR` if you prefer not to see colors in the terminal.
 
 ## What It Does
 
@@ -15,8 +20,9 @@ their metadata to JSON. This command uses **local CGI only**, with no preview,
 cloud login, key refresh, download, door command or recording-setting change.
 It does not need FFmpeg or the optional audio dependencies.
 
-The CLI currently provides `archive list` only. Use the existing Python API
-for [downloads](api.md#archive-queries) and
+`archive download` retrieves one picture or video over the device's native
+LAN TCP port. Choose it directly from a LAN search, or use an exported JSON
+list to skip the CGI search and prompts. Use the Python API for
 [observation of new entries](api.md#local-archive-observations).
 
 ## Configure Once
@@ -35,7 +41,7 @@ account and APK assets are **not** required to list metadata.
 
 **Already have a saved key/auth JSON?** Keep only the LAN mode and host
 settings above, omit `AUTH_CODE`, and explicitly add
-`--credentials data/stream_credentials.json` to the command. It reads only
+`--credentials data/stream_credentials.json` to the command. Listing uses only
 the device ID and auth code from that file; it never requests a new key.
 If `DEVICE_ID` is configured, it must match the file. With `--credentials`,
 the file's auth code takes precedence over `AUTH_CODE`.
@@ -63,6 +69,8 @@ actually want the whole day. Firmware can omit recordings that began before
 the searched calendar days. Unusable/ambiguous record times fail the query
 rather than silently dropping entries.
 
+For a whole day, use `--date YYYY-MM-DD` instead of `--from` and `--to`.
+
 The table shows a one-based index, type, channel, start/end times, occurrence,
 size in **KiB** (or `?`), and filename. Times and identifiers come from the
 device; entries are not assumed to be chronologically sorted. Indexes refer
@@ -77,22 +85,87 @@ quii-helper archive list --from "2026-11-27 00:00:00" --to "2026-11-27 23:59:59"
 
 Warnings and status go to stderr, not into JSON stdout.
 
+## Download One Record
+
+Before downloading:
+
+- Use the device's numeric IP in `CAMERA_DEVICE_HOST`.
+- Provide a saved key/auth pair: `STREAM_KEY` and `AUTH_CODE`, or add
+  `--credentials data/stream_credentials.json` to either download command.
+  The CLI checks the pair before searching; it never requests a new key.
+- For MP4, install FFmpeg on PATH and use a writable private `data/`
+  directory. JPEG downloads do not require FFmpeg.
+
+### In A Terminal
+
+```shell
+quii-helper archive download --date 2026-11-27 --type video
+```
+
+Choose a row by number. If there are more rows, use `n` or `p` to move between
+pages. Enter a destination path or press Enter to use the suggested filename;
+pass `--output FILE` to skip the path prompt. Type `q` or press Ctrl+C to cancel.
+The command downloads the selected record from the displayed result, without
+repeating the CGI search or writing a JSON list. Prompts and status go to stderr.
+
+### From A Script
+
+Export a complete list with `archive list --output records.json`. Then use the
+row number in that exact file. For example, if row 2 is a video:
+
+```shell
+quii-helper archive download --from-list records.json --index 2 --output media/clip.mp4
+```
+
+Use a new `.jpg` or `.jpeg` output for a picture, or `.mp4` for a video.
+Use a list you exported yourself. Its host and any nonempty device ID must
+match the current configuration. Row numbers are not device IDs; if a record
+has disappeared since listing, download can fail. A malformed, mismatched,
+oversized (over 16 MiB) or empty list cannot start a transfer.
+
+The native TCP port comes from `CAMERA_STREAM_PORT` (default 34567), not
+the CGI port. The command
+uses only the configured device address, never a URL from the list, and
+does not log in to cloud, refresh credentials, or start live preview.
+
+The default media limits are 30 seconds for
+setup, transfer and remux and 16 MiB for received data/returned bytes.
+Increase with `--timeout SECONDS` or `--max-bytes BYTES` where needed.
+Output is saved privately and atomically without replacing any existing
+file, using the same filesystem rules as the JSON export. A failed transfer
+creates no output.
+
+The CLI uses the default protocol. Firmware requiring `pipelined`
+(e.g. some Intelbras models) still needs the
+[Python API with explicit file-channel credentials](api.md#archive-downloads-and-metadata).
+Real-device support depends on the firmware; see [device coverage](../COMPATIBILITY.md).
+
 ## Filters And Transport
+
+These filters apply to `archive list` and the interactive download search,
+not to `archive download --from-list`:
 
 | Option | Meaning |
 | --- | --- |
-| `--type all`, `video`, `picture` | Passed to `Camera.list_record_files()`: default `all` combines video then picture, with both searches required to complete. The CLI delegates once, not twice. Select one type if the other is unsupported. |
+| `--type all`, `video`, `picture` | Default `all` searches video and pictures and requires both searches to complete. Select one type if the other is unsupported. |
 | `--channel N` | Defaults to `CAMERA_CHANNEL` (including its existing aliases), or 1 if unset. The flag overrides it. Channel mappings depend on firmware. |
 | `--occur-type VALUE` | Native occurrence filter; default `all`, examples `manual` and `event`. Firmware-specific values are passed through, not interpreted as confirmed calls. |
 | `--stream all`, `main`, `sub` | Archive stream filter; default `all`. This is not the live-quality setting `CAMERA_STREAM`. |
 | `--max-pages N` | Positive page cap per native whole-day search/type; default 32. A narrow interval can still need multiple pages. If the result is incomplete, no successful list is emitted; deliberately increase the cap if appropriate. |
 | `--scheme http`, `https` | Default HTTP uses port 80; HTTPS uses 443. `--cgi-port N` overrides that port, separately from `CAMERA_STREAM_PORT`. |
-| `--credentials FILE` | Explicit existing key/auth JSON, used only for CGI auth and device identity. No automatic lookup or fallback. |
+| `--credentials FILE` | Explicit existing key/auth JSON, used for CGI auth and device identity, and for the stream key when downloading. Available in both download modes. No automatic lookup or fallback. |
 
 HTTP sends CGI authentication without transport encryption: use it only on
-a trusted LAN. HTTPS uses configured TLS verification; failures do **not**
-trigger an insecure retry or cloud fallback. A warning is printed if
+a trusted LAN. Archive CGI calls connect directly to the configured camera:
+they ignore system HTTP(S) proxies and do not follow redirects. HTTPS uses
+configured TLS verification; failures do **not** trigger an insecure retry
+or cloud fallback. A warning is printed if
 `TLS_VERIFY=false` is already explicitly configured.
+
+If search fails, check the device's CGI address, authentication and TLS
+settings. A transfer failure is separate: check the saved key/auth pair
+and the download limits. A save error points to the destination, including
+write permissions and filesystem support for hard links.
 
 No more than 10,000 distinct records are exported. Query errors, incomplete
 pages and the record cap fail rather than silently truncating a successful
@@ -111,17 +184,18 @@ fields, URLs, auth codes, stream keys and account passwords are not exported.
 The JSON still contains **private device metadata**: do not post it publicly
 without reviewing the host, device ID, filenames and timestamps.
 
-`--output` requires a new `.json` path and never replaces an existing file,
+For `list`, `--output` requires a new `.json` path. Neither command replaces an existing file,
 including symlinks. `.env` paths and unsafe Windows filenames (including
-parent folder names) are rejected before loading settings or reading from
-the camera. Missing parent directories are created only
+parent folder names) are rejected before reading from the camera when
+provided on the command line, or before transfer when entered at the prompt.
+Missing parent directories are created only
 after successful queries. A private temporary file is atomically linked into
 place, protecting against another writer creating the same target. The target
 filesystem must support hard links; there is no unsafe overwrite fallback.
 On POSIX the file is owner-only; on Windows check the parent directory's ACL.
 Use a private application directory, not a shared writable directory.
 
-Exit codes: `0` complete result, `1` configuration/query/output failure,
+Exit codes: `0` complete result, `1` configuration/query/transfer/output failure,
 `2` invalid arguments, `130` interrupted. If writing stdout fails after a file
 was saved, that file can already exist; check it before retrying with a new path.
 

@@ -19,9 +19,22 @@ being stabilized.
   for its auth code. Extend offline and installed-package checks.
   Reject invalid Windows output filenames and parent folder names before
   loading settings or querying the camera.
+- Installed `quii-helper archive download` command: select a record from a
+  LAN archive search in the terminal, or use a saved list and row number in
+  scripts. Both archive commands accept `--date` for a device-local day.
+  Downloads save a JPEG or MP4 over LAN TCP using existing credentials and the
+  default Python download protocol, with bounded transfer and atomic
+  no-overwrite output. No repeated CGI query, cloud fallback or live preview.
+- Optional `cli` extra for styled terminal tables and status messages. JSON
+  and redirected output remain plain. Improve CLI help and show next steps
+  after `doctor`, `bootstrap` and RTSP startup.
 
 ### Fixed
 
+- Keep archive CGI search sessions and pages direct: ignore system proxies
+  and refuse redirects without changing TLS verification. Report search,
+  download and write errors separately, validate download credentials before
+  searching, and preserve Unicode paths in terminal messages.
 - Resolve the nested alarm-schedule model annotation on Python 3.10, without
   changing parsed data or protocol behavior.
 - Make `Camera.list_record_files()` search whole calendar days and filter

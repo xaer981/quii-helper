@@ -149,6 +149,7 @@ def request_readonly_cgi(
     verify_tls: bool = True,
     content: ET.Element | None = None,
     debug: bool = False,
+    direct: bool = False,
 ) -> DeviceCgiResponse:
     """Request a read-only CGI command using the original LAN auth header."""
 
@@ -166,6 +167,8 @@ def request_readonly_cgi(
     }
     if content is not None:
         kwargs["content"] = content
+    if direct:
+        kwargs["direct"] = True
     result = request_cgi(**kwargs)
     return parse_cgi_response(command, result["raw"])
 
@@ -422,6 +425,7 @@ def request_record_session_info(
                 stream=stream,
             ),
             debug=debug,
+            direct=True,
         )
     )
 
@@ -448,6 +452,7 @@ def request_record_message_info(
             verify_tls=verify_tls,
             content=_record_id_content(session_id),
             debug=debug,
+            direct=True,
         )
     )
 

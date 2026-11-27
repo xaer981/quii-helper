@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ssl
 import sys
 import tempfile
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TypedDict
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 
 from quii_helper import Camera, CameraStreamCredentials
@@ -20,11 +22,22 @@ from quii_helper.cli.configuration import (
     _PreflightError,
     _setting_problem,
 )
+from quii_helper.cli.presentation import rich_table
 from quii_helper.config import AutonomousConfig
 from quii_helper.device.cgi.models import DeviceRecordFileInfo
-from quii_helper.support.errors import ConfigurationError
+from quii_helper.device.security.streamkey import validate_stream_credentials
+from quii_helper.support.errors import ConfigurationError, QuiiConnectionError
 
 MAX_RECORDS = 10000
+_SEARCH_DEFAULTS = {
+    "channel": None,
+    "file_type": "all",
+    "occur_type": "all",
+    "stream": "all",
+    "max_pages": 32,
+    "scheme": "http",
+    "cgi_port": None,
+}
 
 
 class ArchiveRecord(TypedDict):
@@ -75,6 +88,17 @@ def _positive_int(value: str) -> int:
     return number
 
 
+def _device_date(value: str) -> str:
+    try:
+        if date.fromisoformat(value).isoformat() != value:
+            raise ValueError
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "Use a device-local date: YYYY-MM-DD."
+        ) from None
+    return value
+
+
 def _port(value: str) -> int:
     number = _positive_int(value)
     if number > 65535:
@@ -98,61 +122,100 @@ def _occurrence(value: str) -> str:
     return value
 
 
+def add_archive_search_options(parser: argparse.ArgumentParser) -> None:
+    options = parser.add_argument_group("LAN archive search")
+    options.add_argument(
+        "--date",
+        type=_device_date,
+        metavar="YYYY-MM-DD",
+        help="search a whole day on the device's clock instead of --from/--to",
+    )
+    options.add_argument(
+        "--from",
+        dest="start",
+        type=_device_time,
+        metavar="TIME",
+        help="search start: device-local YYYY-MM-DD HH:MM:SS",
+    )
+    options.add_argument(
+        "--to",
+        dest="end",
+        type=_device_time,
+        metavar="TIME",
+        help="search end: device-local YYYY-MM-DD HH:MM:SS",
+    )
+    options.add_argument(
+        "--channel", type=_channel, help="default: CAMERA_CHANNEL / 1"
+    )
+    options.add_argument(
+        "--type",
+        dest="file_type",
+        choices=("all", "video", "picture"),
+        help="default: all (combines video and picture searches)",
+    )
+    options.add_argument(
+        "--occur-type",
+        type=_occurrence,
+        help="native occurrence filter, e.g. all, manual, event",
+    )
+    options.add_argument(
+        "--stream",
+        choices=("all", "main", "sub"),
+        help="archive stream filter, not live quality (default: all)",
+    )
+    options.add_argument(
+        "--max-pages",
+        type=_positive_int,
+        help="page cap per search/type (default: 32)",
+    )
+    options.add_argument(
+        "--scheme", choices=("http", "https"), help="default: http"
+    )
+    options.add_argument(
+        "--cgi-port", type=_port, help="default: HTTP 80 / HTTPS 443"
+    )
+
+
+def resolve_archive_search(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    *,
+    saved: bool = False,
+) -> None:
+    if saved:
+        if any(
+            getattr(args, name) is not None
+            for name in ("date", "start", "end", *_SEARCH_DEFAULTS)
+        ):
+            parser.error(
+                "--from-list cannot be combined with LAN archive search options"
+            )
+        return
+    if args.date is not None:
+        if args.start is not None or args.end is not None:
+            parser.error("use --date or --from and --to, not both")
+        args.start, args.end = f"{args.date} 00:00:00", f"{args.date} 23:59:59"
+    elif args.start is None or args.end is None:
+        parser.error("provide --date YYYY-MM-DD or both --from and --to")
+    if args.start >= args.end:
+        parser.error("--from must be before --to (device-local time)")
+    for name, default in _SEARCH_DEFAULTS.items():
+        if getattr(args, name) is None:
+            setattr(args, name, default)
+
+
 def add_archive_parser(
     commands: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> None:
+) -> argparse._SubParsersAction[argparse.ArgumentParser]:
     """Register the installed archive list command without loading settings."""
-    archive = commands.add_parser("archive", help="read the local archive")
+    archive = commands.add_parser(
+        "archive", help="LAN: list or download archive media"
+    )
     operations = archive.add_subparsers(dest="archive_command", required=True)
     listing = operations.add_parser(
         "list", help="list saved pictures/videos over LAN, without cloud"
     )
-    listing.add_argument(
-        "--from",
-        dest="start",
-        type=_device_time,
-        required=True,
-        help="search start: device-local YYYY-MM-DD HH:MM:SS",
-    )
-    listing.add_argument(
-        "--to",
-        dest="end",
-        type=_device_time,
-        required=True,
-        help="search end: device-local YYYY-MM-DD HH:MM:SS",
-    )
-    listing.add_argument(
-        "--channel", type=_channel, help="default: CAMERA_CHANNEL / 1"
-    )
-    listing.add_argument(
-        "--type",
-        dest="file_type",
-        choices=("all", "video", "picture"),
-        default="all",
-        help="all combines video and picture searches",
-    )
-    listing.add_argument(
-        "--occur-type",
-        type=_occurrence,
-        default="all",
-        help="native occurrence filter, e.g. all, manual, event",
-    )
-    listing.add_argument(
-        "--stream",
-        choices=("all", "main", "sub"),
-        default="all",
-        help="archive stream filter, not live quality (default: all)",
-    )
-    listing.add_argument(
-        "--max-pages",
-        type=_positive_int,
-        default=32,
-        help="page cap per search/type (default: 32)",
-    )
-    listing.add_argument("--scheme", choices=("http", "https"), default="http")
-    listing.add_argument(
-        "--cgi-port", type=_port, help="default: HTTP 80 / HTTPS 443"
-    )
+    add_archive_search_options(listing)
     listing.add_argument(
         "--credentials",
         type=Path,
@@ -170,9 +233,10 @@ def add_archive_parser(
         metavar="FILE",
         help="also save private metadata as a new .json file; never replace a file",
     )
+    return operations
 
 
-def _output_path(path: Path) -> Path:
+def _output_path(path: Path, *, media: bool = False) -> Path:
     """Refuse existing files and unsafe destinations before any camera read."""
     target = path.expanduser().absolute()
     name = target.name.lower()
@@ -200,12 +264,17 @@ def _output_path(path: Path) -> Path:
                 raise _PreflightError(
                     "Output path must not contain a Windows device filename."
                 )
+    suffixes = {".jpg", ".jpeg", ".mp4"} if media else {".json"}
     if (
         name == ".env"
         or name.startswith(".env.")
-        or target.suffix.lower() != ".json"
+        or (target.suffix.lower() not in suffixes)
     ):
-        raise _PreflightError("Output must be a .json list, not an .env file.")
+        raise _PreflightError(
+            "Output must be a .jpg, .jpeg, or .mp4 file, not an .env file."
+            if media
+            else "Output must be a .json list, not an .env file."
+        )
     if target.is_symlink() or target.exists():
         raise _PreflightError(
             "Output already exists or is a symlink; choose a new file."
@@ -217,8 +286,10 @@ def _output_path(path: Path) -> Path:
     return target
 
 
-def _load_archive_config(credentials: Path | None) -> AutonomousConfig:
-    """Require only direct CGI inputs, not playback or cloud credentials."""
+def _load_archive_config(
+    credentials: Path | None, *, download: bool = False
+) -> AutonomousConfig:
+    """Load local credentials, using the saved key only for media downloads."""
     config, loader = _load_cli_config()
     for setting, missing, hint in (
         (
@@ -252,6 +323,8 @@ def _load_archive_config(credentials: Path | None) -> AutonomousConfig:
         config = replace(
             config, device_id=saved.device_id, auth_code=saved.auth_code
         )
+        if download:
+            config = replace(config, stream_key=saved.stream_key)
     if not config.auth_code.strip():
         raise _PreflightError(
             _setting_problem(
@@ -261,6 +334,20 @@ def _load_archive_config(credentials: Path | None) -> AutonomousConfig:
                 ),
             )
         )
+    if download and not config.stream_key:
+        raise _PreflightError(
+            _setting_problem(
+                loader,
+                ConfigurationError.for_setting(
+                    "STREAM_KEY", "Set STREAM_KEY, or pass --credentials FILE."
+                ),
+            )
+        )
+    if download:
+        try:
+            validate_stream_credentials(config.stream_key, config.auth_code)
+        except ConfigurationError as exc:
+            raise _PreflightError(_setting_problem(loader, exc)) from None
     host = config.device_host.strip()
     try:
         if any(c.isspace() or ord(c) < 32 or c in "/\\@?#" for c in host):
@@ -292,17 +379,15 @@ def _metadata(record: DeviceRecordFileInfo) -> ArchiveRecord:
     )
 
 
-def _save_list(target: Path, data: str) -> None:
-    """Publish a complete UTF-8 snapshot without clobbering a racing writer."""
+def _save_archive_file(target: Path, data: bytes) -> None:
+    """Publish a complete file without clobbering a racing writer."""
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            newline="\n",
+            mode="wb",
             dir=target.parent,
-            prefix=".archive-list-",
+            prefix=".archive-",
             delete=False,
         ) as output:
             temporary = Path(output.name)
@@ -315,9 +400,27 @@ def _save_list(target: Path, data: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _cell(value: str | int | None) -> str:
+    return (
+        "?"
+        if value is None
+        else json.dumps(str(value), ensure_ascii=True)[1:-1]
+    )
+
+
 def _print_table(records: list[ArchiveRecord]) -> None:
     """Escape terminal controls while preserving snapshot row numbers."""
-    print("INDEX\tTYPE\tCHANNEL\tSTART\tEND\tOCCURRENCE\tSIZE_KiB\tFILE")
+    headers = (
+        "INDEX",
+        "TYPE",
+        "CHANNEL",
+        "START",
+        "END",
+        "OCCURRENCE",
+        "SIZE_KiB",
+        "FILE",
+    )
+    rows = []
     for index, record in enumerate(records, 1):
         values = (
             record["file_type"],
@@ -328,40 +431,22 @@ def _print_table(records: list[ArchiveRecord]) -> None:
             record["file_size_kib"],
             record["file_name"],
         )
-        cells = [
-            (
-                "?"
-                if value is None
-                else json.dumps(str(value), ensure_ascii=True)[1:-1]
-            )
-            for value in values
-        ]
-        print(f"{index}\t" + "\t".join(cells))
+        rows.append([str(index), *(_cell(value) for value in values)])
+    if not rich_table(headers, rows, file=sys.stdout):
+        print("\t".join(headers))
+        for row in rows:
+            print("\t".join(row))
     print(f"Records: {len(records)} (complete search).")
 
 
-def list_archive(args: argparse.Namespace) -> int:
-    """Read complete native searches; emit/save no partial successful list."""
-    try:
-        target = _output_path(args.output) if args.output is not None else None
-        config = _load_archive_config(args.credentials)
-        channel = args.channel if args.channel is not None else config.channel
-        if not 1 <= channel <= 65535:
-            raise _PreflightError(
-                "CAMERA_CHANNEL (or its configured alias): Use an integer from 1 to 65535."
-            )
-    except KeyboardInterrupt:
-        print("Archive listing interrupted.", file=sys.stderr)
-        return 130
-    except _PreflightError as exc:
-        print(f"Archive configuration: FAIL. {exc}", file=sys.stderr)
-        return 1
-    except (OSError, ValueError):
-        print(
-            "Cannot resolve archive output; check the path and permissions.",
-            file=sys.stderr,
+def _search_archive(
+    args: argparse.Namespace, config: AutonomousConfig
+) -> tuple[int, list[DeviceRecordFileInfo]]:
+    channel = args.channel if args.channel is not None else config.channel
+    if not 1 <= channel <= 65535:
+        raise _PreflightError(
+            "CAMERA_CHANNEL (or its configured alias): Use an integer from 1 to 65535."
         )
-        return 1
     if args.scheme == "https" and not config.tls_verify:
         print(
             "WARNING: TLS certificate verification is disabled by configuration.",
@@ -381,12 +466,10 @@ def list_archive(args: argparse.Namespace) -> int:
         if args.cgi_port is not None
         else (443 if args.scheme == "https" else 80)
     )
-    records: list[ArchiveRecord] = []
-    seen: set[tuple[str, ...]] = set()
+    camera = Camera(
+        config=config, connection_mode="lan", status=lambda _: None
+    )
     try:
-        camera = Camera(
-            config=config, connection_mode="lan", status=lambda _: None
-        )
         result = camera.list_record_files(
             start_time=args.start.replace(" ", "t") + "z",
             end_time=args.end.replace(" ", "t") + "z",
@@ -399,23 +482,47 @@ def list_archive(args: argparse.Namespace) -> int:
             port=port,
             debug=False,
         )
-        if result.error != 0 or not result.completed:
-            print(
-                "Archive query failed or is incomplete; no list was emitted. Narrow the calendar-day range or check --max-pages and device support.",
-                file=sys.stderr,
-            )
-            return 1
-        for record in result.records:
+    except HTTPError as exc:
+        raise _PreflightError(
+            f"LAN archive search failed: HTTP {exc.code}. Check --scheme, --cgi-port and CGI authentication. Redirects are not followed."
+        ) from None
+    except Exception as exc:
+        reason = exc.reason if isinstance(exc, URLError) else exc
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            problem = "LAN archive search failed: TLS certificate verification failed. Check the camera certificate, address and trust settings. No insecure retry was attempted."
+        else:
+            problem = "LAN archive search failed. Check CGI connectivity, authentication and TLS settings."
+        raise _PreflightError(problem) from None
+    if result.error != 0 or not result.completed:
+        raise _PreflightError(
+            "Archive query failed or is incomplete; no list was emitted. Narrow the calendar-day range or check --max-pages and device support."
+        )
+    records: list[DeviceRecordFileInfo] = []
+    seen: set[tuple[str, ...]] = set()
+    for record in result.records:
+        try:
             key = archive_record_key(record)
-            if key not in seen:
-                if len(seen) >= MAX_RECORDS:
-                    print(
-                        "Archive exceeds the 10000-record limit; narrow --from/--to.",
-                        file=sys.stderr,
-                    )
-                    return 1
-                seen.add(key)
-                records.append(_metadata(record))
+        except QuiiConnectionError:
+            raise _PreflightError(
+                "LAN archive search returned invalid record metadata."
+            ) from None
+        if key not in seen:
+            if len(seen) >= MAX_RECORDS:
+                raise _PreflightError(
+                    "Archive exceeds the 10000-record limit; narrow --from/--to."
+                )
+            seen.add(key)
+            records.append(record)
+    return channel, records
+
+
+def list_archive(args: argparse.Namespace) -> int:
+    """Read complete native searches; emit/save no partial successful list."""
+    try:
+        target = _output_path(args.output) if args.output is not None else None
+        config = _load_archive_config(args.credentials)
+        channel, matches = _search_archive(args, config)
+        records = [_metadata(record) for record in matches]
         snapshot = ArchiveList(
             version=1,
             device={"host": config.device_host, "device_id": config.device_id},
@@ -434,7 +541,7 @@ def list_archive(args: argparse.Namespace) -> int:
             + "\n"
         )
         if target is not None:
-            _save_list(target, data)
+            _save_archive_file(target, data.encode("utf-8"))
         if args.json:
             print(data, end="")
         else:
@@ -451,6 +558,9 @@ def list_archive(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 130
+    except _PreflightError as exc:
+        print(f"Archive listing: FAIL. {exc}", file=sys.stderr)
+        return 1
     except Exception:
         print(
             "Archive listing or output failed. Check LAN CGI/auth/TLS, storage, and output permissions; check any saved file before retrying. No insecure retry or cloud fallback was attempted.",
