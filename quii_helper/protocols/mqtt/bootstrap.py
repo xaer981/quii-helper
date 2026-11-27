@@ -21,7 +21,7 @@ from quii_helper.protocols.ust.credentials import decode_ust_mqtt_credentials
 class MqttP2PBootstrap:
     """Coordinates MQTT bootstrap connection, publishing, and response waits."""
 
-    def __init__(self, config: AutonomousConfig):
+    def __init__(self, config: AutonomousConfig) -> None:
         self.config = config
         ensure_mqtt_runtime(self.config)
         self.parsed = parse_mqtt_url(config.ust_address)

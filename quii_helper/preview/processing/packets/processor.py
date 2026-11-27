@@ -116,6 +116,19 @@ class PreviewPacketProcessor:
     def process_packet(
         self, packet: TunnelPacket, *, phase: PacketPhase
     ) -> bool:
+        """Process one transport chunk, retaining partial/chained QUII data.
+
+        Args:
+            packet: Payload, transport source and packet metadata.
+            phase: Live reception, final flush or close-time processing.
+
+        Returns:
+            Whether collection should stop under the configured capture limits.
+
+        Raises:
+            QuiiConnectionError: Buffered input exceeded safety limits or was
+                invalid. Partial/chained state is cleared before propagation.
+        """
         blob, source, meta = packet_payload_context(packet)
         try:
             check_pending_quii_limits(

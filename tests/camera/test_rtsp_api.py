@@ -1,10 +1,12 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import get_type_hints
 from unittest.mock import patch
 
 import pytest
 
 from quii_helper.camera import Camera
+from quii_helper.camera.connection.session import CameraConnector
 from quii_helper.camera.streaming import CameraRtspStream
 from quii_helper.config import AutonomousConfig
 from quii_helper.preview.pipeline.config import (
@@ -29,6 +31,36 @@ def _feed_video(stream, bitstream):
 
 
 class CameraRtspApiTests:
+    def test_statistics_keep_the_existing_dictionary_shape(self, tmp_path):
+        connector = CameraConnector(AutonomousConfig())
+        stream = CameraRtspStream(
+            connector=connector,
+            preview_settings=DEFAULT_PREVIEW_CAPTURE_SETTINGS,
+            data_dir=tmp_path,
+            emit=lambda value: None,
+            status=lambda message: None,
+        )
+        stream.assembler.frame_count = 7
+        stream.assembler.access_unit_count = 5
+        stream.assembler.audio_frame_count = 2
+        stats = stream.stats
+        assert type(stats) is dict and type(stats["h264"]) is dict
+        assert stats == {
+            "rtsp_clients": 0,
+            "h264": {
+                "frames": 7,
+                "access_units": 5,
+                "audio_frames": 2,
+                "cframe_pack": dict(stream.assembler.packer.stats),
+            },
+            "talk_active": False,
+        }
+        stats["h264"]["frames"] = -1
+        stats["h264"]["cframe_pack"]["completed"] = -1
+        assert stream.stats["h264"]["frames"] == 7
+        assert stream.assembler.packer.stats["completed"] == 0
+        assert get_type_hints(CameraRtspStream)["connector"] is CameraConnector
+
     @pytest.mark.parametrize(
         "overrides,option",
         [

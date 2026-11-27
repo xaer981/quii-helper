@@ -45,7 +45,7 @@ For documentation changes, regression tests also check API tables, Python
 examples, environment-template coverage, and repository links/anchors:
 
 ```shell
-python -m pytest tests/package/test_documentation.py tests/package/test_examples.py
+python -m pytest tests/package/test_docstrings.py tests/package/test_documentation.py tests/package/test_examples.py tests/package/test_public_typing.py
 ```
 
 Before publication, use the [unified release gate](RELEASE_CHECKLIST.md#unified-release-gate)
@@ -71,6 +71,16 @@ standard library already handles. Do not use door-opening commands as tests.
 - Keep internal document links relative and preserve existing public anchors.
 - Use `python -m examples.<name>` for checkout examples; label physical effects.
 - Document defaults, mandatory arguments, return values, and operation-specific inputs.
+- Use Google-style `Args`, `Returns`, `Raises` and `Attributes` sections.
+  Public dataclass/TypedDict fields need nonempty `Attributes` descriptions;
+  explain units, missing values, native selectors and sensitive raw content.
+- Public contracts are discovered from package exports, their public methods/
+  properties and library-defined return types. Tests check docstrings, all
+  `Camera` argument descriptions and fully resolved nested annotations.
+  No manual object allowlist needs updating for a new export or session.
+- Prefer concrete types for library-owned objects and structured statistics.
+  Keep `Any` for genuinely open vendor payloads, not to silence a known shape.
+  Consumer typing tests require mypy; the runtime package does not depend on it.
 - Keep historical validation in Compatibility/Protocol Notes, not the first-run path.
 - Update current release statements before building; do not rewrite historical release notes.
 

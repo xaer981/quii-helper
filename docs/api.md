@@ -39,6 +39,7 @@ file, changes `.env`, or renews expired credentials.
 ## Contents
 
 - [Constructor](#constructor) and [configuration](#library-configuration).
+- [Result models](#result-models): missing values, native units and raw data.
 - [Connection modes](#connection-modes), including direct LAN playback.
 - [Stream-key bootstrap and persistence](#stream-key-bootstrap-and-persistence).
 - [Capture](#capture-methods), [RTSP](#rtsp-streaming), and [logging](#logging).
@@ -49,6 +50,29 @@ file, changes `.env`, or renews expired credentials.
 - [LAN discovery](#lan-discovery) and [local inspection](#local-device-read-only-methods).
 - [Archive queries](#archive-queries), [local archive observations](#local-archive-observations), [door control](#door-control), and [errors](#error-codes).
 - [Bundled examples](#application-entry-point).
+
+## Result Models
+
+Public dataclass models describe their fields in their `Attributes` docstrings,
+available through IDE help or `help(type(result))`. Class/type hints are also
+part of the installed package; no checkout is needed for completion.
+
+For local CGI results, check `result.error` before interpreting other fields:
+zero means success. `None` usually means absent or unparseable data, not a
+disabled feature. Empty strings/lists and parser fallback values likewise do
+not prove support, absence, or a physical state after a failed query.
+
+Identifiers retain native indexing. Configured resolution/FPS/quality are not
+measurements of the received stream; encoder `quality` is not the live
+`stream_quality="high"` / `"low"` selector. Where firmware units or numeric
+scales are not established, models preserve the native value without guessing
+a conversion. Archive timestamps remain device-local, and archive `file_size`
+uses the native KiB interpretation, not an exact downloadable byte count.
+
+`raw`, `content`, remote URLs, keys and device/account identifiers may contain
+private data. Typed models do not automatically redact these fields: do not
+log or publish them wholesale. Prefer explicitly selected normalized fields
+and the existing CLI's whitelisted metadata export.
 
 ## Constructor
 
@@ -587,6 +611,16 @@ Vimar/cloud audio and subjective sound quality remain unverified.
 | `session.wait(timeout=None)` | Wait for completion; re-raise producer failure; remain responsive to `Ctrl+C`. A timeout alone does not close the stream. |
 | `session.close()` | Request cancellation and release the listener; also called by the context manager. |
 | `session.start_talk()` / `session.stop_talk()` | Explicit PC conversation on the same LAN preview; see [computer conversation](#computer-conversation-experimental). Preview alone never opens audio devices. |
+
+`session.stats` remains an ordinary dictionary, with typed keys for IDE/static
+checking. `rtsp_clients` counts currently registered clients, including those
+not yet playing; `talk_active` describes explicit computer conversation.
+`h264` contains integer `frames`, `access_units`, `audio_frames` and a
+`cframe_pack` counter dictionary. Frames count complete CPackets after
+keyframe gating; `audio_frames` counts frames passed to the optional audio
+sink. These are snapshots of the current assembler, reset when preview is
+recreated, not lifetime totals. Modifying a returned counter dictionary does
+not change the running assembler.
 
 The stream reports `RTSP stream ready` once when it first becomes ready.
 Use `status=print` as above to see the message, or enable library logging if

@@ -24,7 +24,7 @@ class MqttBootstrapWaiter:
         messages: "queue.Queue[dict[str, Any]]",
         all_messages: "queue.Queue[tuple[str, dict[str, Any]]]",
         publish_sub_device_state: Callable[[], None],
-    ):
+    ) -> None:
         self.config: AutonomousConfig = config
         self._messages: queue.Queue[dict[str, Any]] = messages
         self._all_messages: queue.Queue[tuple[str, dict[str, Any]]] = (
