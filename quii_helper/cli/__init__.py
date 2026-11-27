@@ -13,12 +13,21 @@ from urllib.error import URLError
 
 from quii_helper import Camera
 from quii_helper.camera.connection.credentials import CameraStreamCredentials
-from quii_helper.cli.archive import add_archive_parser, list_archive
+from quii_helper.cli.archive import (
+    add_archive_parser,
+    list_archive,
+    resolve_archive_search,
+)
+from quii_helper.cli.archive_download import (
+    add_archive_download_parser,
+    download_archive,
+)
 from quii_helper.cli.configuration import (
     _load_cli_config,
     _PreflightError,
     _setting_problem,
 )
+from quii_helper.cli.presentation import display_path, print_status
 from quii_helper.config import AutonomousConfig
 from quii_helper.config.settings_loader import SettingsLoader as SettingsLoader
 from quii_helper.config.validation import (
@@ -134,7 +143,7 @@ def _bootstrap(output: Path, *, overwrite: bool) -> int:
                 "WARNING: TLS certificate verification is disabled by configuration.",
                 file=sys.stderr,
             )
-        print("Contacting cloud for login and device token...", flush=True)
+        print_status("Contacting cloud for login and device token...", "cyan")
         try:
             credentials = Camera(
                 config=config, status=lambda _: None
@@ -183,9 +192,15 @@ def _bootstrap(output: Path, *, overwrite: bool) -> int:
             file=sys.stderr,
         )
         return 1
-    print(
-        "Streaming credentials saved. Keep the JSON private and reuse it with --credentials for LAN playback."
+    print_status(
+        "Streaming credentials saved. Keep the JSON private and reuse it with --credentials for LAN playback.",
+        "bold green",
     )
+    if sys.stdout.isatty():
+        print(f"File: {display_path(target)}")
+        print(
+            "Next: quii-helper rtsp --credentials FILE (replace FILE with the saved path)."
+        )
     return 0
 
 
@@ -204,7 +219,7 @@ def _serve_lan_rtsp(
 ) -> int:
     def status(message: str) -> None:
         if message.startswith("LAN RTSP reconnect"):
-            print(message, flush=True)
+            print_status(message, "yellow")
 
     stream = None
     try:
@@ -218,7 +233,7 @@ def _serve_lan_rtsp(
             )
             return 1
         with stream:
-            print("Waiting for LAN preview video...", flush=True)
+            print_status("Waiting for LAN preview video...", "cyan")
             deadline = monotonic() + RTSP_STARTUP_TIMEOUT_SECONDS
             while not stream.playback_started:
                 remaining = deadline - monotonic()
@@ -234,7 +249,16 @@ def _serve_lan_rtsp(
                     return 1
                 stream.wait(timeout=min(remaining, 0.25))
             if stream.ready:
-                print(f"RTSP stream ready: {stream.url}", flush=True)
+                print_status(f"RTSP stream ready: {stream.url}", "bold green")
+                if sys.stdout.isatty():
+                    retry = "on" if reconnect else "off"
+                    print(
+                        f"Channel {config.channel} | Stream {config.stream} | Reconnect {retry}"
+                    )
+                    print(
+                        "Open the URL in VLC. Press Ctrl+C to stop.",
+                        flush=True,
+                    )
             stream.wait()
     except KeyboardInterrupt:
         return 130
@@ -254,26 +278,44 @@ def _serve_lan_rtsp(
     return 1
 
 
-def _report_doctor(problem: str | None) -> int:
+def _report_doctor(
+    problem: str | None, *, saved_credentials: bool = False
+) -> int:
     if problem is None:
-        print("LAN configuration: OK (offline only).")
+        print_status("LAN configuration: OK (offline only).", "bold green")
     else:
-        print(f"LAN configuration: FAIL. {problem}")
+        print_status(f"LAN configuration: FAIL. {problem}", "bold red")
     ffmpeg = "found on PATH" if which("ffmpeg") else "not found on PATH"
     audio = "module found" if find_spec("miniaudio") else "module not found"
     print(f"FFmpeg: {ffmpeg} (needed for JPEG/MP4 rendering).")
     print(f"miniaudio: {audio} (needed for microphone/headphones).")
+    if problem is None:
+        command = "quii-helper rtsp"
+        if saved_credentials:
+            command += " --credentials FILE"
+        print(f"Next: {command} to check live video over LAN.")
     return 1 if problem else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run offline checks, cloud bootstrap, LAN RTSP or local archive listing."""
-    parser = argparse.ArgumentParser(prog="quii-helper")
+    """Run offline checks, cloud bootstrap, LAN RTSP or local archive commands."""
+    parser = argparse.ArgumentParser(
+        prog="quii-helper",
+        description="Work with QUII cameras and intercoms. LAN commands never fall back to cloud.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Start here:\n"
+            "  quii-helper doctor                       Check configuration offline\n"
+            "  quii-helper rtsp                         Open LAN video in VLC\n"
+            "  quii-helper archive --help               Browse saved media\n"
+            "\nUse COMMAND --help for command options."
+        ),
+    )
     commands = parser.add_subparsers(dest="command", required=True)
-    add_archive_parser(commands)
+    download = add_archive_download_parser(add_archive_parser(commands))
     bootstrap = commands.add_parser(
         "bootstrap",
-        help="explicitly fetch and save a key/auth pair through cloud",
+        help="cloud: fetch and save a key/auth pair explicitly",
     )
     bootstrap.add_argument(
         "--output",
@@ -287,8 +329,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="deliberately fetch again and replace an existing credentials file",
     )
-    doctor = commands.add_parser("doctor", help="check LAN settings offline")
-    rtsp = commands.add_parser("rtsp", help="serve LAN video on localhost")
+    doctor = commands.add_parser(
+        "doctor", help="offline: check LAN settings and tools"
+    )
+    rtsp = commands.add_parser(
+        "rtsp", help="LAN: serve live video on localhost"
+    )
     rtsp.add_argument(
         "--port",
         type=_rtsp_port,
@@ -310,8 +356,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "archive":
-        if args.start >= args.end:
-            parser.error("--from must be before --to (device-local time)")
+        if args.archive_command == "download":
+            return download_archive(download, args)
+        resolve_archive_search(parser, args)
         return list_archive(args)
 
     if args.command == "bootstrap":
@@ -325,5 +372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"LAN configuration: FAIL. {exc}", file=sys.stderr)
         return 1
     if args.command == "doctor":
-        return _report_doctor(None)
+        return _report_doctor(
+            None, saved_credentials=args.credentials is not None
+        )
     return _serve_lan_rtsp(config, args.port, reconnect=args.reconnect)

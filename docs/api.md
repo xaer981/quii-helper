@@ -1027,6 +1027,10 @@ methods and `get_record_alarm_info()` also accept `channel_id=1`,
 `file_type="all"` (or `"picture"` / `"video"`), `occur_type="all"`, and
 `stream="all"` (or `"main"` / `"sub"`).
 The alarm query additionally accepts `alarm_type=None` and `alarm_id=None`.
+Archive search sessions and pages (including `list_record_files()` and
+`watch_archive_events()`) connect directly to the CGI address without using
+system HTTP(S) proxies or following redirects. HTTPS still uses the configured
+certificate verification. Other CGI commands keep their existing behavior.
 Preserve the device's timestamp convention; archive strings and cloud-history
 time bounds are different interfaces and must not be assumed interchangeable.
 

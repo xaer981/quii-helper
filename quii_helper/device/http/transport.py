@@ -40,6 +40,7 @@ def request_cgi(
     debug: bool = False,
     verify_tls: bool = True,
     allow_redirects: bool = True,
+    direct: bool = False,
 ) -> dict[str, str]:
     if encrypted:
         security = "usernametoken"
@@ -65,6 +66,7 @@ def request_cgi(
         debug=debug,
         verify_tls=verify_tls,
         allow_redirects=allow_redirects,
+        direct=direct,
     )
     if debug:
         _debug_exchange(xml_body, data)
@@ -142,6 +144,7 @@ def _post_cgi_xml(
     debug: bool,
     verify_tls: bool,
     allow_redirects: bool = True,
+    direct: bool = False,
 ) -> bytes:
     req = urllib.request.Request(
         f"{scheme}://{host}:{port}/tdkcgi",
@@ -159,13 +162,16 @@ def _post_cgi_xml(
         )
 
     try:
-        if allow_redirects:
+        if allow_redirects and not direct:
             response = urllib.request.urlopen(req, timeout=10, context=context)
         else:
-            opener = urllib.request.build_opener(
+            handlers: list[urllib.request.BaseHandler] = [
                 _NoRedirectHandler(),
                 urllib.request.HTTPSHandler(context=context),
-            )
+            ]
+            if direct:
+                handlers.append(urllib.request.ProxyHandler({}))
+            opener = urllib.request.build_opener(*handlers)
             response = opener.open(req, timeout=10)
         with response as resp:
             return cast(bytes, resp.read())

@@ -96,6 +96,7 @@ def check_install(directory: Path, *, soak_seconds: float = 0) -> None:
                 ["bootstrap"],
                 ["archive"],
                 ["archive", "list"],
+                ["archive", "download"],
             ):
                 subprocess.run(
                     [str(cli), *command, "--help"], cwd=root, check=True

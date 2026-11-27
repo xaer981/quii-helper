@@ -2736,6 +2736,8 @@ class Camera:
         "all" reads video then pictures; both must succeed and complete.
         Stops at the first failed/incomplete search without returning a partial
         aggregate. Each search stops after `max_pages` native pages.
+        Session and page requests go directly to the camera, without HTTP(S)
+        proxies or redirects. HTTPS uses the configured certificate verification.
 
         Args:
             start_time: Inclusive device-local lower bound, as

@@ -2,6 +2,7 @@
 
 import os
 import ssl
+import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import URLError
@@ -98,6 +99,14 @@ def test_fetches_once_in_explicit_cloud_mode_without_lan_inputs(
     for value in (*CLOUD_ENV.values(), KEY, AUTH, str(target)):
         if value not in {"1", "2", "3"}:
             assert value not in captured.out + captured.err
+
+
+def test_terminal_shows_copyable_unicode_path(fetch, monkeypatch, capsys):
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    target = Path("\u043a\u043b\u044e\u0447.json")
+    assert cli.main(["bootstrap", "--output", str(target)]) == 0
+    fetch.assert_called_once()
+    assert f"File: {target.absolute().as_posix()}" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("name", CLOUD_ENV)

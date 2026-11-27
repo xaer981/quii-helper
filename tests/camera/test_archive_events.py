@@ -612,7 +612,9 @@ def test_watcher_searches_whole_days_without_utc_conversion(
         )
 
     network = Mock(side_effect=respond)
-    monkeypatch.setattr(transport.urllib.request, "urlopen", network)
+    monkeypatch.setattr(
+        transport.urllib.request.OpenerDirector, "open", network
+    )
     assert (
         list(
             camera.watch_archive_events(
